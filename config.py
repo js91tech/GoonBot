@@ -20,6 +20,7 @@ def _default_database_path() -> str:
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_PUBLIC_URL = os.getenv("DATABASE_PUBLIC_URL", "")
 DATABASE_PATH = os.getenv("DATABASE_PATH") or _default_database_path()
 ALLOW_SQLITE_ON_RAILWAY = os.getenv("ALLOW_SQLITE_ON_RAILWAY", "").strip().lower() in {
     "1",

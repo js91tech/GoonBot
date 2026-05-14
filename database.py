@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import socket
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -101,11 +103,25 @@ class PostgresConnection:
 class Database:
     def __init__(self, path: str) -> None:
         self.path = path
-        self.url = config.DATABASE_URL
-        self.is_postgres = bool(self.url)
+        self.urls = self._postgres_urls()
+        self.url = self.urls[0][1] if self.urls else ""
+        self.is_postgres = bool(self.urls)
         self._conn: aiosqlite.Connection | PostgresConnection | None = None
         self._write_lock = asyncio.Lock()
         self._config_cache: dict[int, dict[str, float]] = {}
+
+    @staticmethod
+    def _postgres_urls() -> list[tuple[str, str]]:
+        urls = []
+        seen = set()
+        for name, value in (
+            ("DATABASE_URL", config.DATABASE_URL),
+            ("DATABASE_PUBLIC_URL", config.DATABASE_PUBLIC_URL),
+        ):
+            if value and value not in seen:
+                urls.append((name, value))
+                seen.add(value)
+        return urls
 
     @property
     def conn(self) -> aiosqlite.Connection | PostgresConnection:
@@ -119,13 +135,12 @@ class Database:
             msg = (
                 "DATABASE_URL is required on Railway. Refusing to use SQLite because Railway "
                 "local files can be wiped on redeploy. Set DATABASE_URL to the Postgres service "
-                "internal URL, or set ALLOW_SQLITE_ON_RAILWAY=true only if you mounted persistent storage."
+                "internal URL, or set DATABASE_PUBLIC_URL to the Postgres public URL if internal DNS "
+                "is unavailable. Set ALLOW_SQLITE_ON_RAILWAY=true only if you mounted persistent storage."
             )
             raise RuntimeError(msg)
         if self.is_postgres:
-            postgres = PostgresConnection(self.url)
-            await postgres.connect()
-            self._conn = postgres
+            await self._connect_postgres()
         else:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
             sqlite = await aiosqlite.connect(self.path)
@@ -136,6 +151,28 @@ class Database:
             await self.conn.execute("PRAGMA busy_timeout = 5000")
             await self.conn.commit()
         await self.init_schema()
+
+    async def _connect_postgres(self) -> None:
+        last_error: Exception | None = None
+        for name, url in self.urls:
+            postgres = PostgresConnection(url)
+            try:
+                await postgres.connect()
+            except socket.gaierror as exc:
+                last_error = exc
+                logging.warning("Could not resolve Postgres host from %s; trying next URL if configured", name)
+                continue
+            self.url = url
+            self._conn = postgres
+            logging.info("Connected to Postgres using %s", name)
+            return
+
+        msg = (
+            "Could not resolve any configured Postgres host. If DATABASE_URL uses an internal Railway "
+            "hostname that is unavailable to this service, add DATABASE_PUBLIC_URL from the Postgres "
+            "service variables to the NuggetBot service."
+        )
+        raise RuntimeError(msg) from last_error
 
     async def close(self) -> None:
         if self._conn is not None:
