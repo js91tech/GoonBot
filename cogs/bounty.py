@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from contextlib import suppress
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 import config
-from utils.helpers import contains_word, fmt_amount, guild_only_message, normalize_trigger_word, valid_amount
+from utils.helpers import (
+    contains_word,
+    fmt_amount,
+    guild_only_message,
+    normalize_trigger_word,
+    valid_amount,
+)
 
 
 class Bounty(commands.Cog):
@@ -60,13 +68,11 @@ class Bounty(commands.Cog):
             )
             return
 
-        try:
+        with suppress(discord.HTTPException):
             await target.send(
                 f"A bounty was placed on you in {interaction.guild.name}. "
                 f"Avoid saying `{normalized}`."
             )
-        except discord.HTTPException:
-            pass
 
         await interaction.response.send_message(
             f"Bounty #{bounty_id} placed on {target.mention} for {fmt_amount(amount)}.",
@@ -113,6 +119,8 @@ class Bounty(commands.Cog):
                 continue
 
             if message.author.id == int(row["target_id"]):
+                if bounty_id in self.triggered_bounties:
+                    return
                 self.triggered_bounties.add(bounty_id)
                 await message.channel.send(
                     f"Bounty #{bounty_id} has been triggered. Say `{trigger_word}` to claim it!"

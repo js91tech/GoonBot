@@ -88,7 +88,10 @@ class Imposter(commands.Cog):
             return None
 
         parsed = urlparse(config.AI_API_URL)
+        localhost = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return None
+        if parsed.scheme != "https" and not localhost:
             return None
 
         payload = {
@@ -106,11 +109,13 @@ class Imposter(commands.Cog):
         headers = {"Authorization": f"Bearer {config.AI_API_KEY}"}
         timeout = aiohttp.ClientTimeout(total=config.AI_TIMEOUT_SECONDS)
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(config.AI_API_URL, json=payload, headers=headers) as response:
-                    if response.status >= 400:
-                        return None
-                    data = await response.json()
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.post(config.AI_API_URL, json=payload, headers=headers) as response,
+            ):
+                if response.status >= 400:
+                    return None
+                data = await response.json()
         except (aiohttp.ClientError, TimeoutError, ValueError):
             return None
 

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 DATABASE_PATH = os.getenv("DATABASE_PATH", "nuggetbot.sqlite3")
 GUILD_ID = int(os.environ["GUILD_ID"]) if os.getenv("GUILD_ID") else None
 

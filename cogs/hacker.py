@@ -43,7 +43,8 @@ class Hacker(commands.Cog):
         except asyncio.CancelledError:
             raise
         finally:
-            self.timers.pop(guild_id, None)
+            if self.timers.get(guild_id) is asyncio.current_task():
+                self.timers.pop(guild_id, None)
 
     async def _detonate(self, guild_id: int, channel_id: int) -> None:
         pot = await self.bot.db.get_hacker_pot(guild_id)

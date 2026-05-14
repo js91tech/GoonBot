@@ -7,9 +7,6 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
-from dotenv import load_dotenv
-
-load_dotenv()
 
 import config
 from database import Database
@@ -74,7 +71,10 @@ class NuggetBot(commands.Bot):
         elif isinstance(error, app_commands.NoPrivateMessage):
             message = "This command can only be used inside a server."
         else:
-            logging.exception("Unhandled app command error", exc_info=error)
+            logging.error(
+                "Unhandled app command error",
+                exc_info=(type(error), error, error.__traceback__),
+            )
             message = "Something went wrong while running that command."
 
         if interaction.response.is_done():

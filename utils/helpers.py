@@ -17,10 +17,7 @@ def now() -> float:
 
 
 def fmt_amount(amount: float) -> str:
-    if amount == int(amount):
-        value = f"{int(amount):,}"
-    else:
-        value = f"{amount:,.1f}"
+    value = f"{int(amount):,}" if amount == int(amount) else f"{amount:,.1f}"
     return f"{value} {config.CURRENCY_EMOJI}"
 
 

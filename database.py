@@ -283,7 +283,7 @@ class Database:
                 )
                 row = await cursor.fetchone()
                 last_daily = float(row["last_daily"]) if row is not None else 0.0
-                remaining = (last_daily + cooldown_seconds) - timestamp
+                remaining = (last_daily + cooldown_seconds) - timestamp if last_daily > 0 else -1
                 if remaining > 0:
                     await self.conn.rollback()
                     return remaining
