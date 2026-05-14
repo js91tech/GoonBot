@@ -1,6 +1,6 @@
 # NuggetBot
 
-A chaos-driven Discord economy bot built with **discord.py** and **SQLite**.
+A chaos-driven Discord economy bot built with **discord.py** and PostgreSQL or SQLite.
 
 ## Features
 
@@ -38,9 +38,9 @@ Edit `.env` and fill in `DISCORD_TOKEN`. If you want the Imposter AI module
 to call an external service, also set `AI_API_KEY`, `AI_API_URL`, and `AI_MODEL`.
 For the web dashboard, set `DASHBOARD_TOKEN` to a long random secret.
 
-For production on Railway, add a persistent volume and mount it at `/data`, or
-set `DATABASE_PATH` to a file inside your mounted volume. Without a persistent
-volume, Railway can reset the SQLite file during redeploys.
+For production on Railway, set the bot service's `DATABASE_URL` to reference
+your Railway PostgreSQL database. SQLite remains available for local development
+or deployments with a persistent volume.
 
 ### 4. Run
 
@@ -78,7 +78,7 @@ python bot.py
 
 | Command | Description |
 |---------|-------------|
-| `/hack @user` | Start a hot potato virus; usable every 5 minutes per user |
+| `/hack @user` | Start the hannah hentai hanta virus; usable every 5 minutes per user |
 | `/transfer @user` | Pass the virus to someone else and give them the timer |
 
 ### Boss
@@ -137,7 +137,7 @@ All dashboard commands require Discord administrator permission.
 ## Live Config
 
 `/config` includes autocomplete for setting names. Settings are stored per
-server in SQLite and take effect without restarting the bot.
+server and take effect without restarting the bot.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -151,7 +151,7 @@ server in SQLite and take effect without restarting the bot.
 | `heist_cooldown_seconds` | 1800 | Heist cooldown |
 | `arrest_lockout_seconds` | 3600 | Arrest lockout duration |
 | `hack_timer_seconds` | 60 | Hot potato timer |
-| `hack_base_penalty` | 10.0 | Starting virus penalty |
+| `hack_base_penalty` | 15.0 | Starting virus penalty |
 | `hack_penalty_increment` | 2.0 | Penalty increase per pass |
 | `hack_cooldown_seconds` | 300 | Per-user `/hack` cooldown |
 | `boss_health_scale_factor` | 0.05 | Boss HP scaling |
@@ -197,17 +197,30 @@ requests. If `DASHBOARD_TOKEN` is missing, only `/health` returns normal data.
 
 ## Railway persistence
 
-Coins, inventory, equipped gear, config, and boss state are all stored in
-SQLite. To keep them through redeploys on Railway:
+Coins, inventory, equipped gear, config, and boss state are stored in the
+configured database. On Railway, PostgreSQL is recommended:
 
-1. Open the NuggetBot service in Railway.
-2. Add a **Volume** and mount it at `/data`.
-3. Either leave `DATABASE_PATH` unset or set it to `/data/nuggetbot.sqlite3`.
-4. Redeploy the service.
+1. Add a Railway PostgreSQL database.
+2. In the NuggetBot service, set `DATABASE_URL` to the PostgreSQL service's
+   internal `DATABASE_URL` reference.
+3. Redeploy the service.
 
-The bot automatically uses `RAILWAY_VOLUME_MOUNT_PATH/nuggetbot.sqlite3` when
-Railway provides that variable, then `/data/nuggetbot.sqlite3` if `/data`
-exists. Local development falls back to `nuggetbot.sqlite3` in the repo.
+If `DATABASE_URL` is not set, the bot falls back to SQLite. For SQLite on
+Railway, mount a persistent volume at `/data` or set `DATABASE_PATH` to a file
+inside your mounted volume.
+
+## One-time launch grant
+
+On the next deploy only, for server `1388136234827649116`, the bot will:
+
+- gift every human member 150 nuggets
+- grant and equip a Training Stick and Cardboard Shield
+- clear any existing boss for that server
+- spawn one normal 500 HP Hannah
+- announce the gift in chat
+
+The grant is tracked in the database per member and will not double-run on
+later redeploys.
 
 ## Security and permissions
 

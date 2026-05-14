@@ -7,32 +7,127 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
+import asyncpg
 
 import config
+
+
+class PostgresCursor:
+    def __init__(self, rows: list[asyncpg.Record] | None = None, *, lastrowid: int | None = None) -> None:
+        self._rows = rows or []
+        self.lastrowid = lastrowid
+
+    async def fetchone(self) -> asyncpg.Record | None:
+        return self._rows[0] if self._rows else None
+
+    async def fetchall(self) -> list[asyncpg.Record]:
+        return self._rows
+
+
+class PostgresConnection:
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self._conn: asyncpg.Connection | None = None
+
+    async def connect(self) -> None:
+        self._conn = await asyncpg.connect(self.url)
+
+    @property
+    def conn(self) -> asyncpg.Connection:
+        if self._conn is None:
+            msg = "Postgres connection has not been opened"
+            raise RuntimeError(msg)
+        return self._conn
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+
+    async def commit(self) -> None:
+        await self.conn.execute("COMMIT")
+
+    async def rollback(self) -> None:
+        await self.conn.execute("ROLLBACK")
+
+    async def executescript(self, script: str) -> None:
+        for statement in script.split(";"):
+            sql = statement.strip()
+            if sql:
+                await self.execute(sql)
+
+    async def execute(self, query: str, params: tuple[Any, ...] = ()) -> PostgresCursor:
+        normalized = self._normalize_query(query)
+        if normalized is None:
+            return PostgresCursor()
+        sql = self._convert_placeholders(normalized)
+        if sql.lstrip().upper().startswith(("SELECT", "INSERT INTO BOUNTIES")) and "RETURNING" in sql.upper():
+            rows = await self.conn.fetch(sql, *params)
+            lastrowid = int(rows[0]["id"]) if rows and "id" in rows[0] else None
+            return PostgresCursor(list(rows), lastrowid=lastrowid)
+        if sql.lstrip().upper().startswith(("SELECT", "WITH")):
+            return PostgresCursor(list(await self.conn.fetch(sql, *params)))
+        await self.conn.execute(sql, *params)
+        return PostgresCursor()
+
+    @staticmethod
+    def _convert_placeholders(query: str) -> str:
+        parts = query.split("?")
+        if len(parts) == 1:
+            return query
+        rebuilt = [parts[0]]
+        for index, part in enumerate(parts[1:], start=1):
+            rebuilt.append(f"${index}")
+            rebuilt.append(part)
+        return "".join(rebuilt)
+
+    @staticmethod
+    def _normalize_query(query: str) -> str | None:
+        stripped = query.strip()
+        upper = stripped.upper()
+        if upper.startswith("PRAGMA"):
+            return None
+        if upper == "BEGIN IMMEDIATE":
+            return "BEGIN"
+        sql = query
+        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        sql = sql.replace("INSERT OR IGNORE INTO users", "INSERT INTO users")
+        if "INSERT INTO users" in sql and "ON CONFLICT" not in sql:
+            sql = f"{sql} ON CONFLICT DO NOTHING"
+        sql = sql.replace("SET hp = MAX(hp - ?, 0)", "SET hp = GREATEST(hp - ?, 0)")
+        return sql
 
 
 class Database:
     def __init__(self, path: str) -> None:
         self.path = path
-        self._conn: aiosqlite.Connection | None = None
+        self.url = config.DATABASE_URL
+        self.is_postgres = bool(self.url)
+        self._conn: aiosqlite.Connection | PostgresConnection | None = None
         self._write_lock = asyncio.Lock()
         self._config_cache: dict[int, dict[str, float]] = {}
 
     @property
-    def conn(self) -> aiosqlite.Connection:
+    def conn(self) -> aiosqlite.Connection | PostgresConnection:
         if self._conn is None:
             msg = "Database connection has not been opened"
             raise RuntimeError(msg)
         return self._conn
 
     async def connect(self) -> None:
-        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = await aiosqlite.connect(self.path)
-        self.conn.row_factory = aiosqlite.Row
-        await self.conn.execute("PRAGMA foreign_keys = ON")
-        await self.conn.execute("PRAGMA journal_mode = WAL")
-        await self.conn.execute("PRAGMA busy_timeout = 5000")
-        await self.conn.commit()
+        if self.is_postgres:
+            postgres = PostgresConnection(self.url)
+            await postgres.connect()
+            self._conn = postgres
+        else:
+            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+            sqlite = await aiosqlite.connect(self.path)
+            sqlite.row_factory = aiosqlite.Row
+            self._conn = sqlite
+            await self.conn.execute("PRAGMA foreign_keys = ON")
+            await self.conn.execute("PRAGMA journal_mode = WAL")
+            await self.conn.execute("PRAGMA busy_timeout = 5000")
+            await self.conn.commit()
         await self.init_schema()
 
     async def close(self) -> None:
@@ -131,6 +226,19 @@ class Database:
                 PRIMARY KEY (guild_id, user_id)
             );
 
+            CREATE TABLE IF NOT EXISTS one_time_jobs (
+                job_id TEXT PRIMARY KEY,
+                completed_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS one_time_member_jobs (
+                job_id TEXT NOT NULL,
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                completed_at REAL NOT NULL,
+                PRIMARY KEY (job_id, guild_id, user_id)
+            );
+
             CREATE TABLE IF NOT EXISTS guild_config (
                 guild_id INTEGER NOT NULL,
                 setting TEXT NOT NULL,
@@ -163,6 +271,91 @@ class Database:
                 values[setting] = float(row["value"])
         self._config_cache[guild_id] = values
         return values
+
+    async def is_one_time_job_complete(self, job_id: str) -> bool:
+        cursor = await self.conn.execute(
+            "SELECT job_id FROM one_time_jobs WHERE job_id = ?",
+            (job_id,),
+        )
+        return await cursor.fetchone() is not None
+
+    async def mark_one_time_job_complete(self, job_id: str) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO one_time_jobs (job_id, completed_at)
+                VALUES (?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    completed_at = excluded.completed_at
+                """,
+                (job_id, time.time()),
+            )
+            await self.conn.commit()
+
+    async def grant_launch_member_once(
+        self,
+        job_id: str,
+        guild_id: int,
+        user_id: int,
+        amount: float,
+        weapon_id: str,
+        armor_id: str,
+    ) -> bool:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT user_id
+                    FROM one_time_member_jobs
+                    WHERE job_id = ? AND guild_id = ? AND user_id = ?
+                    """,
+                    (job_id, guild_id, user_id),
+                )
+                if await cursor.fetchone() is not None:
+                    await self.conn.rollback()
+                    return False
+                await self._ensure_user_no_lock(user_id, guild_id)
+                await self.conn.execute(
+                    """
+                    UPDATE users
+                    SET wallet = wallet + ?,
+                        total_earned = total_earned + ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (amount, amount, user_id, guild_id),
+                )
+                for item_id, slot in ((weapon_id, "weapon"), (armor_id, "armor")):
+                    await self.conn.execute(
+                        """
+                        INSERT INTO inventory (guild_id, user_id, item_id, quantity)
+                        VALUES (?, ?, ?, 1)
+                        ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
+                            quantity = quantity + 1
+                        """,
+                        (guild_id, user_id, item_id),
+                    )
+                    await self.conn.execute(
+                        """
+                        INSERT INTO equipment (guild_id, user_id, slot, item_id)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                            item_id = excluded.item_id
+                        """,
+                        (guild_id, user_id, slot, item_id),
+                    )
+                await self.conn.execute(
+                    """
+                    INSERT INTO one_time_member_jobs (job_id, guild_id, user_id, completed_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (job_id, guild_id, user_id, time.time()),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True
 
     async def get_config_values(self, guild_id: int) -> dict[str, float]:
         cached = self._config_cache.get(guild_id)
@@ -422,6 +615,34 @@ class Database:
                 raise
             await self.conn.commit()
             return True
+
+    async def grant_item(self, user_id: int, guild_id: int, item_id: str, *, equip_slot: str | None = None) -> None:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self.conn.execute(
+                    """
+                    INSERT INTO inventory (guild_id, user_id, item_id, quantity)
+                    VALUES (?, ?, ?, 1)
+                    ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
+                        quantity = quantity + 1
+                    """,
+                    (guild_id, user_id, item_id),
+                )
+                if equip_slot is not None:
+                    await self.conn.execute(
+                        """
+                        INSERT INTO equipment (guild_id, user_id, slot, item_id)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                            item_id = excluded.item_id
+                        """,
+                        (guild_id, user_id, equip_slot, item_id),
+                    )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
 
     async def get_equipment(self, user_id: int, guild_id: int) -> dict[str, str]:
         cursor = await self.conn.execute(
@@ -835,14 +1056,17 @@ class Database:
                         guild_id, placer_id, target_id, amount, trigger_word, created_at
                     )
                     VALUES (?, ?, ?, ?, ?, ?)
+                    RETURNING id
                     """,
                     (guild_id, placer_id, target_id, amount, trigger_word, time.time()),
                 )
+                row = await cursor.fetchone()
+                bounty_id = int(row["id"]) if row is not None else int(cursor.lastrowid)
             except Exception:
                 await self.conn.rollback()
                 raise
             await self.conn.commit()
-            return int(cursor.lastrowid)
+            return bounty_id
 
     async def list_bounties(self, guild_id: int) -> list[aiosqlite.Row]:
         cursor = await self.conn.execute(

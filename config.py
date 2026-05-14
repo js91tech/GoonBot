@@ -19,6 +19,7 @@ def _default_database_path() -> str:
     return "nuggetbot.sqlite3"
 
 
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 DATABASE_PATH = os.getenv("DATABASE_PATH") or _default_database_path()
 GUILD_ID = int(os.environ["GUILD_ID"]) if os.getenv("GUILD_ID") else None
 
@@ -54,10 +55,17 @@ HEIST_COOLDOWN_SECONDS = 30 * 60
 HEIST_ARREST_WINDOW_SECONDS = 5 * 60
 HEIST_ARREST_SECONDS = 60 * 60
 
-HACK_BASE_PENALTY = 10.0
+HACK_VIRUS_NAME = "hannah hentai hanta virus"
+HACK_BASE_PENALTY = 15.0
 HACK_PASS_PENALTY = 2.0
 HACK_TRANSFER_SECONDS = 60
 HACK_COOLDOWN_SECONDS = 5 * 60
+
+LAUNCH_GRANT_JOB_ID = "2026-05-launch-grant-1388136234827649116"
+LAUNCH_GRANT_GUILD_ID = 1388136234827649116
+LAUNCH_GRANT_AMOUNT = 150.0
+LAUNCH_GRANT_WEAPON_ID = "training_stick"
+LAUNCH_GRANT_ARMOR_ID = "cardboard_shield"
 
 BOSS_AUTO_SPAWN_SECONDS = 2 * 60 * 60
 BOSS_MIN_HP = 500.0

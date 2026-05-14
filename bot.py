@@ -11,6 +11,7 @@ from discord.ext import commands
 import config
 from dashboard import DashboardServer
 from database import Database
+from launch_jobs import run_launch_grant
 
 COGS = (
     "cogs.economy",
@@ -39,6 +40,7 @@ class NuggetBot(commands.Bot):
         )
         self.db = Database(config.DATABASE_PATH)
         self.dashboard = DashboardServer(self)
+        self._launch_jobs_started = False
 
     async def setup_hook(self) -> None:
         await self.db.connect()
@@ -66,6 +68,9 @@ class NuggetBot(commands.Bot):
     async def on_ready(self) -> None:
         assert self.user is not None
         logging.info("Logged in as %s (%s)", self.user, self.user.id)
+        if not self._launch_jobs_started:
+            self._launch_jobs_started = True
+            asyncio.create_task(run_launch_grant(self))
 
     async def on_app_command_error(
         self,
