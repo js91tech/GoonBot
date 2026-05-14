@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_PATH = os.getenv("DATABASE_PATH", "nuggetbot.sqlite3")
+GUILD_ID = int(os.environ["GUILD_ID"]) if os.getenv("GUILD_ID") else None
+
+CURRENCY_NAME = "nuggets"
+CURRENCY_EMOJI = "🍘"
+
+PASSIVE_CHAT_REWARD = 0.5
+PASSIVE_ACTIVE_BONUS = 15.0
+VOICE_CHAT_REWARD = 3.0
+DAILY_REWARD = 75.0
+DAILY_COOLDOWN_SECONDS = 24 * 60 * 60
+
+BOUNTY_MIN_AMOUNT = 50.0
+BOUNTY_TAX = 5.0
+BOUNTY_TRIGGER_MAX_LENGTH = 32
+
+HEIST_BASE_SUCCESS = 0.20
+HEIST_CREW_BONUS = 0.10
+HEIST_MAX_SUCCESS = 0.80
+HEIST_LOOT_FRACTION = 0.20
+HEIST_COOLDOWN_SECONDS = 15 * 60
+HEIST_ARREST_WINDOW_SECONDS = 5 * 60
+HEIST_ARREST_SECONDS = 60 * 60
+
+HACK_BASE_PENALTY = 35.0
+HACK_PASS_PENALTY = 2.0
+HACK_TRANSFER_SECONDS = 60
+
+BOSS_AUTO_SPAWN_SECONDS = 2 * 60 * 60
+BOSS_MIN_HP = 500.0
+BOSS_CIRCULATION_HP_FACTOR = 0.05
+BOSS_ATTACK_MIN = 20
+BOSS_ATTACK_MAX = 75
+BOSS_DOWN_SECONDS = 2 * 60
+BOSS_VARIANTS = {
+    "normal": {"multiplier": 1.0, "counter_chance": 0.08},
+    "enraged": {"multiplier": 1.5, "counter_chance": 0.12},
+    "shadow": {"multiplier": 2.0, "counter_chance": 0.16},
+    "celestial": {"multiplier": 3.0, "counter_chance": 0.20},
+}
+
+IMPOSTER_CHANCE = 0.01
+IMPOSTER_MIN_WORDS = 3
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_API_URL = os.getenv("AI_API_URL", "https://api.openai.com/v1/chat/completions")
+AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
+AI_TIMEOUT_SECONDS = 8
+
+TRIVIA_REWARD = 25.0
+TRIVIA_SECONDS = 30
+TRIVIA_MAX_CHANNELS = 10
+TRIVIA_HISTORY_DAYS = 45
+TRIVIA_MESSAGES_PER_CHANNEL = 50

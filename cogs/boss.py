@@ -1,0 +1,188 @@
+from __future__ import annotations
+
+import random
+import time
+
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
+
+import config
+from utils.helpers import fmt_amount, guild_only_message
+
+BOSS_NAME = "Hannah"
+
+
+class Boss(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+        self.auto_spawn.start()
+
+    def cog_unload(self) -> None:
+        self.auto_spawn.cancel()
+
+    async def _boss_hp(self, guild_id: int, variant: str) -> float:
+        circulation = await self.bot.db.total_circulation(guild_id)
+        base_hp = max(config.BOSS_MIN_HP, circulation * config.BOSS_CIRCULATION_HP_FACTOR)
+        return base_hp * float(config.BOSS_VARIANTS[variant]["multiplier"])
+
+    async def _spawn_boss(self, guild_id: int, variant: str) -> float:
+        hp = await self._boss_hp(guild_id, variant)
+        await self.bot.db.replace_boss(guild_id, BOSS_NAME, variant, hp)
+        return hp
+
+    @tasks.loop(seconds=config.BOSS_AUTO_SPAWN_SECONDS)
+    async def auto_spawn(self) -> None:
+        for guild in self.bot.guilds:
+            if await self.bot.db.get_active_boss(guild.id) is not None:
+                continue
+            variant = random.choice(tuple(config.BOSS_VARIANTS))
+            hp = await self._spawn_boss(guild.id, variant)
+            channel = guild.system_channel
+            if channel is not None:
+                await channel.send(
+                    f"A {variant} {BOSS_NAME} has appeared with {fmt_amount(hp)} HP!"
+                )
+
+    @auto_spawn.before_loop
+    async def before_auto_spawn(self) -> None:
+        await self.bot.wait_until_ready()
+
+    @app_commands.command(name="summon", description="Admin only: force-spawn a boss.")
+    @app_commands.describe(variant="Boss variant")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(administrator=True)
+    async def summon(self, interaction: discord.Interaction, variant: str = "normal") -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        normalized = variant.lower().strip()
+        if normalized not in config.BOSS_VARIANTS:
+            choices = ", ".join(config.BOSS_VARIANTS)
+            await interaction.response.send_message(
+                f"Unknown variant. Choose one of: {choices}.",
+                ephemeral=True,
+            )
+            return
+
+        hp = await self._spawn_boss(interaction.guild_id, normalized)
+        await interaction.response.send_message(
+            f"Summoned a {normalized} {BOSS_NAME} with {fmt_amount(hp)} HP."
+        )
+
+    @app_commands.command(name="boss", description="Check boss status.")
+    @app_commands.guild_only()
+    async def boss(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        boss = await self.bot.db.get_active_boss(interaction.guild_id)
+        if boss is None:
+            await interaction.response.send_message("No boss is active right now.")
+            return
+
+        await interaction.response.send_message(
+            f"{boss['variant'].title()} {boss['name']}: "
+            f"{fmt_amount(float(boss['hp']))}/{fmt_amount(float(boss['max_hp']))} HP"
+        )
+
+    @app_commands.command(name="attack", description="Attack the active boss.")
+    @app_commands.guild_only()
+    async def attack(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None or interaction.guild is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        if await self.bot.db.is_restricted(interaction.user.id, interaction.guild_id):
+            await interaction.response.send_message("You cannot attack right now.", ephemeral=True)
+            return
+
+        boss = await self.bot.db.get_active_boss(interaction.guild_id)
+        if boss is None:
+            await interaction.response.send_message("No boss is active right now.", ephemeral=True)
+            return
+
+        damage = random.randint(config.BOSS_ATTACK_MIN, config.BOSS_ATTACK_MAX)
+        updated = await self.bot.db.damage_boss(interaction.guild_id, interaction.user.id, damage)
+        if updated is None:
+            await interaction.response.send_message("No boss is active right now.", ephemeral=True)
+            return
+
+        if float(updated["hp"]) <= 0:
+            await self._finish_boss(interaction)
+            return
+
+        counter_text = ""
+        variant = str(updated["variant"])
+        if random.random() < float(config.BOSS_VARIANTS[variant]["counter_chance"]):
+            damage_rows = await self.bot.db.list_boss_damage(interaction.guild_id)
+            if damage_rows:
+                victim_id = int(random.choice(damage_rows)["user_id"])
+                await self.bot.db.set_downed_until(
+                    victim_id,
+                    interaction.guild_id,
+                    time.time() + config.BOSS_DOWN_SECONDS,
+                )
+                counter_text = f"\n{BOSS_NAME} counter-attacked and downed <@{victim_id}>!"
+
+        await interaction.response.send_message(
+            f"{interaction.user.mention} hit {BOSS_NAME} for {damage} damage. "
+            f"HP: {fmt_amount(float(updated['hp']))}.{counter_text}",
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    async def _finish_boss(self, interaction: discord.Interaction) -> None:
+        assert interaction.guild_id is not None
+        assert interaction.guild is not None
+        boss = await self.bot.db.get_active_boss(interaction.guild_id)
+        if boss is None:
+            await interaction.response.send_message("The boss was already defeated.", ephemeral=True)
+            return
+
+        rows = await self.bot.db.list_boss_damage(interaction.guild_id)
+        total_damage = sum(float(row["damage"]) for row in rows)
+        if total_damage <= 0:
+            await self.bot.db.clear_boss(interaction.guild_id)
+            await interaction.response.send_message(f"{BOSS_NAME} vanished without any rewards.")
+            return
+
+        max_hp = float(boss["max_hp"])
+        reward_lines = []
+        for row in rows:
+            user_id = int(row["user_id"])
+            reward = max_hp * (float(row["damage"]) / total_damage)
+            await self.bot.db.credit_wallet(user_id, interaction.guild_id, reward)
+            member = interaction.guild.get_member(user_id)
+            name = member.display_name if member else f"User {user_id}"
+            reward_lines.append(f"{name}: {fmt_amount(reward)}")
+
+        await self.bot.db.clear_boss(interaction.guild_id)
+        await interaction.response.send_message(
+            f"{BOSS_NAME} was defeated! Rewards:\n" + "\n".join(reward_lines[:10])
+        )
+
+    @app_commands.command(name="heal", description="Revive a downed teammate.")
+    @app_commands.describe(target="Downed user to heal")
+    @app_commands.guild_only()
+    async def heal(self, interaction: discord.Interaction, target: discord.Member) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        if target.bot:
+            await interaction.response.send_message("Bots do not need healing.", ephemeral=True)
+            return
+        if not await self.bot.db.is_downed(target.id, interaction.guild_id):
+            await interaction.response.send_message("That user is not downed.", ephemeral=True)
+            return
+
+        await self.bot.db.set_downed_until(target.id, interaction.guild_id, 0)
+        await self.bot.db.record_heal(interaction.guild_id, interaction.user.id, target.id)
+        await interaction.response.send_message(
+            f"{interaction.user.mention} revived {target.mention}.",
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(Boss(bot))
