@@ -57,7 +57,9 @@ users before privileged state is modified.
 
 The admin cog owns currency-management commands, live config updates, and the
 `/bot-status` dashboard. Config autocomplete is driven from
-`config.LIVE_SETTINGS`, so new settings only need to be registered once.
+`config.LIVE_SETTINGS`, so new settings only need to be registered once. It
+also owns admin-only boss despawn controls for clearing stuck active boss
+sessions after deployment issues.
 
 ### Shop (`cogs/shop.py`)
 
@@ -91,3 +93,6 @@ The public `/health` route intentionally reports only process readiness.
 - Live config values are validated before storage and are scoped per guild.
 - Web dashboard data requires `DASHBOARD_TOKEN`; without it, dashboard data
   routes return setup guidance instead of server/economy information.
+- Railway deployments should mount a persistent volume at `/data` or set
+  `DATABASE_PATH` to a file inside a mounted volume. The bot auto-detects
+  `RAILWAY_VOLUME_MOUNT_PATH` and `/data` before falling back to a local file.

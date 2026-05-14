@@ -264,6 +264,39 @@ class Admin(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @app_commands.command(name="despawn-boss", description="Admin only: despawn this server's active boss.")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(administrator=True)
+    async def despawn_boss(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        boss = await self.bot.db.get_active_boss(interaction.guild_id)
+        if boss is None:
+            await interaction.response.send_message("No boss is active in this server.", ephemeral=True)
+            return
+
+        await self.bot.db.clear_boss(interaction.guild_id)
+        await interaction.response.send_message(
+            f"Despawned {boss['variant']} {boss['name']} in this server.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="despawn-all-bosses", description="Admin only: emergency clear all active bosses.")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(administrator=True)
+    async def despawn_all_bosses(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        count = await self.bot.db.clear_all_bosses()
+        await interaction.response.send_message(
+            f"Despawned {count} active boss session(s).",
+            ephemeral=True,
+        )
+
     @staticmethod
     def _boss_status(boss: Any) -> str:
         if boss is None:

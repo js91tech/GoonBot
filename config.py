@@ -3,12 +3,23 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from math import isfinite
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_PATH = os.getenv("DATABASE_PATH", "nuggetbot.sqlite3")
+
+def _default_database_path() -> str:
+    volume_path = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    if volume_path:
+        return str(Path(volume_path) / "nuggetbot.sqlite3")
+    if Path("/data").exists():
+        return "/data/nuggetbot.sqlite3"
+    return "nuggetbot.sqlite3"
+
+
+DATABASE_PATH = os.getenv("DATABASE_PATH") or _default_database_path()
 GUILD_ID = int(os.environ["GUILD_ID"]) if os.getenv("GUILD_ID") else None
 
 DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "true").strip().lower() not in {
