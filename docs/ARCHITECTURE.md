@@ -28,11 +28,22 @@ in a guild at a time.
 Boss state is persisted so restarts do not lose the active boss, accumulated
 damage, or heal records.
 
+### `guild_config`
+
+Stores per-server overrides for live tuneable settings. Missing rows fall back
+to the defaults declared in `config.LIVE_SETTINGS`.
+
 ## Permission Boundaries
 
-Only `/summon` is an administrative command in the documented command set. It
-uses `@app_commands.checks.has_permissions(administrator=True)` and rejects
-non-admin users before any boss state is modified.
+`/summon` and all admin dashboard commands use
+`@app_commands.checks.has_permissions(administrator=True)` and reject non-admin
+users before privileged state is modified.
+
+### Admin Dashboard (`cogs/admin.py`)
+
+The admin cog owns currency-management commands, live config updates, and the
+`/bot-status` dashboard. Config autocomplete is driven from
+`config.LIVE_SETTINGS`, so new settings only need to be registered once.
 
 ## Security Notes
 
@@ -40,4 +51,6 @@ non-admin users before any boss state is modified.
 - Webhook reposts disable mentions with `discord.AllowedMentions.none()`.
 - All user-provided amounts are validated as finite positive values.
 - Debit operations are transactional and reject insufficient balances.
-- AI endpoints must use `http` or `https` and are called with a short timeout.
+- AI endpoints must use HTTPS unless they point at localhost and are called with
+  a short timeout.
+- Live config values are validated before storage and are scoped per guild.

@@ -48,7 +48,11 @@ class Heist(commands.Cog):
 
         current = time.time()
         thief_row = await self.bot.db.get_user(interaction.user.id, interaction.guild_id)
-        cooldown_remaining = (float(thief_row["last_heist"]) + config.HEIST_COOLDOWN_SECONDS) - current
+        heist_cooldown = await self.bot.db.get_config_value(
+            interaction.guild_id,
+            "heist_cooldown_seconds",
+        )
+        cooldown_remaining = (float(thief_row["last_heist"]) + heist_cooldown) - current
         if cooldown_remaining > 0:
             await interaction.response.send_message(
                 f"Your crew needs {int(cooldown_remaining // 60) + 1} more minutes to regroup.",
@@ -70,9 +74,10 @@ class Heist(commands.Cog):
             return
 
         await self.bot.db.set_last_heist(interaction.user.id, interaction.guild_id, current)
+        base_success = await self.bot.db.get_config_value(interaction.guild_id, "heist_base_success")
         success_chance = min(
             config.HEIST_MAX_SUCCESS,
-            config.HEIST_BASE_SUCCESS + (len(participants) - 1) * config.HEIST_CREW_BONUS,
+            base_success + (len(participants) - 1) * config.HEIST_CREW_BONUS,
         )
 
         if random.random() > success_chance:
@@ -123,14 +128,19 @@ class Heist(commands.Cog):
             await interaction.response.send_message("Only the heist target can arrest that thief.", ephemeral=True)
             return
 
+        arrest_seconds = await self.bot.db.get_config_value(
+            interaction.guild_id,
+            "arrest_lockout_seconds",
+        )
         await self.bot.db.set_arrested_until(
             thief.id,
             interaction.guild_id,
-            current + config.HEIST_ARREST_SECONDS,
+            current + arrest_seconds,
         )
         self.pending_arrests.pop(key, None)
+        minutes = int(arrest_seconds // 60)
         await interaction.response.send_message(
-            f"{thief.mention} has been arrested for 1 hour.",
+            f"{thief.mention} has been arrested for {minutes} minute(s).",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 

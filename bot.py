@@ -19,6 +19,7 @@ COGS = (
     "cogs.boss",
     "cogs.imposter",
     "cogs.trivia",
+    "cogs.admin",
 )
 
 
