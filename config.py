@@ -11,6 +11,17 @@ load_dotenv()
 DATABASE_PATH = os.getenv("DATABASE_PATH", "nuggetbot.sqlite3")
 GUILD_ID = int(os.environ["GUILD_ID"]) if os.getenv("GUILD_ID") else None
 
+DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "true").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+DASHBOARD_PORT = int(os.getenv("PORT") or os.getenv("DASHBOARD_PORT", "8080"))
+DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN", "")
+DASHBOARD_COOKIE_NAME = "nuggetbot_dashboard"
+
 CURRENCY_NAME = "nuggets"
 CURRENCY_EMOJI = "🍘"
 

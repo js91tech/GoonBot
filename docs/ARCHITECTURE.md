@@ -21,7 +21,8 @@ single trigger word.
 ### `hacker_pots`
 
 Tracks the active hot-potato virus per guild. At most one virus may be active
-in a guild at a time.
+in a guild at a time. Discord presence is intentionally ignored: every target
+gets the configured transfer timer, even if their status appears offline.
 
 ### `boss_sessions`, `boss_damage`, `boss_heals`
 
@@ -45,6 +46,13 @@ The admin cog owns currency-management commands, live config updates, and the
 `/bot-status` dashboard. Config autocomplete is driven from
 `config.LIVE_SETTINGS`, so new settings only need to be registered once.
 
+### Web Dashboard (`dashboard.py`)
+
+The browser dashboard is an `aiohttp` server that runs inside the same process
+as the Discord bot. It binds to Railway's `PORT` when present and exposes a
+login-protected HTML dashboard plus a token-protected JSON status endpoint.
+The public `/health` route intentionally reports only process readiness.
+
 ## Security Notes
 
 - The Discord token and AI API key are read from environment variables.
@@ -54,3 +62,5 @@ The admin cog owns currency-management commands, live config updates, and the
 - AI endpoints must use HTTPS unless they point at localhost and are called with
   a short timeout.
 - Live config values are validated before storage and are scoped per guild.
+- Web dashboard data requires `DASHBOARD_TOKEN`; without it, dashboard data
+  routes return setup guidance instead of server/economy information.
