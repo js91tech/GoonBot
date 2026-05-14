@@ -103,4 +103,5 @@ The public `/health` route intentionally reports only process readiness.
   routes return setup guidance instead of server/economy information.
 - Railway deployments should set `DATABASE_URL` to the internal PostgreSQL
   connection URL. On Railway, SQLite fallback is refused unless
-  `ALLOW_SQLITE_ON_RAILWAY=true` is explicitly set.
+  `ALLOW_SQLITE_ON_RAILWAY=true` is explicitly set. If internal Railway DNS is
+  unavailable, the bot can fall back to `DATABASE_PUBLIC_URL`.

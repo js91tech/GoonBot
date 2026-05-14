@@ -203,7 +203,10 @@ configured database. On Railway, PostgreSQL is recommended:
 1. Add a Railway PostgreSQL database.
 2. In the NuggetBot service, set `DATABASE_URL` to the PostgreSQL service's
    internal `DATABASE_URL` reference.
-3. Redeploy the service.
+3. If Railway logs show `socket.gaierror: Name or service not known`, also set
+   `DATABASE_PUBLIC_URL` to the PostgreSQL service's `DATABASE_PUBLIC_URL`.
+   The bot tries `DATABASE_URL` first, then falls back to `DATABASE_PUBLIC_URL`.
+4. Redeploy the service.
 
 On Railway, the bot now refuses to use SQLite unless `ALLOW_SQLITE_ON_RAILWAY`
 is explicitly set to `true`. This prevents accidental local-file storage that
