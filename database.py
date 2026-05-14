@@ -1043,6 +1043,15 @@ class Database:
             await self.conn.execute("DELETE FROM boss_sessions WHERE guild_id = ?", (guild_id,))
             await self.conn.commit()
 
+    async def clear_all_bosses(self) -> int:
+        async with self._write_lock:
+            cursor = await self.conn.execute("SELECT COUNT(*) FROM boss_sessions")
+            row = await cursor.fetchone()
+            count = int(row[0]) if row is not None else 0
+            await self.conn.execute("DELETE FROM boss_sessions")
+            await self.conn.commit()
+            return count
+
     async def fetch_value(self, query: str, params: tuple[Any, ...] = ()) -> Any:
         cursor = await self.conn.execute(query, params)
         row = await cursor.fetchone()

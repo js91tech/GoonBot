@@ -38,6 +38,10 @@ Edit `.env` and fill in `DISCORD_TOKEN`. If you want the Imposter AI module
 to call an external service, also set `AI_API_KEY`, `AI_API_URL`, and `AI_MODEL`.
 For the web dashboard, set `DASHBOARD_TOKEN` to a long random secret.
 
+For production on Railway, add a persistent volume and mount it at `/data`, or
+set `DATABASE_PATH` to a file inside your mounted volume. Without a persistent
+volume, Railway can reset the SQLite file during redeploys.
+
 ### 4. Run
 
 ```bash
@@ -127,6 +131,8 @@ All dashboard commands require Discord administrator permission.
 | `/config setting value` | Change a setting live for this server |
 | `/config-reset setting` | Revert a setting to its default |
 | `/bot-status` | View economy totals, active games, and custom settings |
+| `/despawn-boss` | Despawn this server's active boss |
+| `/despawn-all-bosses` | Emergency clear every active boss session |
 
 ## Live Config
 
@@ -189,11 +195,27 @@ requests. If `DASHBOARD_TOKEN` is missing, only `/health` returns normal data.
 5. Visit `https://your-railway-domain.up.railway.app/dashboard` and log in with
    the `DASHBOARD_TOKEN` value.
 
+## Railway persistence
+
+Coins, inventory, equipped gear, config, and boss state are all stored in
+SQLite. To keep them through redeploys on Railway:
+
+1. Open the NuggetBot service in Railway.
+2. Add a **Volume** and mount it at `/data`.
+3. Either leave `DATABASE_PATH` unset or set it to `/data/nuggetbot.sqlite3`.
+4. Redeploy the service.
+
+The bot automatically uses `RAILWAY_VOLUME_MOUNT_PATH/nuggetbot.sqlite3` when
+Railway provides that variable, then `/data/nuggetbot.sqlite3` if `/data`
+exists. Local development falls back to `nuggetbot.sqlite3` in the repo.
+
 ## Security and permissions
 
 - The bot token is read only from environment variables and is never logged.
 - `/summon` and all dashboard commands are protected with Discord's
   administrator permission check.
+- Despawn controls are admin-only and can clear stuck boss sessions after
+  deployment issues.
 - Webhook reposts use `AllowedMentions.none()` so altered messages cannot
   trigger accidental mass mentions.
 - Economy debit paths validate funds and never create negative balances.
