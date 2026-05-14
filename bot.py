@@ -44,6 +44,7 @@ class NuggetBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.db.connect()
+        logging.info("Database backend: %s", "postgres" if self.db.is_postgres else f"sqlite:{self.db.path}")
         for extension in COGS:
             try:
                 await self.load_extension(extension)

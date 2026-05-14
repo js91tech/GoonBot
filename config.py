@@ -21,6 +21,21 @@ def _default_database_path() -> str:
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 DATABASE_PATH = os.getenv("DATABASE_PATH") or _default_database_path()
+ALLOW_SQLITE_ON_RAILWAY = os.getenv("ALLOW_SQLITE_ON_RAILWAY", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+RUNNING_ON_RAILWAY = any(
+    os.getenv(name)
+    for name in (
+        "RAILWAY_ENVIRONMENT",
+        "RAILWAY_PROJECT_ID",
+        "RAILWAY_SERVICE_ID",
+        "RAILWAY_DEPLOYMENT_ID",
+    )
+)
 GUILD_ID = int(os.environ["GUILD_ID"]) if os.getenv("GUILD_ID") else None
 
 DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "true").strip().lower() not in {
@@ -62,6 +77,12 @@ HACK_TRANSFER_SECONDS = 60
 HACK_COOLDOWN_SECONDS = 5 * 60
 
 LAUNCH_GRANT_JOB_ID = "2026-05-launch-grant-1388136234827649116"
+LAUNCH_GRANT_ENABLED = os.getenv("LAUNCH_GRANT_ENABLED", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 LAUNCH_GRANT_GUILD_ID = 1388136234827649116
 LAUNCH_GRANT_AMOUNT = 150.0
 LAUNCH_GRANT_WEAPON_ID = "training_stick"

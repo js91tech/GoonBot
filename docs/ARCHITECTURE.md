@@ -51,8 +51,9 @@ to the defaults declared in `config.LIVE_SETTINGS`.
 ### `one_time_jobs`, `one_time_member_jobs`
 
 Track deployment-specific one-time work. The launch grant for server
-`1388136234827649116` is idempotent per member, so a restart cannot double-gift
-the same user.
+`1388136234827649116` is idempotent per member and is disabled unless
+`LAUNCH_GRANT_ENABLED=true`. Keeping the environment flag off prevents a fresh
+or misconfigured database from repeating the welcome gift.
 
 ## Permission Boundaries
 
@@ -101,5 +102,5 @@ The public `/health` route intentionally reports only process readiness.
 - Web dashboard data requires `DASHBOARD_TOKEN`; without it, dashboard data
   routes return setup guidance instead of server/economy information.
 - Railway deployments should set `DATABASE_URL` to the internal PostgreSQL
-  connection URL. If `DATABASE_URL` is not set, SQLite falls back to
-  `RAILWAY_VOLUME_MOUNT_PATH`, `/data`, then a local file.
+  connection URL. On Railway, SQLite fallback is refused unless
+  `ALLOW_SQLITE_ON_RAILWAY=true` is explicitly set.

@@ -205,13 +205,15 @@ configured database. On Railway, PostgreSQL is recommended:
    internal `DATABASE_URL` reference.
 3. Redeploy the service.
 
-If `DATABASE_URL` is not set, the bot falls back to SQLite. For SQLite on
-Railway, mount a persistent volume at `/data` or set `DATABASE_PATH` to a file
-inside your mounted volume.
+On Railway, the bot now refuses to use SQLite unless `ALLOW_SQLITE_ON_RAILWAY`
+is explicitly set to `true`. This prevents accidental local-file storage that
+gets wiped on redeploy. For local development, SQLite still works when Railway
+environment variables are absent.
 
 ## One-time launch grant
 
-On the next deploy only, for server `1388136234827649116`, the bot will:
+This job is disabled by default. If `LAUNCH_GRANT_ENABLED=true`, for server
+`1388136234827649116`, the bot will:
 
 - gift every human member 150 nuggets
 - grant and equip a Training Stick and Cardboard Shield
@@ -219,8 +221,9 @@ On the next deploy only, for server `1388136234827649116`, the bot will:
 - spawn one normal 500 HP Hannah
 - announce the gift in chat
 
-The grant is tracked in the database per member and will not double-run on
-later redeploys.
+The grant is tracked in the database per member, but keep
+`LAUNCH_GRANT_ENABLED=false` after the grant has been run. This prevents a fresh
+or misconfigured database from repeating the welcome gift.
 
 ## Security and permissions
 

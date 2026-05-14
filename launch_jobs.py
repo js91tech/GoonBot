@@ -9,6 +9,8 @@ import config
 
 
 async def run_launch_grant(bot: commands.Bot) -> None:
+    if not config.LAUNCH_GRANT_ENABLED:
+        return
     if await bot.db.is_one_time_job_complete(config.LAUNCH_GRANT_JOB_ID):
         return
 
@@ -40,6 +42,7 @@ async def run_launch_grant(bot: commands.Bot) -> None:
     await bot.db.clear_boss(guild.id)
     await bot.db.replace_boss(guild.id, "Hannah", "normal", 500.0)
     await bot.db.mark_one_time_job_complete(config.LAUNCH_GRANT_JOB_ID)
+    config.LAUNCH_GRANT_ENABLED = False
 
     channel = _announcement_channel(guild)
     if channel is not None:

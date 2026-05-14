@@ -115,6 +115,13 @@ class Database:
         return self._conn
 
     async def connect(self) -> None:
+        if config.RUNNING_ON_RAILWAY and not self.is_postgres and not config.ALLOW_SQLITE_ON_RAILWAY:
+            msg = (
+                "DATABASE_URL is required on Railway. Refusing to use SQLite because Railway "
+                "local files can be wiped on redeploy. Set DATABASE_URL to the Postgres service "
+                "internal URL, or set ALLOW_SQLITE_ON_RAILWAY=true only if you mounted persistent storage."
+            )
+            raise RuntimeError(msg)
         if self.is_postgres:
             postgres = PostgresConnection(self.url)
             await postgres.connect()
