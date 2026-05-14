@@ -24,10 +24,6 @@ class Hacker(commands.Cog):
         increment = await self.bot.db.get_config_value(guild_id, "hack_penalty_increment")
         return base + pass_count * increment
 
-    @staticmethod
-    def _offline(member: discord.Member) -> bool:
-        return member.status is discord.Status.offline
-
     def _replace_timer(self, guild_id: int, channel_id: int) -> None:
         old_task = self.timers.pop(guild_id, None)
         if old_task is not None:
@@ -80,20 +76,21 @@ class Hacker(commands.Cog):
         if existing is not None:
             await self.bot.db.clear_hacker_pot(interaction.guild_id)
 
-        if self._offline(target):
-            penalty = await self._penalty(interaction.guild_id, 0)
-            removed = await self.bot.db.remove_up_to_balance(
-                target.id,
-                interaction.guild_id,
-                penalty,
-            )
+        current = time.time()
+        cooldown_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_cooldown_seconds")
+        cooldown_remaining = await self.bot.db.claim_hack_start(
+            interaction.guild_id,
+            interaction.user.id,
+            cooldown_seconds,
+            current,
+        )
+        if cooldown_remaining is not None:
             await interaction.response.send_message(
-                f"{target.mention} was offline and instantly flatlined for {fmt_amount(removed)}.",
-                allowed_mentions=discord.AllowedMentions.none(),
+                f"You can use `/hack` again in {int(cooldown_remaining // 60) + 1} minute(s).",
+                ephemeral=True,
             )
             return
 
-        current = time.time()
         timer_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_timer_seconds")
         await self.bot.db.set_hacker_pot(
             interaction.guild_id,
@@ -104,7 +101,8 @@ class Hacker(commands.Cog):
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
         await interaction.response.send_message(
-            f"{target.mention} has the virus! They have {int(timer_seconds)} seconds to `/transfer`.",
+            f"{target.mention} has the virus! They have {int(timer_seconds)} seconds to "
+            "`/transfer` it to someone else before the penalty hits.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -131,23 +129,6 @@ class Hacker(commands.Cog):
             return
 
         next_pass_count = int(pot["pass_count"]) + 1
-        if self._offline(target):
-            penalty = await self._penalty(interaction.guild_id, next_pass_count)
-            removed = await self.bot.db.remove_up_to_balance(
-                target.id,
-                interaction.guild_id,
-                penalty,
-            )
-            await self.bot.db.clear_hacker_pot(interaction.guild_id)
-            timer = self.timers.pop(interaction.guild_id, None)
-            if timer is not None:
-                timer.cancel()
-            await interaction.response.send_message(
-                f"{target.mention} was offline and instantly flatlined for {fmt_amount(removed)}.",
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-            return
-
         timer_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_timer_seconds")
         await self.bot.db.set_hacker_pot(
             interaction.guild_id,
@@ -160,7 +141,8 @@ class Hacker(commands.Cog):
         penalty = await self._penalty(interaction.guild_id, next_pass_count)
         await interaction.response.send_message(
             f"{interaction.user.mention} passed the virus to {target.mention}. "
-            f"Current penalty: {fmt_amount(penalty)}.",
+            f"They have {int(timer_seconds)} seconds to `/transfer` it before "
+            f"the {fmt_amount(penalty)} penalty hits.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 

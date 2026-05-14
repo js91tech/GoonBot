@@ -9,7 +9,7 @@ A chaos-driven Discord economy bot built with **discord.py** and **SQLite**.
 | 1 | **The Vault** | Economy: passive chat earning, active bonus, VC earning, daily claims, payments, leaderboards |
 | 2 | **The Hit** | Bounty system: place bounties with trigger words, claim when targets slip up |
 | 3 | **The Steal** | Heist & crew system: rob users, form crews, arrest failed thieves |
-| 4 | **The Virus** | Hot potato: infect users, pass the virus, scaling penalties |
+| 4 | **The Virus** | Hot potato: infect users, give every holder a timer, scaling penalties |
 | 5 | **The Boss** | Boss raids: fight Hannah variants, scale HP with economy, down/heal mechanics |
 | 6 | **The AI** | Imposter webhook word sabotage + Lore Roulette trivia |
 
@@ -36,6 +36,7 @@ cp .env.example .env
 
 Edit `.env` and fill in `DISCORD_TOKEN`. If you want the Imposter AI module
 to call an external service, also set `AI_API_KEY`, `AI_API_URL`, and `AI_MODEL`.
+For the web dashboard, set `DASHBOARD_TOKEN` to a long random secret.
 
 ### 4. Run
 
@@ -73,8 +74,8 @@ python bot.py
 
 | Command | Description |
 |---------|-------------|
-| `/hack @user` | Start a hot potato virus |
-| `/transfer @user` | Pass the virus to someone else |
+| `/hack @user` | Start a hot potato virus; usable every 5 minutes per user |
+| `/transfer @user` | Pass the virus to someone else and give them the timer |
 
 ### Boss
 
@@ -123,12 +124,49 @@ server in SQLite and take effect without restarting the bot.
 | `heist_cooldown_seconds` | 1800 | Heist cooldown |
 | `arrest_lockout_seconds` | 3600 | Arrest lockout duration |
 | `hack_timer_seconds` | 60 | Hot potato timer |
-| `hack_base_penalty` | 35.0 | Starting virus penalty |
+| `hack_base_penalty` | 10.0 | Starting virus penalty |
 | `hack_penalty_increment` | 2.0 | Penalty increase per pass |
+| `hack_cooldown_seconds` | 300 | Per-user `/hack` cooldown |
 | `boss_health_scale_factor` | 0.05 | Boss HP scaling |
 | `boss_downed_seconds` | 120 | Boss downed duration |
 | `imposter_chance` | 0.01 | Per-message sabotage chance |
 | `trivia_reward` | 25.0 | Trivia answer reward |
+
+## Web Dashboard
+
+NuggetBot includes a browser dashboard served by the same bot process, so it can
+run on the same Railway service without a second paid app. It shows server
+economy totals, active bosses/viruses, bounty counts, custom config settings,
+and top wallets.
+
+Set these variables in Railway:
+
+| Variable | Description |
+|----------|-------------|
+| `DASHBOARD_TOKEN` | Required to view dashboard data. Use a long random secret. |
+| `DASHBOARD_ENABLED` | Optional, defaults to `true`. Set `false` to disable the server. |
+| `PORT` | Railway sets this automatically. |
+
+Routes:
+
+| Route | Description |
+|-------|-------------|
+| `/` or `/dashboard` | Login-protected HTML dashboard |
+| `/api/status` | Login/header-token protected JSON status |
+| `/health` | Public health check that does not expose server data |
+
+You can log in through the form or send `X-Dashboard-Token: your-token` for API
+requests. If `DASHBOARD_TOKEN` is missing, only `/health` returns normal data.
+
+### Accessing the dashboard on Railway
+
+1. In Railway, open the NuggetBot service.
+2. Go to **Variables** and add `DASHBOARD_TOKEN` with a long random value.
+3. Redeploy the service.
+4. Open the service's public Railway domain. If one is not shown, go to
+   **Settings -> Networking** and generate a public domain.
+5. Visit `https://your-railway-domain.up.railway.app/dashboard` and log in with
+   the `DASHBOARD_TOKEN` value.
 
 ## Security and permissions
 
@@ -140,6 +178,8 @@ server in SQLite and take effect without restarting the bot.
 - Economy debit paths validate funds and never create negative balances.
 - External AI calls are optional, use a timeout, and require HTTPS unless the
   URL points at localhost.
+- The web dashboard does not expose bot data unless `DASHBOARD_TOKEN` is set
+  and provided by the browser or API client.
 
 ## Project Structure
 
@@ -147,6 +187,7 @@ server in SQLite and take effect without restarting the bot.
 NuggetBot/
 ├── bot.py
 ├── config.py
+├── dashboard.py
 ├── database.py
 ├── requirements.txt
 ├── .env.example

@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from dashboard import DashboardServer
 from database import Database
 
 COGS = (
@@ -36,6 +37,7 @@ class NuggetBot(commands.Bot):
             allowed_mentions=discord.AllowedMentions.none(),
         )
         self.db = Database(config.DATABASE_PATH)
+        self.dashboard = DashboardServer(self)
 
     async def setup_hook(self) -> None:
         await self.db.connect()
@@ -53,8 +55,10 @@ class NuggetBot(commands.Bot):
         else:
             await self.tree.sync()
             logging.info("Synced global slash commands")
+        await self.dashboard.start()
 
     async def close(self) -> None:
+        await self.dashboard.close()
         await self.db.close()
         await super().close()
 

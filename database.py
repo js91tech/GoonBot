@@ -75,6 +75,13 @@ class Database:
                 expires_at REAL NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS hacker_cooldowns (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                last_hack REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            );
+
             CREATE TABLE IF NOT EXISTS boss_sessions (
                 guild_id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -637,6 +644,45 @@ class Database:
             (guild_id,),
         )
         return await cursor.fetchone()
+
+    async def claim_hack_start(
+        self,
+        guild_id: int,
+        user_id: int,
+        cooldown_seconds: float,
+        timestamp: float,
+    ) -> float | None:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT last_hack
+                    FROM hacker_cooldowns
+                    WHERE guild_id = ? AND user_id = ?
+                    """,
+                    (guild_id, user_id),
+                )
+                row = await cursor.fetchone()
+                last_hack = float(row["last_hack"]) if row is not None else 0.0
+                remaining = (last_hack + cooldown_seconds) - timestamp if last_hack > 0 else -1
+                if remaining > 0:
+                    await self.conn.rollback()
+                    return remaining
+                await self.conn.execute(
+                    """
+                    INSERT INTO hacker_cooldowns (guild_id, user_id, last_hack)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                        last_hack = excluded.last_hack
+                    """,
+                    (guild_id, user_id, timestamp),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return None
 
     async def set_hacker_pot(
         self,
