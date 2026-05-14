@@ -107,6 +107,30 @@ class Database:
                 created_at REAL NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS inventory (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                item_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+                PRIMARY KEY (guild_id, user_id, item_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS equipment (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                slot TEXT NOT NULL CHECK (slot IN ('weapon', 'armor')),
+                item_id TEXT NOT NULL,
+                PRIMARY KEY (guild_id, user_id, slot)
+            );
+
+            CREATE TABLE IF NOT EXISTS combat_state (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                hp REAL NOT NULL CHECK (hp >= 0),
+                max_hp REAL NOT NULL CHECK (max_hp > 0),
+                PRIMARY KEY (guild_id, user_id)
+            );
+
             CREATE TABLE IF NOT EXISTS guild_config (
                 guild_id INTEGER NOT NULL,
                 setting TEXT NOT NULL,
@@ -303,6 +327,208 @@ class Database:
                 WHERE user_id = ? AND guild_id = ?
                 """,
                 (user_id, guild_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM inventory WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM equipment WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM combat_state WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.commit()
+
+    async def buy_item(self, user_id: int, guild_id: int, item_id: str, price: float) -> bool:
+        if price <= 0:
+            return False
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self._ensure_user_no_lock(user_id, guild_id)
+                cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (user_id, guild_id),
+                )
+                row = await cursor.fetchone()
+                if row is None or float(row["wallet"]) < price:
+                    await self.conn.rollback()
+                    return False
+                await self.conn.execute(
+                    """
+                    UPDATE users
+                    SET wallet = wallet - ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (price, user_id, guild_id),
+                )
+                await self.conn.execute(
+                    """
+                    INSERT INTO inventory (guild_id, user_id, item_id, quantity)
+                    VALUES (?, ?, ?, 1)
+                    ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
+                        quantity = quantity + 1
+                    """,
+                    (guild_id, user_id, item_id),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True
+
+    async def get_inventory(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT item_id, quantity
+            FROM inventory
+            WHERE guild_id = ? AND user_id = ? AND quantity > 0
+            ORDER BY item_id
+            """,
+            (guild_id, user_id),
+        )
+        return list(await cursor.fetchall())
+
+    async def equip_item(self, user_id: int, guild_id: int, slot: str, item_id: str) -> bool:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT quantity
+                    FROM inventory
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    """,
+                    (guild_id, user_id, item_id),
+                )
+                row = await cursor.fetchone()
+                if row is None or int(row["quantity"]) <= 0:
+                    await self.conn.rollback()
+                    return False
+                await self.conn.execute(
+                    """
+                    INSERT INTO equipment (guild_id, user_id, slot, item_id)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                        item_id = excluded.item_id
+                    """,
+                    (guild_id, user_id, slot, item_id),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True
+
+    async def get_equipment(self, user_id: int, guild_id: int) -> dict[str, str]:
+        cursor = await self.conn.execute(
+            """
+            SELECT slot, item_id
+            FROM equipment
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        return {str(row["slot"]): str(row["item_id"]) for row in await cursor.fetchall()}
+
+    async def sync_combat_hp(self, user_id: int, guild_id: int, max_hp: float) -> aiosqlite.Row:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT hp, max_hp
+                    FROM combat_state
+                    WHERE guild_id = ? AND user_id = ?
+                    """,
+                    (guild_id, user_id),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    await self.conn.execute(
+                        """
+                        INSERT INTO combat_state (guild_id, user_id, hp, max_hp)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (guild_id, user_id, max_hp, max_hp),
+                    )
+                else:
+                    old_max = float(row["max_hp"])
+                    old_hp = float(row["hp"])
+                    hp = max_hp if old_max <= 0 else min(max_hp, old_hp + max(0.0, max_hp - old_max))
+                    await self.conn.execute(
+                        """
+                        UPDATE combat_state
+                        SET hp = ?, max_hp = ?
+                        WHERE guild_id = ? AND user_id = ?
+                        """,
+                        (hp, max_hp, guild_id, user_id),
+                    )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+        cursor = await self.conn.execute(
+            "SELECT hp, max_hp FROM combat_state WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            msg = "Expected combat state row"
+            raise RuntimeError(msg)
+        return row
+
+    async def damage_player(
+        self,
+        user_id: int,
+        guild_id: int,
+        amount: float,
+        max_hp: float,
+    ) -> tuple[float, float]:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT hp, max_hp
+                    FROM combat_state
+                    WHERE guild_id = ? AND user_id = ?
+                    """,
+                    (guild_id, user_id),
+                )
+                row = await cursor.fetchone()
+                hp = max_hp if row is None else min(max_hp, float(row["hp"]))
+                new_hp = max(0.0, hp - max(0.0, amount))
+                await self.conn.execute(
+                    """
+                    INSERT INTO combat_state (guild_id, user_id, hp, max_hp)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                        hp = excluded.hp,
+                        max_hp = excluded.max_hp
+                    """,
+                    (guild_id, user_id, new_hp, max_hp),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return new_hp, max_hp
+
+    async def restore_player_hp(self, user_id: int, guild_id: int, max_hp: float) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO combat_state (guild_id, user_id, hp, max_hp)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    hp = excluded.hp,
+                    max_hp = excluded.max_hp
+                """,
+                (guild_id, user_id, max_hp, max_hp),
             )
             await self.conn.commit()
 

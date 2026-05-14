@@ -35,6 +35,13 @@ it per server.
 Boss state is persisted so restarts do not lose the active boss, accumulated
 damage, or heal records.
 
+### `inventory`, `equipment`, `combat_state`
+
+Inventory stores purchased shop items per user and guild. Equipment stores the
+single equipped weapon and armor item. Combat state tracks current/max HP for
+boss counterattacks, allowing armor to increase max HP and reduce incoming
+damage before downing a player.
+
 ### `guild_config`
 
 Stores per-server overrides for live tuneable settings. Missing rows fall back
@@ -51,6 +58,20 @@ users before privileged state is modified.
 The admin cog owns currency-management commands, live config updates, and the
 `/bot-status` dashboard. Config autocomplete is driven from
 `config.LIVE_SETTINGS`, so new settings only need to be registered once.
+
+### Shop (`cogs/shop.py`)
+
+The shop cog exposes `/shop`, `/buy`, `/inventory`, and `/equip`. The item
+catalog lives in `items.py` and currently contains 10 weapons plus 10 armor
+pieces. Prices scale up to 120,000 nuggets for top-tier gear to keep the best
+items as long-term goals for active players.
+
+### Boss Gear Combat (`cogs/boss.py`)
+
+Weapons add flat boss damage and flavor verbs to `/attack`; some top-tier
+weapons add critical chance. Boss variants carry threat metadata that controls
+counterattack damage ranges and critical-hit chance. Armor blocks counterattack
+damage and adds max HP; players are only downed when their combat HP reaches 0.
 
 ### Web Dashboard (`dashboard.py`)
 
