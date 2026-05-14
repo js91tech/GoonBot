@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 from utils.helpers import fmt_amount, guild_only_message
 
 
@@ -54,7 +55,8 @@ class Hacker(commands.Cog):
         channel = self.bot.get_channel(channel_id)
         if isinstance(channel, discord.abc.Messageable):
             await channel.send(
-                f"The virus flatlined <@{int(pot['holder_id'])}> for {fmt_amount(removed)}.",
+                f"The {config.HACK_VIRUS_NAME} flatlined <@{int(pot['holder_id'])}> "
+                f"for {fmt_amount(removed)}.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
 
@@ -100,9 +102,11 @@ class Hacker(commands.Cog):
             current + timer_seconds,
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
+        penalty = await self._penalty(interaction.guild_id, 0)
         await interaction.response.send_message(
-            f"{target.mention} has the virus! They have {int(timer_seconds)} seconds to "
-            "`/transfer` it to someone else before the penalty hits.",
+            f"{target.mention} has the **{config.HACK_VIRUS_NAME}**! "
+            f"They have {int(timer_seconds)} seconds to `/transfer` it to someone else before "
+            f"the {fmt_amount(penalty)} penalty hits.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -140,7 +144,7 @@ class Hacker(commands.Cog):
         self._replace_timer(interaction.guild_id, interaction.channel_id)
         penalty = await self._penalty(interaction.guild_id, next_pass_count)
         await interaction.response.send_message(
-            f"{interaction.user.mention} passed the virus to {target.mention}. "
+            f"{interaction.user.mention} passed the **{config.HACK_VIRUS_NAME}** to {target.mention}. "
             f"They have {int(timer_seconds)} seconds to `/transfer` it before "
             f"the {fmt_amount(penalty)} penalty hits.",
             allowed_mentions=discord.AllowedMentions.none(),

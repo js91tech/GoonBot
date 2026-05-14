@@ -2,9 +2,10 @@
 
 ## Overview
 
-NuggetBot is a Discord economy bot built on **discord.py 2.x** with an
-**async SQLite** backend. Each game system is implemented as a separate cog,
-and all tunable values live in `config.py`.
+NuggetBot is a Discord economy bot built on **discord.py 2.x** with a
+PostgreSQL backend on Railway and a SQLite fallback for local development. Each
+game system is implemented as a separate cog, and all tunable values live in
+`config.py`.
 
 ## Database Schema
 
@@ -46,6 +47,12 @@ damage before downing a player.
 
 Stores per-server overrides for live tuneable settings. Missing rows fall back
 to the defaults declared in `config.LIVE_SETTINGS`.
+
+### `one_time_jobs`, `one_time_member_jobs`
+
+Track deployment-specific one-time work. The launch grant for server
+`1388136234827649116` is idempotent per member, so a restart cannot double-gift
+the same user.
 
 ## Permission Boundaries
 
@@ -93,6 +100,6 @@ The public `/health` route intentionally reports only process readiness.
 - Live config values are validated before storage and are scoped per guild.
 - Web dashboard data requires `DASHBOARD_TOKEN`; without it, dashboard data
   routes return setup guidance instead of server/economy information.
-- Railway deployments should mount a persistent volume at `/data` or set
-  `DATABASE_PATH` to a file inside a mounted volume. The bot auto-detects
-  `RAILWAY_VOLUME_MOUNT_PATH` and `/data` before falling back to a local file.
+- Railway deployments should set `DATABASE_URL` to the internal PostgreSQL
+  connection URL. If `DATABASE_URL` is not set, SQLite falls back to
+  `RAILWAY_VOLUME_MOUNT_PATH`, `/data`, then a local file.

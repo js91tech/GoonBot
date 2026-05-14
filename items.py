@@ -16,6 +16,25 @@ class ShopItem:
     hp_bonus: int = 0
 
 
+STARTER_WEAPON = ShopItem(
+    "training_stick",
+    "Training Stick",
+    "weapon",
+    0,
+    2,
+    "A free launch gift. Weaker than the cheapest shop weapon.",
+    ("whacks", "taps"),
+)
+STARTER_ARMOR = ShopItem(
+    "cardboard_shield",
+    "Cardboard Shield",
+    "armor",
+    0,
+    1,
+    "A free launch gift. Weaker than the cheapest shop armor.",
+    hp_bonus=1,
+)
+
 WEAPONS: tuple[ShopItem, ...] = (
     ShopItem("twig_sword", "Twig Sword", "weapon", 250, 5, "A starter blade with splinters.", ("pokes", "swats")),
     ShopItem("rusty_dagger", "Rusty Dagger", "weapon", 750, 9, "Fast, cheap, and suspicious.", ("stabs", "jabs")),
@@ -42,7 +61,8 @@ ARMOR: tuple[ShopItem, ...] = (
     ShopItem("nugget_immortal_plate", "Nugget Immortal Plate", "armor", 120_000, 115, "Endgame armor for dedicated grinders.", hp_bonus=140),
 )
 
-ITEMS: dict[str, ShopItem] = {item.id: item for item in (*WEAPONS, *ARMOR)}
+GRANT_ITEMS: tuple[ShopItem, ...] = (STARTER_WEAPON, STARTER_ARMOR)
+ITEMS: dict[str, ShopItem] = {item.id: item for item in (*GRANT_ITEMS, *WEAPONS, *ARMOR)}
 ITEM_ORDER: tuple[str, ...] = tuple(item.id for item in (*WEAPONS, *ARMOR))
 CATEGORIES = ("all", "weapon", "armor")
 
