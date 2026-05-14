@@ -24,6 +24,12 @@ Tracks the active hot-potato virus per guild. At most one virus may be active
 in a guild at a time. Discord presence is intentionally ignored: every target
 gets the configured transfer timer, even if their status appears offline.
 
+### `hacker_cooldowns`
+
+Tracks the last `/hack` command use per `(guild_id, user_id)`. The default
+cooldown is 300 seconds, and the live `hack_cooldown_seconds` setting can tune
+it per server.
+
 ### `boss_sessions`, `boss_damage`, `boss_heals`
 
 Boss state is persisted so restarts do not lose the active boss, accumulated

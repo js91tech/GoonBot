@@ -77,6 +77,20 @@ class Hacker(commands.Cog):
             await self.bot.db.clear_hacker_pot(interaction.guild_id)
 
         current = time.time()
+        cooldown_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_cooldown_seconds")
+        cooldown_remaining = await self.bot.db.claim_hack_start(
+            interaction.guild_id,
+            interaction.user.id,
+            cooldown_seconds,
+            current,
+        )
+        if cooldown_remaining is not None:
+            await interaction.response.send_message(
+                f"You can use `/hack` again in {int(cooldown_remaining // 60) + 1} minute(s).",
+                ephemeral=True,
+            )
+            return
+
         timer_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_timer_seconds")
         await self.bot.db.set_hacker_pot(
             interaction.guild_id,

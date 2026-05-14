@@ -43,9 +43,10 @@ HEIST_COOLDOWN_SECONDS = 30 * 60
 HEIST_ARREST_WINDOW_SECONDS = 5 * 60
 HEIST_ARREST_SECONDS = 60 * 60
 
-HACK_BASE_PENALTY = 35.0
+HACK_BASE_PENALTY = 10.0
 HACK_PASS_PENALTY = 2.0
 HACK_TRANSFER_SECONDS = 60
+HACK_COOLDOWN_SECONDS = 5 * 60
 
 BOSS_AUTO_SPAWN_SECONDS = 2 * 60 * 60
 BOSS_MIN_HP = 500.0
@@ -123,6 +124,11 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
     "hack_timer_seconds": LiveSetting(HACK_TRANSFER_SECONDS, "Hot potato timer", minimum=1, integer=True),
     "hack_base_penalty": LiveSetting(HACK_BASE_PENALTY, "Starting virus penalty"),
     "hack_penalty_increment": LiveSetting(HACK_PASS_PENALTY, "Penalty increase per pass"),
+    "hack_cooldown_seconds": LiveSetting(
+        HACK_COOLDOWN_SECONDS,
+        "/hack user cooldown",
+        integer=True,
+    ),
     "boss_health_scale_factor": LiveSetting(BOSS_CIRCULATION_HP_FACTOR, "Boss HP scaling"),
     "boss_downed_seconds": LiveSetting(BOSS_DOWN_SECONDS, "Boss downed duration", minimum=1, integer=True),
     "imposter_chance": LiveSetting(IMPOSTER_CHANCE, "Per-message sabotage chance", maximum=1.0),
