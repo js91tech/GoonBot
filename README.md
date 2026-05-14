@@ -81,10 +81,31 @@ python bot.py
 
 | Command | Description |
 |---------|-------------|
-| `/attack` | Attack the active boss |
+| `/attack` | Attack the active boss with equipped weapon flavor and damage |
 | `/heal @user` | Revive a downed teammate |
 | `/boss` | Check boss status |
 | `/summon variant` | **Admin only:** force-spawn a boss |
+
+### Shop and Gear
+
+| Command | Description |
+|---------|-------------|
+| `/shop [category]` | Browse 10 weapons and 10 armor pieces |
+| `/buy item_id` | Buy a weapon or armor piece |
+| `/inventory [user]` | View owned and equipped gear |
+| `/equip item_id` | Equip an owned weapon or armor piece |
+
+Weapons add boss damage and change attack text, such as slashing with a sword
+or smashing with a hammer. Armor adds HP and blocks Hannah's counterattack
+damage. The best weapon and armor each cost 120,000 nuggets, so a normal active
+player should need sustained long-term play before reaching top gear.
+
+Top-end items:
+
+| Type | Item | Price | Effect |
+|------|------|-------|--------|
+| Weapon | Nugget Excalibur | 120,000 | +150 boss damage, extra crit chance |
+| Armor | Nugget Immortal Plate | 120,000 | Blocks 115 counter damage, +140 HP |
 
 ### Trivia
 
@@ -197,6 +218,7 @@ NuggetBot/
 │   ├── heist.py
 │   ├── hacker.py
 │   ├── boss.py
+│   ├── shop.py
 │   ├── imposter.py
 │   ├── trivia.py
 │   └── admin.py

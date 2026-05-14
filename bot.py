@@ -18,6 +18,7 @@ COGS = (
     "cogs.heist",
     "cogs.hacker",
     "cogs.boss",
+    "cogs.shop",
     "cogs.imposter",
     "cogs.trivia",
     "cogs.admin",

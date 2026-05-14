@@ -54,11 +54,12 @@ BOSS_CIRCULATION_HP_FACTOR = 0.05
 BOSS_ATTACK_MIN = 20
 BOSS_ATTACK_MAX = 75
 BOSS_DOWN_SECONDS = 2 * 60
+PLAYER_BASE_HP = 100
 BOSS_VARIANTS = {
-    "normal": {"multiplier": 1.0, "counter_chance": 0.08},
-    "enraged": {"multiplier": 1.5, "counter_chance": 0.12},
-    "shadow": {"multiplier": 2.0, "counter_chance": 0.16},
-    "celestial": {"multiplier": 3.0, "counter_chance": 0.20},
+    "normal": {"multiplier": 1.0, "counter_chance": 0.08, "threat": 1, "counter_damage": (10, 22), "crit_chance": 0.05},
+    "enraged": {"multiplier": 1.5, "counter_chance": 0.12, "threat": 2, "counter_damage": (18, 36), "crit_chance": 0.08},
+    "shadow": {"multiplier": 2.0, "counter_chance": 0.16, "threat": 3, "counter_damage": (30, 55), "crit_chance": 0.12},
+    "celestial": {"multiplier": 3.0, "counter_chance": 0.20, "threat": 4, "counter_damage": (45, 80), "crit_chance": 0.16},
 }
 
 IMPOSTER_CHANCE = 0.01
