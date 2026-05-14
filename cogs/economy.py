@@ -29,10 +29,11 @@ class Economy(commands.Cog):
         if await self.bot.db.is_restricted(message.author.id, message.guild.id):
             return
 
+        reward = await self.bot.db.get_config_value(message.guild.id, "passive_chat_reward")
         await self.bot.db.record_message_reward(
             message.author.id,
             message.guild.id,
-            config.PASSIVE_CHAT_REWARD,
+            reward,
         )
         self.active_chatters.add((message.guild.id, message.author.id))
 
@@ -42,7 +43,8 @@ class Economy(commands.Cog):
         self.active_chatters = set()
         for guild_id, user_id in chatters:
             if not await self.bot.db.is_restricted(user_id, guild_id):
-                await self.bot.db.credit_wallet(user_id, guild_id, config.PASSIVE_ACTIVE_BONUS)
+                reward = await self.bot.db.get_config_value(guild_id, "passive_active_bonus")
+                await self.bot.db.credit_wallet(user_id, guild_id, reward)
                 await self.bot.db.set_last_active(user_id, guild_id, time.time())
 
     @passive_active_tick.before_loop
@@ -52,11 +54,12 @@ class Economy(commands.Cog):
     @tasks.loop(seconds=60)
     async def vc_earning_tick(self) -> None:
         for guild in self.bot.guilds:
+            reward = await self.bot.db.get_config_value(guild.id, "voice_chat_reward")
             for voice_channel in guild.voice_channels:
                 for member in voice_channel.members:
                     if member.bot or await self.bot.db.is_restricted(member.id, guild.id):
                         continue
-                    await self.bot.db.credit_wallet(member.id, guild.id, config.VOICE_CHAT_REWARD)
+                    await self.bot.db.credit_wallet(member.id, guild.id, reward)
 
     @vc_earning_tick.before_loop
     async def before_vc_earning_tick(self) -> None:
@@ -70,10 +73,11 @@ class Economy(commands.Cog):
             return
 
         current = time.time()
+        reward = await self.bot.db.get_config_value(interaction.guild_id, "daily_reward")
         remaining = await self.bot.db.claim_daily(
             interaction.user.id,
             interaction.guild_id,
-            config.DAILY_REWARD,
+            reward,
             config.DAILY_COOLDOWN_SECONDS,
             current,
         )
@@ -87,7 +91,7 @@ class Economy(commands.Cog):
             return
 
         await interaction.response.send_message(
-            f"You claimed {fmt_amount(config.DAILY_REWARD)}.",
+            f"You claimed {fmt_amount(reward)}.",
             ephemeral=True,
         )
 

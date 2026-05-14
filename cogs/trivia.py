@@ -111,10 +111,11 @@ class Trivia(commands.Cog):
             return
 
         self.active_rounds.pop(message.channel.id, None)
-        await self.bot.db.credit_wallet(message.author.id, message.guild.id, config.TRIVIA_REWARD)
+        reward = await self.bot.db.get_config_value(message.guild.id, "trivia_reward")
+        await self.bot.db.credit_wallet(message.author.id, message.guild.id, reward)
         await message.channel.send(
             f"{message.author.mention} got it! The answer was `{answer}`. "
-            f"Prize: {fmt_amount(config.TRIVIA_REWARD)}.",
+            f"Prize: {fmt_amount(reward)}.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 

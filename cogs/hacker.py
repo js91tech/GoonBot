@@ -7,7 +7,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 from utils.helpers import fmt_amount, guild_only_message
 
 
@@ -20,8 +19,10 @@ class Hacker(commands.Cog):
         for task in self.timers.values():
             task.cancel()
 
-    def _penalty(self, pass_count: int) -> float:
-        return config.HACK_BASE_PENALTY + pass_count * config.HACK_PASS_PENALTY
+    async def _penalty(self, guild_id: int, pass_count: int) -> float:
+        base = await self.bot.db.get_config_value(guild_id, "hack_base_penalty")
+        increment = await self.bot.db.get_config_value(guild_id, "hack_penalty_increment")
+        return base + pass_count * increment
 
     @staticmethod
     def _offline(member: discord.Member) -> bool:
@@ -50,7 +51,7 @@ class Hacker(commands.Cog):
         pot = await self.bot.db.get_hacker_pot(guild_id)
         if pot is None:
             return
-        penalty = self._penalty(int(pot["pass_count"]))
+        penalty = await self._penalty(guild_id, int(pot["pass_count"]))
         removed = await self.bot.db.remove_up_to_balance(int(pot["holder_id"]), guild_id, penalty)
         await self.bot.db.clear_hacker_pot(guild_id)
 
@@ -80,10 +81,11 @@ class Hacker(commands.Cog):
             await self.bot.db.clear_hacker_pot(interaction.guild_id)
 
         if self._offline(target):
+            penalty = await self._penalty(interaction.guild_id, 0)
             removed = await self.bot.db.remove_up_to_balance(
                 target.id,
                 interaction.guild_id,
-                self._penalty(0),
+                penalty,
             )
             await interaction.response.send_message(
                 f"{target.mention} was offline and instantly flatlined for {fmt_amount(removed)}.",
@@ -92,16 +94,17 @@ class Hacker(commands.Cog):
             return
 
         current = time.time()
+        timer_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_timer_seconds")
         await self.bot.db.set_hacker_pot(
             interaction.guild_id,
             target.id,
             0,
             current,
-            current + config.HACK_TRANSFER_SECONDS,
+            current + timer_seconds,
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
         await interaction.response.send_message(
-            f"{target.mention} has the virus! They have {config.HACK_TRANSFER_SECONDS} seconds to `/transfer`.",
+            f"{target.mention} has the virus! They have {int(timer_seconds)} seconds to `/transfer`.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -129,10 +132,11 @@ class Hacker(commands.Cog):
 
         next_pass_count = int(pot["pass_count"]) + 1
         if self._offline(target):
+            penalty = await self._penalty(interaction.guild_id, next_pass_count)
             removed = await self.bot.db.remove_up_to_balance(
                 target.id,
                 interaction.guild_id,
-                self._penalty(next_pass_count),
+                penalty,
             )
             await self.bot.db.clear_hacker_pot(interaction.guild_id)
             timer = self.timers.pop(interaction.guild_id, None)
@@ -144,17 +148,19 @@ class Hacker(commands.Cog):
             )
             return
 
+        timer_seconds = await self.bot.db.get_config_value(interaction.guild_id, "hack_timer_seconds")
         await self.bot.db.set_hacker_pot(
             interaction.guild_id,
             target.id,
             next_pass_count,
             current,
-            current + config.HACK_TRANSFER_SECONDS,
+            current + timer_seconds,
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
+        penalty = await self._penalty(interaction.guild_id, next_pass_count)
         await interaction.response.send_message(
             f"{interaction.user.mention} passed the virus to {target.mention}. "
-            f"Current penalty: {fmt_amount(self._penalty(next_pass_count))}.",
+            f"Current penalty: {fmt_amount(penalty)}.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 

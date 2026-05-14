@@ -8,12 +8,15 @@ from typing import Any
 
 import aiosqlite
 
+import config
+
 
 class Database:
     def __init__(self, path: str) -> None:
         self.path = path
         self._conn: aiosqlite.Connection | None = None
         self._write_lock = asyncio.Lock()
+        self._config_cache: dict[int, dict[str, float]] = {}
 
     @property
     def conn(self) -> aiosqlite.Connection:
@@ -97,6 +100,14 @@ class Database:
                 created_at REAL NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS guild_config (
+                guild_id INTEGER NOT NULL,
+                setting TEXT NOT NULL,
+                value REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, setting)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_users_guild_wallet
                 ON users(guild_id, wallet DESC);
             CREATE INDEX IF NOT EXISTS idx_bounties_guild
@@ -104,6 +115,80 @@ class Database:
             """
         )
         await self.conn.commit()
+
+    async def _load_config_no_lock(self, guild_id: int) -> dict[str, float]:
+        cursor = await self.conn.execute(
+            "SELECT setting, value FROM guild_config WHERE guild_id = ?",
+            (guild_id,),
+        )
+        rows = await cursor.fetchall()
+        values = {
+            name: spec.default
+            for name, spec in config.LIVE_SETTINGS.items()
+        }
+        for row in rows:
+            setting = str(row["setting"])
+            if setting in values:
+                values[setting] = float(row["value"])
+        self._config_cache[guild_id] = values
+        return values
+
+    async def get_config_values(self, guild_id: int) -> dict[str, float]:
+        cached = self._config_cache.get(guild_id)
+        if cached is not None:
+            return dict(cached)
+        return dict(await self._load_config_no_lock(guild_id))
+
+    async def get_config_value(self, guild_id: int, setting: str) -> float:
+        if setting not in config.LIVE_SETTINGS:
+            msg = f"Unknown setting: {setting}"
+            raise KeyError(msg)
+        values = await self.get_config_values(guild_id)
+        return values[setting]
+
+    async def set_config_value(self, guild_id: int, setting: str, value: float) -> float:
+        spec = config.LIVE_SETTINGS.get(setting)
+        if spec is None:
+            msg = f"Unknown setting: {setting}"
+            raise KeyError(msg)
+        normalized = spec.validate(float(value))
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO guild_config (guild_id, setting, value, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, setting) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (guild_id, setting, normalized, time.time()),
+            )
+            await self.conn.commit()
+            self._config_cache.pop(guild_id, None)
+        return float(normalized)
+
+    async def reset_config_value(self, guild_id: int, setting: str) -> None:
+        if setting not in config.LIVE_SETTINGS:
+            msg = f"Unknown setting: {setting}"
+            raise KeyError(msg)
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM guild_config WHERE guild_id = ? AND setting = ?",
+                (guild_id, setting),
+            )
+            await self.conn.commit()
+            self._config_cache.pop(guild_id, None)
+
+    async def custom_config_names(self, guild_id: int) -> set[str]:
+        cursor = await self.conn.execute(
+            "SELECT setting FROM guild_config WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return {
+            setting
+            for row in await cursor.fetchall()
+            if (setting := str(row["setting"])) in config.LIVE_SETTINGS
+        }
 
     async def _ensure_user_no_lock(self, user_id: int, guild_id: int) -> None:
         await self.conn.execute(
@@ -154,6 +239,63 @@ class Database:
                 WHERE user_id = ? AND guild_id = ?
                 """,
                 (amount, amount, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def credit_wallets(self, user_ids: Iterable[int], guild_id: int, amount: float) -> int:
+        unique_ids = set(user_ids)
+        if amount <= 0 or not unique_ids:
+            return 0
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                for user_id in unique_ids:
+                    await self._ensure_user_no_lock(user_id, guild_id)
+                    await self.conn.execute(
+                        """
+                        UPDATE users
+                        SET wallet = wallet + ?,
+                            total_earned = total_earned + ?
+                        WHERE user_id = ? AND guild_id = ?
+                        """,
+                        (amount, amount, user_id, guild_id),
+                    )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return len(unique_ids)
+
+    async def set_wallet(self, user_id: int, guild_id: int, amount: float) -> None:
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET wallet = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def reset_user(self, user_id: int, guild_id: int) -> None:
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET wallet = 0,
+                    last_daily = 0,
+                    last_heist = 0,
+                    last_active_ts = 0,
+                    arrested_until = 0,
+                    downed_until = 0,
+                    total_earned = 0,
+                    messages_sent = 0
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
             )
             await self.conn.commit()
 
@@ -401,6 +543,29 @@ class Database:
         )
         row = await cursor.fetchone()
         return float(row["total"])
+
+    async def economy_stats(self, guild_id: int) -> aiosqlite.Row:
+        cursor = await self.conn.execute(
+            """
+            SELECT
+                COUNT(*) AS users,
+                COALESCE(SUM(wallet), 0) AS total_wallet,
+                COALESCE(SUM(total_earned), 0) AS total_earned,
+                COALESCE(SUM(messages_sent), 0) AS messages_sent
+            FROM users
+            WHERE guild_id = ?
+            """,
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            msg = "Expected aggregate row"
+            raise RuntimeError(msg)
+        return row
+
+    async def count_bounties(self, guild_id: int) -> int:
+        value = await self.fetch_value("SELECT COUNT(*) FROM bounties WHERE guild_id = ?", (guild_id,))
+        return int(value or 0)
 
     async def create_bounty_with_payment(
         self,

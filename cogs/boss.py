@@ -23,7 +23,8 @@ class Boss(commands.Cog):
 
     async def _boss_hp(self, guild_id: int, variant: str) -> float:
         circulation = await self.bot.db.total_circulation(guild_id)
-        base_hp = max(config.BOSS_MIN_HP, circulation * config.BOSS_CIRCULATION_HP_FACTOR)
+        scale_factor = await self.bot.db.get_config_value(guild_id, "boss_health_scale_factor")
+        base_hp = max(config.BOSS_MIN_HP, circulation * scale_factor)
         return base_hp * float(config.BOSS_VARIANTS[variant]["multiplier"])
 
     async def _spawn_boss(self, guild_id: int, variant: str) -> float:
@@ -119,10 +120,14 @@ class Boss(commands.Cog):
             damage_rows = await self.bot.db.list_boss_damage(interaction.guild_id)
             if damage_rows:
                 victim_id = int(random.choice(damage_rows)["user_id"])
+                downed_seconds = await self.bot.db.get_config_value(
+                    interaction.guild_id,
+                    "boss_downed_seconds",
+                )
                 await self.bot.db.set_downed_until(
                     victim_id,
                     interaction.guild_id,
-                    time.time() + config.BOSS_DOWN_SECONDS,
+                    time.time() + downed_seconds,
                 )
                 counter_text = f"\n{BOSS_NAME} counter-attacked and downed <@{victim_id}>!"
 

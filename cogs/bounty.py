@@ -6,7 +6,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 from utils.helpers import (
     contains_word,
     fmt_amount,
@@ -37,9 +36,11 @@ class Bounty(commands.Cog):
         if target.bot or target.id == interaction.user.id:
             await interaction.response.send_message("Choose another non-bot user.", ephemeral=True)
             return
-        if not valid_amount(amount, minimum=config.BOUNTY_MIN_AMOUNT):
+        minimum = await self.bot.db.get_config_value(interaction.guild_id, "bounty_min_amount")
+        tax = await self.bot.db.get_config_value(interaction.guild_id, "bounty_bot_tax")
+        if not valid_amount(amount, minimum=minimum):
             await interaction.response.send_message(
-                f"Bounties must be at least {fmt_amount(config.BOUNTY_MIN_AMOUNT)}.",
+                f"Bounties must be at least {fmt_amount(minimum)}.",
                 ephemeral=True,
             )
             return
@@ -57,11 +58,11 @@ class Bounty(commands.Cog):
             interaction.user.id,
             target.id,
             amount,
-            config.BOUNTY_TAX,
+            tax,
             normalized,
         )
         if bounty_id is None:
-            total = fmt_amount(amount + config.BOUNTY_TAX)
+            total = fmt_amount(amount + tax)
             await interaction.response.send_message(
                 f"You need {total} to place that bounty.",
                 ephemeral=True,

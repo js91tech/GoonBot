@@ -91,14 +91,55 @@ python bot.py
 |---------|-------------|
 | `/trivia` | Lore Roulette: guess the blanked word from server history |
 
+### Admin Dashboard
+
+All dashboard commands require Discord administrator permission.
+
+| Command | Description |
+|---------|-------------|
+| `/gift @user amount` | Give nuggets to one user from thin air |
+| `/gift-all amount` | Give nuggets to every human in the server |
+| `/set-currency @user amount` | Set a user's wallet to an exact amount |
+| `/reset-user @user` | Wipe a user's wallet and stats |
+| `/config` | View all live tuneable settings |
+| `/config setting value` | Change a setting live for this server |
+| `/config-reset setting` | Revert a setting to its default |
+| `/bot-status` | View economy totals, active games, and custom settings |
+
+## Live Config
+
+`/config` includes autocomplete for setting names. Settings are stored per
+server in SQLite and take effect without restarting the bot.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `passive_chat_reward` | 0.5 | Per-message earning |
+| `passive_active_bonus` | 15.0 | Per active hour earning |
+| `voice_chat_reward` | 3.0 | Per minute in VC |
+| `daily_reward` | 75.0 | `/daily` claim amount |
+| `bounty_min_amount` | 50.0 | Minimum bounty |
+| `bounty_bot_tax` | 5.0 | Bot tax on bounties |
+| `heist_base_success` | 0.20 | Heist success rate |
+| `heist_cooldown_seconds` | 1800 | Heist cooldown |
+| `arrest_lockout_seconds` | 3600 | Arrest lockout duration |
+| `hack_timer_seconds` | 60 | Hot potato timer |
+| `hack_base_penalty` | 35.0 | Starting virus penalty |
+| `hack_penalty_increment` | 2.0 | Penalty increase per pass |
+| `boss_health_scale_factor` | 0.05 | Boss HP scaling |
+| `boss_downed_seconds` | 120 | Boss downed duration |
+| `imposter_chance` | 0.01 | Per-message sabotage chance |
+| `trivia_reward` | 25.0 | Trivia answer reward |
+
 ## Security and permissions
 
 - The bot token is read only from environment variables and is never logged.
-- `/summon` is protected with Discord's administrator permission check.
+- `/summon` and all dashboard commands are protected with Discord's
+  administrator permission check.
 - Webhook reposts use `AllowedMentions.none()` so altered messages cannot
   trigger accidental mass mentions.
 - Economy debit paths validate funds and never create negative balances.
-- External AI calls are optional, use a timeout, and only accept HTTP(S) URLs.
+- External AI calls are optional, use a timeout, and require HTTPS unless the
+  URL points at localhost.
 
 ## Project Structure
 
@@ -116,7 +157,8 @@ NuggetBot/
 │   ├── hacker.py
 │   ├── boss.py
 │   ├── imposter.py
-│   └── trivia.py
+│   ├── trivia.py
+│   └── admin.py
 ├── utils/
 │   └── helpers.py
 ├── models/

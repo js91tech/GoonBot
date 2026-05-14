@@ -26,7 +26,8 @@ class Imposter(commands.Cog):
             return
 
         words = message.content.split()
-        if len(words) < config.IMPOSTER_MIN_WORDS or random.random() >= config.IMPOSTER_CHANCE:
+        chance = await self.bot.db.get_config_value(message.guild.id, "imposter_chance")
+        if len(words) < config.IMPOSTER_MIN_WORDS or random.random() >= chance:
             return
 
         guild_me = message.guild.me
