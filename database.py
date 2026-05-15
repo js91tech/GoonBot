@@ -44,8 +44,11 @@ class PostgresCursor:
 
 
 class PostgresConnection:
-    def __init__(self, url: str) -> None:
+    """asyncpg forbids concurrent operations on one connection; ``sql_lock`` serializes them."""
+
+    def __init__(self, url: str, *, sql_lock: asyncio.Lock | None = None) -> None:
         self.url = url
+        self._sql_lock = sql_lock
         self._conn: asyncpg.Connection | None = None
 
     async def connect(self) -> None:
@@ -59,23 +62,50 @@ class PostgresConnection:
         return self._conn
 
     async def close(self) -> None:
-        if self._conn is not None:
+        if self._conn is None:
+            return
+        if self._sql_lock is None:
+            await self._conn.close()
+            self._conn = None
+            return
+        async with self._sql_lock:
             await self._conn.close()
             self._conn = None
 
     async def commit(self) -> None:
-        await self.conn.execute("COMMIT")
+        if self._sql_lock is None:
+            await self.conn.execute("COMMIT")
+            return
+        async with self._sql_lock:
+            await self.conn.execute("COMMIT")
 
     async def rollback(self) -> None:
-        await self.conn.execute("ROLLBACK")
+        if self._sql_lock is None:
+            await self.conn.execute("ROLLBACK")
+            return
+        async with self._sql_lock:
+            await self.conn.execute("ROLLBACK")
 
     async def executescript(self, script: str) -> None:
-        for statement in script.split(";"):
-            sql = statement.strip()
-            if sql:
-                await self.execute(sql)
+        if self._sql_lock is None:
+            for statement in script.split(";"):
+                sql = statement.strip()
+                if sql:
+                    await self.execute(sql)
+            return
+        async with self._sql_lock:
+            for statement in script.split(";"):
+                sql = statement.strip()
+                if sql:
+                    await self._execute_unlocked(sql)
 
     async def execute(self, query: str, params: tuple[Any, ...] = ()) -> PostgresCursor:
+        if self._sql_lock is None:
+            return await self._execute_unlocked(query, params)
+        async with self._sql_lock:
+            return await self._execute_unlocked(query, params)
+
+    async def _execute_unlocked(self, query: str, params: tuple[Any, ...] = ()) -> PostgresCursor:
         normalized = self._normalize_query(query)
         if normalized is None:
             return PostgresCursor()
@@ -128,6 +158,7 @@ class Database:
         self.is_postgres = bool(self.urls)
         self._conn: aiosqlite.Connection | PostgresConnection | None = None
         self._write_lock = asyncio.Lock()
+        self._postgres_sql_lock: asyncio.Lock | None = None
         self._config_cache: dict[int, dict[str, float]] = {}
 
     @staticmethod
@@ -179,7 +210,9 @@ class Database:
     async def _connect_postgres(self) -> None:
         last_error: Exception | None = None
         for name, url in self.urls:
-            postgres = PostgresConnection(url)
+            if self._postgres_sql_lock is None:
+                self._postgres_sql_lock = asyncio.Lock()
+            postgres = PostgresConnection(url, sql_lock=self._postgres_sql_lock)
             try:
                 await postgres.connect()
             except socket.gaierror as exc:
@@ -545,7 +578,7 @@ class Database:
                         INSERT INTO inventory (guild_id, user_id, item_id, quantity)
                         VALUES (?, ?, ?, 1)
                         ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                            quantity = inventory.quantity + excluded.quantity
+                            quantity = inventory.quantity + 1
                         """,
                         (guild_id, user_id, item_id),
                     )
@@ -777,7 +810,7 @@ class Database:
                     INSERT INTO inventory (guild_id, user_id, item_id, quantity)
                     VALUES (?, ?, ?, 1)
                     ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                        quantity = inventory.quantity + excluded.quantity
+                        quantity = inventory.quantity + 1
                     """,
                     (guild_id, user_id, item_id),
                 )
@@ -899,7 +932,7 @@ class Database:
                     INSERT INTO inventory (guild_id, user_id, item_id, quantity)
                     VALUES (?, ?, ?, 1)
                     ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                        quantity = inventory.quantity + excluded.quantity
+                        quantity = inventory.quantity + 1
                     """,
                     (guild_id, user_id, item_id),
                 )
@@ -968,11 +1001,11 @@ class Database:
                 await self.conn.rollback()
                 raise
             await self.conn.commit()
-        cursor = await self.conn.execute(
-            "SELECT hp, max_hp FROM combat_state WHERE guild_id = ? AND user_id = ?",
-            (guild_id, user_id),
-        )
-        row = await cursor.fetchone()
+            cursor = await self.conn.execute(
+                "SELECT hp, max_hp FROM combat_state WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
         if row is None:
             msg = "Expected combat state row"
             raise RuntimeError(msg)
@@ -1509,7 +1542,7 @@ class Database:
                     INSERT INTO boss_damage (guild_id, user_id, damage)
                     VALUES (?, ?, ?)
                     ON CONFLICT(guild_id, user_id) DO UPDATE SET
-                        damage = damage + excluded.damage
+                        damage = boss_damage.damage + excluded.damage
                     """,
                     (guild_id, user_id, applied),
                 )
