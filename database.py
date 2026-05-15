@@ -183,8 +183,8 @@ class Database:
         await self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER NOT NULL,
-                guild_id INTEGER NOT NULL,
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
                 wallet REAL NOT NULL DEFAULT 0 CHECK (wallet >= 0),
                 last_daily REAL NOT NULL DEFAULT 0,
                 last_heist REAL NOT NULL DEFAULT 0,
@@ -198,31 +198,31 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS bounties (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id INTEGER NOT NULL,
-                placer_id INTEGER NOT NULL,
-                target_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                placer_id BIGINT NOT NULL,
+                target_id BIGINT NOT NULL,
                 amount REAL NOT NULL CHECK (amount > 0),
                 trigger_word TEXT NOT NULL,
                 created_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS hacker_pots (
-                guild_id INTEGER PRIMARY KEY,
-                holder_id INTEGER NOT NULL,
+                guild_id BIGINT PRIMARY KEY,
+                holder_id BIGINT NOT NULL,
                 pass_count INTEGER NOT NULL DEFAULT 0 CHECK (pass_count >= 0),
                 started_at REAL NOT NULL,
                 expires_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS hacker_cooldowns (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 last_hack REAL NOT NULL,
                 PRIMARY KEY (guild_id, user_id)
             );
 
             CREATE TABLE IF NOT EXISTS boss_sessions (
-                guild_id INTEGER PRIMARY KEY,
+                guild_id BIGINT PRIMARY KEY,
                 name TEXT NOT NULL,
                 variant TEXT NOT NULL,
                 hp REAL NOT NULL CHECK (hp >= 0),
@@ -231,8 +231,8 @@ class Database:
             );
 
             CREATE TABLE IF NOT EXISTS boss_damage (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 damage REAL NOT NULL DEFAULT 0 CHECK (damage >= 0),
                 PRIMARY KEY (guild_id, user_id),
                 FOREIGN KEY (guild_id) REFERENCES boss_sessions(guild_id) ON DELETE CASCADE
@@ -240,31 +240,31 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS boss_heals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id INTEGER NOT NULL,
-                healer_id INTEGER NOT NULL,
-                target_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                healer_id BIGINT NOT NULL,
+                target_id BIGINT NOT NULL,
                 created_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS inventory (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 item_id TEXT NOT NULL,
                 quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
                 PRIMARY KEY (guild_id, user_id, item_id)
             );
 
             CREATE TABLE IF NOT EXISTS equipment (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 slot TEXT NOT NULL CHECK (slot IN ('weapon', 'armor')),
                 item_id TEXT NOT NULL,
                 PRIMARY KEY (guild_id, user_id, slot)
             );
 
             CREATE TABLE IF NOT EXISTS combat_state (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 hp REAL NOT NULL CHECK (hp >= 0),
                 max_hp REAL NOT NULL CHECK (max_hp > 0),
                 PRIMARY KEY (guild_id, user_id)
@@ -277,14 +277,14 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS one_time_member_jobs (
                 job_id TEXT NOT NULL,
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 completed_at REAL NOT NULL,
                 PRIMARY KEY (job_id, guild_id, user_id)
             );
 
             CREATE TABLE IF NOT EXISTS guild_config (
-                guild_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
                 setting TEXT NOT NULL,
                 value REAL NOT NULL,
                 updated_at REAL NOT NULL,
@@ -297,6 +297,153 @@ class Database:
                 ON bounties(guild_id);
             """
         )
+        await self.conn.commit()
+        if self.is_postgres:
+            await self._migrate_postgres_discord_snowflakes_to_bigint()
+
+    async def _migrate_postgres_discord_snowflakes_to_bigint(self) -> None:
+        """Upgrade legacy int4 columns so Discord snowflake IDs bind correctly under asyncpg.
+
+        A previous version only checked ``users.user_id``. If a migration crashed after
+        altering ``user_id`` but before ``guild_id``, startup would skip the rest and
+        ``guild_id`` stayed int4 — breaking almost every query that filters by guild.
+        """
+        cursor = await self.conn.execute(
+            """
+            SELECT DISTINCT n.nspname::text AS table_schema,
+                   c.relname::text AS table_name,
+                   a.attname::text AS column_name
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_type t ON t.oid = a.atttypid
+            WHERE c.relkind = 'r'
+              AND n.nspname = ANY (current_schemas(true))
+              AND c.relname IN (
+                  'users', 'bounties', 'hacker_pots', 'hacker_cooldowns',
+                  'boss_sessions', 'boss_damage', 'boss_heals', 'inventory',
+                  'equipment', 'combat_state', 'one_time_member_jobs', 'guild_config'
+              )
+              AND a.attname IN (
+                  'user_id', 'guild_id', 'placer_id', 'target_id',
+                  'holder_id', 'healer_id'
+              )
+              AND t.typname IN ('int4', 'int2')
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY 1, 2, 3
+            """,
+        )
+        rows = list(await cursor.fetchall())
+        if not rows:
+            return
+
+        logging.info(
+            "Migrating %s Postgres Discord ID column(s) from int4/int2 to BIGINT",
+            len(rows),
+        )
+
+        try:
+            await self._apply_postgres_discord_bigint_alters(rows)
+        except Exception:
+            logging.exception("Postgres BIGINT migration failed")
+            raise
+
+    async def _apply_postgres_discord_bigint_alters(self, rows: list[Any]) -> None:
+        def qident(raw: str) -> str:
+            s = str(raw)
+            if not s.replace("_", "").isalnum():
+                msg = f"Unsafe SQL identifier {raw!r}"
+                raise RuntimeError(msg)
+            return '"' + s.replace('"', '""') + '"'
+
+        need_boss_fk_drop = any(
+            (str(r["table_name"]) == "boss_sessions" and str(r["column_name"]) == "guild_id")
+            or (str(r["table_name"]) == "boss_damage" and str(r["column_name"]) == "guild_id")
+            for r in rows
+        )
+        if need_boss_fk_drop:
+            fk_cur = await self.conn.execute(
+                """
+                SELECT n.nspname::text AS table_schema, c.conname::text AS conname
+                FROM pg_constraint c
+                JOIN pg_class cl ON cl.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = cl.relnamespace
+                WHERE cl.relname = 'boss_damage'
+                  AND n.nspname = ANY (current_schemas(true))
+                  AND c.contype = 'f'
+                """,
+            )
+            for fk_row in await fk_cur.fetchall():
+                sch = qident(str(fk_row["table_schema"]))
+                cname = str(fk_row["conname"]).replace('"', '""')
+                bdt = qident("boss_damage")
+                await self.conn.execute(
+                    f"ALTER TABLE {sch}.{bdt} DROP CONSTRAINT IF EXISTS \"{cname}\""
+                )
+
+        def _alter_sort_key(r: Any) -> tuple[int, str, str, str]:
+            t = str(r["table_name"])
+            # Parent guild_id before child so FK drop path stays valid.
+            pri = 0 if t == "boss_sessions" else 1 if t == "boss_damage" else 2
+            return (pri, str(r["table_schema"]), t, str(r["column_name"]))
+
+        for rec in sorted(rows, key=_alter_sort_key):
+            sch = qident(str(rec["table_schema"]))
+            tbl = qident(str(rec["table_name"]))
+            col = qident(str(rec["column_name"]))
+            await self.conn.execute(f"ALTER TABLE {sch}.{tbl} ALTER COLUMN {col} TYPE BIGINT")
+
+        if need_boss_fk_drop:
+            fk_exists = await self.conn.execute(
+                """
+                SELECT 1
+                FROM pg_constraint c
+                JOIN pg_class cl ON cl.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = cl.relnamespace
+                WHERE cl.relname = 'boss_damage'
+                  AND n.nspname = ANY (current_schemas(true))
+                  AND c.contype = 'f'
+                  AND c.conname = 'boss_damage_guild_id_fkey'
+                LIMIT 1
+                """,
+            )
+            if await fk_exists.fetchone() is None:
+                res_bs = await self.conn.execute(
+                    """
+                    SELECT n.nspname::text AS sch
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'boss_sessions' AND c.relkind = 'r'
+                      AND n.nspname = ANY (current_schemas(true))
+                    ORDER BY n.nspname
+                    LIMIT 1
+                    """,
+                )
+                res_bd = await self.conn.execute(
+                    """
+                    SELECT n.nspname::text AS sch
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'boss_damage' AND c.relkind = 'r'
+                      AND n.nspname = ANY (current_schemas(true))
+                    ORDER BY n.nspname
+                    LIMIT 1
+                    """,
+                )
+                bs_row = await res_bs.fetchone()
+                bd_row = await res_bd.fetchone()
+                if bs_row is not None and bd_row is not None:
+                    bss = qident(str(bs_row["sch"]))
+                    bds = qident(str(bd_row["sch"]))
+                    bdt = qident("boss_damage")
+                    bst = qident("boss_sessions")
+                    gcol = qident("guild_id")
+                    await self.conn.execute(
+                        f"ALTER TABLE {bds}.{bdt} ADD CONSTRAINT boss_damage_guild_id_fkey "
+                        f"FOREIGN KEY ({gcol}) REFERENCES {bss}.{bst}({gcol}) ON DELETE CASCADE"
+                    )
+
         await self.conn.commit()
 
     async def _load_config_no_lock(self, guild_id: int) -> dict[str, float]:
