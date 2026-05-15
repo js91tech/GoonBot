@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import random
 import time
 
 import discord
@@ -9,17 +11,39 @@ from discord.ext import commands, tasks
 import config
 from utils.helpers import fmt_amount, guild_only_message, valid_amount
 
+COIN_DROP_INTERVAL_MINUTES = 30
+COIN_DROP_MIN_TYPERS = 3
+COIN_DROP_MIN_AMOUNT = 15
+COIN_DROP_MAX_AMOUNT = 250
+
+
+def _coin_drop_channel(guild: discord.Guild) -> discord.abc.Messageable | None:
+    bot_member = guild.me
+    if bot_member is None:
+        return None
+    if guild.system_channel is not None:
+        perms = guild.system_channel.permissions_for(bot_member)
+        if perms.send_messages:
+            return guild.system_channel
+    for channel in guild.text_channels:
+        if channel.permissions_for(bot_member).send_messages:
+            return channel
+    return None
+
 
 class Economy(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.active_chatters: set[tuple[int, int]] = set()
+        self.coin_drop_typers: dict[int, set[int]] = {}
         self.passive_active_tick.start()
         self.vc_earning_tick.start()
+        self.coin_drop_tick.start()
 
     def cog_unload(self) -> None:
         self.passive_active_tick.cancel()
         self.vc_earning_tick.cancel()
+        self.coin_drop_tick.cancel()
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -36,6 +60,46 @@ class Economy(commands.Cog):
             reward,
         )
         self.active_chatters.add((message.guild.id, message.author.id))
+        bucket = self.coin_drop_typers.setdefault(message.guild.id, set())
+        bucket.add(message.author.id)
+
+    @tasks.loop(minutes=COIN_DROP_INTERVAL_MINUTES)
+    async def coin_drop_tick(self) -> None:
+        for guild in self.bot.guilds:
+            typers = self.coin_drop_typers.pop(guild.id, set())
+            if len(typers) < COIN_DROP_MIN_TYPERS:
+                continue
+            eligible = [uid for uid in typers if not await self.bot.db.is_restricted(uid, guild.id)]
+            if not eligible:
+                continue
+            winner_id = random.choice(eligible)
+            amount = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
+            await self.bot.db.credit_wallet(winner_id, guild.id, amount)
+            channel = _coin_drop_channel(guild)
+            if channel is None:
+                logging.warning("Coin drop: no channel to announce in guild %s", guild.id)
+                continue
+            winner_member = guild.get_member(winner_id)
+            if winner_member is not None:
+                body = (
+                    f"**Random coin drop!** {winner_member.mention} found **{fmt_amount(amount)}** "
+                    f"in the couch cushions."
+                )
+                mentions = discord.AllowedMentions(users=[winner_member])
+            else:
+                body = (
+                    f"**Random coin drop!** <@{winner_id}> found **{fmt_amount(amount)}** "
+                    f"in the couch cushions."
+                )
+                mentions = discord.AllowedMentions.none()
+            try:
+                await channel.send(body, allowed_mentions=mentions)
+            except discord.HTTPException:
+                logging.exception("Coin drop: failed to send in guild %s", guild.id)
+
+    @coin_drop_tick.before_loop
+    async def before_coin_drop_tick(self) -> None:
+        await self.bot.wait_until_ready()
 
     @tasks.loop(hours=1)
     async def passive_active_tick(self) -> None:
@@ -160,7 +224,9 @@ class Economy(commands.Cog):
             amount,
         )
         if not paid:
-            await interaction.response.send_message("You do not have enough nuggets.", ephemeral=True)
+            await interaction.response.send_message(
+                "You do not have enough nuggets.", ephemeral=True
+            )
             return
 
         await interaction.response.send_message(
