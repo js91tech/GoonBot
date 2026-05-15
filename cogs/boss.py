@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import time
@@ -10,7 +11,14 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import config
-from items import ShopItem, armor_mitigation_percent, get_item
+from items import (
+    BOSS_SLAYER_BLADE,
+    BOSS_SLAYER_MAIL,
+    BOSS_WEAK_ITEMS,
+    ShopItem,
+    armor_mitigation_percent,
+    get_item,
+)
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel
 
 BOSS_NAME = "Hannah"
@@ -22,10 +30,13 @@ COUNTER_MULTI_THIRD = 0.55
 class Boss(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self._boss_finish_lock = asyncio.Lock()
         self.auto_spawn.start()
+        self.passive_boss_decay_tick.start()
 
     def cog_unload(self) -> None:
         self.auto_spawn.cancel()
+        self.passive_boss_decay_tick.cancel()
 
     async def _boss_hp(self, guild_id: int, variant: str) -> float:
         circulation = await self.bot.db.total_circulation(guild_id)
@@ -39,15 +50,231 @@ class Boss(commands.Cog):
         await self.bot.db.replace_boss(guild_id, BOSS_NAME, variant, hp)
         return hp
 
-    async def _announce(self, guild: discord.Guild, content: str) -> None:
+    @staticmethod
+    def _weighted_random_damage_user(rows: list[Any]) -> int | None:
+        if not rows:
+            return None
+        total = sum(float(r["damage"]) for r in rows)
+        if total <= 0:
+            return int(rows[0]["user_id"])
+        pick = random.uniform(0, total)
+        acc = 0.0
+        for row in rows:
+            acc += float(row["damage"])
+            if pick <= acc:
+                return int(row["user_id"])
+        return int(rows[-1]["user_id"])
+
+    async def _roll_boss_loot(self, guild_id: int, rows: list[Any]) -> list[tuple[int, ShopItem]]:
+        if not rows:
+            return []
+        granted: list[tuple[int, ShopItem]] = []
+        if random.random() < config.BOSS_INFERIOR_DROP_CHANCE:
+            uid = Boss._weighted_random_damage_user(rows)
+            if uid is not None:
+                drop = random.choice(BOSS_WEAK_ITEMS)
+                await self.bot.db.grant_item(uid, guild_id, drop.id)
+                granted.append((uid, drop))
+        if random.random() < config.BOSS_EPIC_DROP_CHANCE:
+            uid = Boss._weighted_random_damage_user(rows)
+            if uid is not None:
+                epic = random.choice((BOSS_SLAYER_BLADE, BOSS_SLAYER_MAIL))
+                await self.bot.db.grant_item(uid, guild_id, epic.id)
+                granted.append((uid, epic))
+        return granted
+
+    async def _send_boss_spawn_embed(
+        self,
+        guild: discord.Guild,
+        *,
+        variant: str,
+        hp: float,
+        summoned: bool,
+    ) -> None:
         channel = await resolve_main_channel(guild, self.bot.db)
         if channel is None:
-            logging.warning("Boss announcement skipped: no channel in guild %s", guild.id)
+            logging.warning("Boss spawn embed skipped: no channel in guild %s", guild.id)
             return
+        title = "Boss summoned!" if summoned else "Boss raid incoming!"
+        desc = f"A **{variant}** **{BOSS_NAME}** crashes the party—time to rally the raid!"
+        embed = discord.Embed(
+            title=title,
+            description=desc,
+            color=discord.Color.dark_red(),
+        )
+        embed.add_field(name="Health", value=f"**{fmt_amount(hp)}** HP", inline=True)
+        embed.add_field(
+            name="Battle room",
+            value=channel.mention,
+            inline=True,
+        )
+        threat = config.BOSS_VARIANTS[variant]["threat"]
+        embed.add_field(name="Threat tier", value=str(threat), inline=True)
+        embed.add_field(
+            name="Fight back",
+            value="`/attack` to deal damage · `/boss` for status · `/heal` for downed allies",
+            inline=False,
+        )
+        decay_pct = int(round(config.BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE * 100))
+        embed.set_footer(
+            text=(
+                f"Bosses lose {decay_pct}% of their max HP each minute from battle fatigue—even "
+                "if nobody is attacking."
+            )
+        )
         try:
-            await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
+            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException:
-            logging.exception("Boss announcement failed in guild %s", guild.id)
+            logging.exception("Boss spawn embed failed in guild %s", guild.id)
+
+    async def _send_boss_defeat_embed(
+        self,
+        guild: discord.Guild,
+        *,
+        variant: str,
+        reward_lines: list[str],
+        gear_lines: list[str],
+        summary: str,
+    ) -> None:
+        channel = await resolve_main_channel(guild, self.bot.db)
+        if channel is None:
+            logging.warning("Boss defeat embed skipped: no channel in guild %s", guild.id)
+            return
+        embed = discord.Embed(
+            title=f"{variant.title()} {BOSS_NAME} is down!",
+            description=summary,
+            color=discord.Color.gold(),
+        )
+        if reward_lines:
+            body = "\n".join(reward_lines[:12])
+            if len(reward_lines) > 12:
+                body += f"\n...+{len(reward_lines) - 12} more"
+            embed.add_field(
+                name=f"{config.CURRENCY_NAME.title()} split (by damage share)",
+                value=body,
+                inline=False,
+            )
+        if gear_lines:
+            embed.add_field(
+                name="Gear dropped",
+                value="\n".join(gear_lines[:12]),
+                inline=False,
+            )
+        try:
+            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException:
+            logging.exception("Boss defeat embed failed in guild %s", guild.id)
+
+    def _display_name(self, guild: discord.Guild, user_id: int) -> str:
+        member = guild.get_member(user_id)
+        return member.display_name if member else f"User {user_id}"
+
+    async def _complete_boss_defeat(
+        self,
+        guild: discord.Guild,
+        *,
+        interaction: discord.Interaction | None,
+        killer_user_id: int | None,
+    ) -> None:
+        async with self._boss_finish_lock:
+            await self._complete_boss_defeat_impl(
+                guild,
+                interaction=interaction,
+                killer_user_id=killer_user_id,
+            )
+
+    async def _complete_boss_defeat_impl(
+        self,
+        guild: discord.Guild,
+        *,
+        interaction: discord.Interaction | None,
+        killer_user_id: int | None,
+    ) -> None:
+        guild_id = guild.id
+        boss = await self.bot.db.get_active_boss(guild_id)
+        if boss is None:
+            if interaction is not None and not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "The boss was already defeated.",
+                    ephemeral=True,
+                )
+            return
+        if float(boss["hp"]) > 0:
+            return
+
+        variant = str(boss["variant"])
+        rows = await self.bot.db.list_boss_damage(guild_id)
+        total_damage = sum(float(row["damage"]) for row in rows)
+        max_hp = float(boss["max_hp"])
+
+        if total_damage <= 0:
+            await self.bot.db.clear_boss(guild_id)
+            summary = (
+                f"{BOSS_NAME} collapsed from exhaustion with **no recorded strikes**. "
+                "No nuggets or gear were awarded."
+            )
+            await self._send_boss_defeat_embed(
+                guild,
+                variant=variant,
+                reward_lines=[],
+                gear_lines=[],
+                summary=summary,
+            )
+            if interaction is not None and not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "The boss melted from passive fatigue before anyone attacked—no payouts.",
+                    ephemeral=True,
+                )
+            return
+
+        reward_lines = []
+        for row in rows:
+            user_id = int(row["user_id"])
+            reward = max_hp * (float(row["damage"]) / total_damage)
+            await self.bot.db.credit_wallet(user_id, guild_id, reward)
+            name = self._display_name(guild, user_id)
+            reward_lines.append(f"{name}: {fmt_amount(reward)}")
+
+        loot_rows = await self._roll_boss_loot(guild_id, rows)
+        gear_lines = [
+            f"**{self._display_name(guild, uid)}** · **{item.name}** (`{item.id}`)"
+            for uid, item in loot_rows
+        ]
+
+        await self.bot.db.clear_boss(guild_id)
+
+        if killer_user_id is not None:
+            summary = f"The killing blow goes to <@{killer_user_id}>."
+        else:
+            summary = (
+                "**Battle fatigue** finished what the raid started—she could not stall forever."
+            )
+
+        await self._send_boss_defeat_embed(
+            guild,
+            variant=variant,
+            reward_lines=reward_lines,
+            gear_lines=gear_lines,
+            summary=summary,
+        )
+
+        if interaction is not None and not interaction.response.is_done():
+            channel = await resolve_main_channel(guild, self.bot.db)
+            place = channel.mention if channel is not None else "the main channel"
+            if killer_user_id is not None:
+                msg = (
+                    f"{interaction.user.mention} landed the final blow! "
+                    f"Payouts and drops are in {place}."
+                )
+            else:
+                msg = (
+                    f"{BOSS_NAME} finally collapsed from battle fatigue. "
+                    f"Payouts and drops are in {place}."
+                )
+            await interaction.response.send_message(
+                msg,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
     async def _gear(self, user_id: int, guild_id: int) -> tuple[ShopItem | None, ShopItem | None]:
         equipment = await self.bot.db.get_equipment(user_id, guild_id)
@@ -125,13 +352,24 @@ class Boss(commands.Cog):
                 continue
             variant = random.choice(tuple(config.BOSS_VARIANTS))
             hp = await self._spawn_boss(guild.id, variant)
-            await self._announce(
-                guild,
-                f"A {variant} {BOSS_NAME} has appeared with {fmt_amount(hp)} HP!",
-            )
+            await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, summoned=False)
 
     @auto_spawn.before_loop
     async def before_auto_spawn(self) -> None:
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(seconds=60)
+    async def passive_boss_decay_tick(self) -> None:
+        for guild in self.bot.guilds:
+            boss = await self.bot.db.apply_boss_passive_decay(guild.id)
+            if boss is None:
+                continue
+            if float(boss["hp"]) > 0:
+                continue
+            await self._complete_boss_defeat(guild, interaction=None, killer_user_id=None)
+
+    @passive_boss_decay_tick.before_loop
+    async def before_passive_boss_decay_tick(self) -> None:
         await self.bot.wait_until_ready()
 
     @app_commands.command(name="summon", description="Admin only: force-spawn a boss.")
@@ -156,26 +394,36 @@ class Boss(commands.Cog):
         await interaction.response.send_message(
             f"Summoned a {normalized} {BOSS_NAME} with {fmt_amount(hp)} HP."
         )
-        await self._announce(
+        await self._send_boss_spawn_embed(
             interaction.guild,
-            f"A {normalized} {BOSS_NAME} has been summoned with {fmt_amount(hp)} HP!",
+            variant=normalized,
+            hp=hp,
+            summoned=True,
         )
 
     @app_commands.command(name="boss", description="Check boss status.")
     @app_commands.guild_only()
     async def boss(self, interaction: discord.Interaction) -> None:
-        if interaction.guild_id is None:
+        if interaction.guild_id is None or interaction.guild is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
-        boss = await self.bot.db.get_active_boss(interaction.guild_id)
-        if boss is None:
+        boss_row = await self.bot.db.apply_boss_passive_decay(interaction.guild_id)
+        if boss_row is None:
             await interaction.response.send_message("No boss is active right now.")
             return
 
+        if float(boss_row["hp"]) <= 0:
+            await self._complete_boss_defeat(
+                interaction.guild,
+                interaction=interaction,
+                killer_user_id=None,
+            )
+            return
+
         await interaction.response.send_message(
-            f"{boss['variant'].title()} {boss['name']}: "
-            f"{fmt_amount(float(boss['hp']))}/{fmt_amount(float(boss['max_hp']))} HP"
+            f"{boss_row['variant'].title()} {boss_row['name']}: "
+            f"{fmt_amount(float(boss_row['hp']))}/{fmt_amount(float(boss_row['max_hp']))} HP"
         )
 
     @app_commands.command(name="attack", description="Attack the active boss.")
@@ -201,7 +449,11 @@ class Boss(commands.Cog):
             return
 
         if float(updated["hp"]) <= 0:
-            await self._finish_boss(interaction)
+            await self._complete_boss_defeat(
+                interaction.guild,
+                interaction=interaction,
+                killer_user_id=interaction.user.id,
+            )
             return
 
         counter_text = await self._maybe_counterattack(interaction.guild_id, updated)
@@ -257,39 +509,6 @@ class Boss(commands.Cog):
             f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
             f"{crit_text}{armor_text} HP: {int(hp)}/{int(max_hp)}."
         )
-
-    async def _finish_boss(self, interaction: discord.Interaction) -> None:
-        assert interaction.guild_id is not None
-        assert interaction.guild is not None
-        boss = await self.bot.db.get_active_boss(interaction.guild_id)
-        if boss is None:
-            await interaction.response.send_message("The boss was already defeated.", ephemeral=True)
-            return
-
-        rows = await self.bot.db.list_boss_damage(interaction.guild_id)
-        total_damage = sum(float(row["damage"]) for row in rows)
-        if total_damage <= 0:
-            await self.bot.db.clear_boss(interaction.guild_id)
-            await interaction.response.send_message(f"{BOSS_NAME} vanished without any rewards.")
-            return
-
-        max_hp = float(boss["max_hp"])
-        reward_lines = []
-        for row in rows:
-            user_id = int(row["user_id"])
-            reward = max_hp * (float(row["damage"]) / total_damage)
-            await self.bot.db.credit_wallet(user_id, interaction.guild_id, reward)
-            member = interaction.guild.get_member(user_id)
-            name = member.display_name if member else f"User {user_id}"
-            reward_lines.append(f"{name}: {fmt_amount(reward)}")
-
-        await self.bot.db.clear_boss(interaction.guild_id)
-        reward_body = f"{BOSS_NAME} was defeated! Rewards:\n" + "\n".join(reward_lines[:10])
-        await interaction.response.send_message(
-            f"{interaction.user.mention} landed the final blow! Check the main channel for rewards.",
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-        await self._announce(interaction.guild, reward_body)
 
     @app_commands.command(name="heal", description="Revive a downed teammate.")
     @app_commands.describe(target="Downed user to heal")

@@ -55,7 +55,8 @@ class Shop(commands.Cog):
         matches = [
             item
             for item in ITEMS.values()
-            if item.price > 0
+            if item.shop_listed
+            and item.price > 0
             and (current_lower in item.id.lower() or current_lower in item.name.lower())
         ][:25]
         return [
@@ -127,6 +128,12 @@ class Shop(commands.Cog):
         if shop_item is None:
             await interaction.response.send_message(
                 "Unknown item. Use autocomplete or `/shop`.", ephemeral=True
+            )
+            return
+        if not shop_item.shop_listed:
+            await interaction.response.send_message(
+                "That item is not sold in the shop.",
+                ephemeral=True,
             )
             return
         if shop_item.price <= 0:

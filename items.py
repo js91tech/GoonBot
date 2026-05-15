@@ -14,6 +14,7 @@ class ShopItem:
     verbs: tuple[str, ...] = ()
     crit_chance: float = 0.0
     hp_bonus: int = 0
+    shop_listed: bool = True
 
 
 STARTER_WEAPON = ShopItem(
@@ -87,8 +88,66 @@ ARMOR: tuple[ShopItem, ...] = (
     ),
 )
 
+BOSS_SLAYER_BLADE = ShopItem(
+    "boss_slayer_blade",
+    "Heartsplitter Fang",
+    "weapon",
+    6_500,
+    118,
+    "Boss-forged steel pulsing with leftover raid energy.",
+    ("rends", "finishes"),
+    crit_chance=0.095,
+    shop_listed=False,
+)
+BOSS_SLAYER_MAIL = ShopItem(
+    "boss_slayer_mail",
+    "Trophy Bastion Mail",
+    "armor",
+    6_500,
+    84,
+    "Plates tempered in Hannah's defeat — prized raid salvage.",
+    hp_bonus=148,
+    shop_listed=False,
+)
+
+
+def _inferior_boss_drop(base: ShopItem) -> ShopItem:
+    """Weaker, sellable variant of shop gear for boss loot."""
+    pow_scaled = max(1, int(round(base.power * 0.58)))
+    price_scaled = float(max(35, int(round(base.price * 0.28 / 25)) * 25))
+    crit = round(base.crit_chance * 0.72, 4)
+    hp_b = max(8, int(round(base.hp_bonus * 0.58))) if base.category == "armor" else 0
+    desc = f"A battered knockoff of shop-tier gear. {base.description}"
+    return ShopItem(
+        f"boss_weak_{base.id}",
+        f"Battle-Worn {base.name}",
+        base.category,
+        price_scaled,
+        pow_scaled,
+        desc,
+        base.verbs,
+        crit_chance=crit,
+        hp_bonus=hp_b,
+        shop_listed=False,
+    )
+
+
+BOSS_WEAK_ITEMS: tuple[ShopItem, ...] = tuple(
+    _inferior_boss_drop(it) for it in (*WEAPONS, *ARMOR) if it.price > 0
+)
+
 GRANT_ITEMS: tuple[ShopItem, ...] = (STARTER_WEAPON, STARTER_ARMOR)
-ITEMS: dict[str, ShopItem] = {item.id: item for item in (*GRANT_ITEMS, *WEAPONS, *ARMOR)}
+ITEMS: dict[str, ShopItem] = {
+    item.id: item
+    for item in (
+        *GRANT_ITEMS,
+        *WEAPONS,
+        *ARMOR,
+        BOSS_SLAYER_BLADE,
+        BOSS_SLAYER_MAIL,
+        *BOSS_WEAK_ITEMS,
+    )
+}
 ITEM_ORDER: tuple[str, ...] = tuple(item.id for item in (*WEAPONS, *ARMOR))
 CATEGORIES = ("all", "weapon", "armor")
 
@@ -107,4 +166,8 @@ def items_for_category(category: str) -> list[ShopItem]:
         return [ITEMS[item_id] for item_id in ITEM_ORDER]
     if normalized not in CATEGORIES:
         return []
-    return [item for item in ITEMS.values() if item.category == normalized]
+    return [
+        item
+        for item in ITEMS.values()
+        if item.category == normalized and item.shop_listed
+    ]
