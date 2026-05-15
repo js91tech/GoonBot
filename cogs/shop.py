@@ -4,12 +4,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 from items import CATEGORIES, ITEMS, ShopItem, get_item, items_for_category
 from utils.helpers import fmt_amount, guild_only_message
 
 
 def _item_line(item: ShopItem) -> str:
-    stat = f"+{item.power} damage" if item.category == "weapon" else f"-{item.power} damage, +{item.hp_bonus} HP"
+    stat = (
+        f"+{item.power} damage"
+        if item.category == "weapon"
+        else f"-{item.power} damage, +{item.hp_bonus} HP"
+    )
     return f"`{item.id}` - **{item.name}** ({fmt_amount(item.price)}): {stat}"
 
 
@@ -29,7 +34,51 @@ class Shop(commands.Cog):
             for item in ITEMS.values()
             if current_lower in item.id.lower() or current_lower in item.name.lower()
         ][:25]
-        return [app_commands.Choice(name=f"{item.name} ({item.id})", value=item.id) for item in matches]
+        return [
+            app_commands.Choice(name=f"{item.name} ({item.id})", value=item.id) for item in matches
+        ]
+
+    async def buy_item_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        del interaction
+        current_lower = current.lower()
+        matches = [
+            item
+            for item in ITEMS.values()
+            if item.price > 0
+            and (current_lower in item.id.lower() or current_lower in item.name.lower())
+        ][:25]
+        return [
+            app_commands.Choice(name=f"{item.name} ({item.id})", value=item.id) for item in matches
+        ]
+
+    async def sell_item_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        if interaction.guild_id is None:
+            return []
+        current_lower = current.lower()
+        rows = await self.bot.db.get_inventory(interaction.user.id, interaction.guild_id)
+        choices: list[app_commands.Choice[str]] = []
+        for row in rows:
+            item_id = str(row["item_id"])
+            item = get_item(item_id)
+            if item is None or item.price <= 0:
+                continue
+            if current_lower not in item.id.lower() and current_lower not in item.name.lower():
+                continue
+            qty = int(row["quantity"])
+            choices.append(
+                app_commands.Choice(name=f"{item.name} x{qty} ({item.id})", value=item.id),
+            )
+            if len(choices) >= 25:
+                break
+        return choices
 
     @app_commands.command(name="shop", description="Browse weapons and armor.")
     @app_commands.describe(category="Item category to view")
@@ -61,7 +110,7 @@ class Shop(commands.Cog):
 
     @app_commands.command(name="buy", description="Buy a weapon or armor piece.")
     @app_commands.describe(item="Item to buy")
-    @app_commands.autocomplete(item=item_autocomplete)
+    @app_commands.autocomplete(item=buy_item_autocomplete)
     @app_commands.guild_only()
     async def buy(self, interaction: discord.Interaction, item: str) -> None:
         if interaction.guild_id is None:
@@ -69,10 +118,20 @@ class Shop(commands.Cog):
             return
         shop_item = get_item(item)
         if shop_item is None:
-            await interaction.response.send_message("Unknown item. Use autocomplete or `/shop`.", ephemeral=True)
+            await interaction.response.send_message(
+                "Unknown item. Use autocomplete or `/shop`.", ephemeral=True
+            )
+            return
+        if shop_item.price <= 0:
+            await interaction.response.send_message(
+                "That item is not sold in the shop (starter gear). Use `/shop` for prices.",
+                ephemeral=True,
+            )
             return
 
-        bought = await self.bot.db.buy_item(interaction.user.id, interaction.guild_id, shop_item.id, shop_item.price)
+        bought = await self.bot.db.buy_item(
+            interaction.user.id, interaction.guild_id, shop_item.id, shop_item.price
+        )
         if not bought:
             await interaction.response.send_message(
                 f"You need {fmt_amount(shop_item.price)} to buy {shop_item.name}.",
@@ -132,7 +191,9 @@ class Shop(commands.Cog):
             return
         shop_item = get_item(item)
         if shop_item is None:
-            await interaction.response.send_message("Unknown item. Use autocomplete or `/inventory`.", ephemeral=True)
+            await interaction.response.send_message(
+                "Unknown item. Use autocomplete or `/inventory`.", ephemeral=True
+            )
             return
 
         equipped = await self.bot.db.equip_item(
@@ -142,11 +203,57 @@ class Shop(commands.Cog):
             shop_item.id,
         )
         if not equipped:
-            await interaction.response.send_message("You need to buy that item first.", ephemeral=True)
+            await interaction.response.send_message(
+                "You need to buy that item first.", ephemeral=True
+            )
             return
 
         await interaction.response.send_message(
             f"Equipped **{shop_item.name}** as your {shop_item.category}.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(
+        name="sell", description="Sell shop gear from your inventory for half its shop price."
+    )
+    @app_commands.describe(item="Owned item to sell (one copy)")
+    @app_commands.autocomplete(item=sell_item_autocomplete)
+    @app_commands.guild_only()
+    async def sell(self, interaction: discord.Interaction, item: str) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        shop_item = get_item(item)
+        if shop_item is None:
+            await interaction.response.send_message(
+                "Unknown item. Use autocomplete or `/inventory`.", ephemeral=True
+            )
+            return
+        if shop_item.price <= 0:
+            await interaction.response.send_message("You cannot sell starter gear.", ephemeral=True)
+            return
+
+        refund = max(1, int(shop_item.price // 2))
+        sold = await self.bot.db.sell_one_item(
+            interaction.user.id, interaction.guild_id, shop_item.id, refund
+        )
+        if not sold:
+            await interaction.response.send_message(
+                "You do not have that item to sell.", ephemeral=True
+            )
+            return
+
+        equipment = await self.bot.db.get_equipment(interaction.user.id, interaction.guild_id)
+        max_hp = float(config.PLAYER_BASE_HP)
+        armor_id = equipment.get("armor")
+        if armor_id:
+            armor_item = get_item(armor_id)
+            if armor_item is not None:
+                max_hp += float(armor_item.hp_bonus)
+        await self.bot.db.sync_combat_hp(interaction.user.id, interaction.guild_id, max_hp)
+
+        await interaction.response.send_message(
+            f"Sold **{shop_item.name}** for {fmt_amount(float(refund))}.",
             ephemeral=True,
         )
 

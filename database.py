@@ -15,7 +15,9 @@ import config
 
 
 class PostgresCursor:
-    def __init__(self, rows: list[asyncpg.Record] | None = None, *, lastrowid: int | None = None) -> None:
+    def __init__(
+        self, rows: list[asyncpg.Record] | None = None, *, lastrowid: int | None = None
+    ) -> None:
         self._rows = rows or []
         self.lastrowid = lastrowid
 
@@ -63,7 +65,10 @@ class PostgresConnection:
         if normalized is None:
             return PostgresCursor()
         sql = self._convert_placeholders(normalized)
-        if sql.lstrip().upper().startswith(("SELECT", "INSERT INTO BOUNTIES")) and "RETURNING" in sql.upper():
+        if (
+            sql.lstrip().upper().startswith(("SELECT", "INSERT INTO BOUNTIES"))
+            and "RETURNING" in sql.upper()
+        ):
             rows = await self.conn.fetch(sql, *params)
             lastrowid = int(rows[0]["id"]) if rows and "id" in rows[0] else None
             return PostgresCursor(list(rows), lastrowid=lastrowid)
@@ -131,7 +136,11 @@ class Database:
         return self._conn
 
     async def connect(self) -> None:
-        if config.RUNNING_ON_RAILWAY and not self.is_postgres and not config.ALLOW_SQLITE_ON_RAILWAY:
+        if (
+            config.RUNNING_ON_RAILWAY
+            and not self.is_postgres
+            and not config.ALLOW_SQLITE_ON_RAILWAY
+        ):
             msg = (
                 "DATABASE_URL is required on Railway. Refusing to use SQLite because Railway "
                 "local files can be wiped on redeploy. Set DATABASE_URL to the Postgres service "
@@ -160,7 +169,9 @@ class Database:
                 await postgres.connect()
             except socket.gaierror as exc:
                 last_error = exc
-                logging.warning("Could not resolve Postgres host from %s; trying next URL if configured", name)
+                logging.warning(
+                    "Could not resolve Postgres host from %s; trying next URL if configured", name
+                )
                 continue
             self.url = url
             self._conn = postgres
@@ -379,7 +390,7 @@ class Database:
                 cname = str(fk_row["conname"]).replace('"', '""')
                 bdt = qident("boss_damage")
                 await self.conn.execute(
-                    f"ALTER TABLE {sch}.{bdt} DROP CONSTRAINT IF EXISTS \"{cname}\""
+                    f'ALTER TABLE {sch}.{bdt} DROP CONSTRAINT IF EXISTS "{cname}"'
                 )
 
         def _alter_sort_key(r: Any) -> tuple[int, str, str, str]:
@@ -452,10 +463,7 @@ class Database:
             (guild_id,),
         )
         rows = await cursor.fetchall()
-        values = {
-            name: spec.default
-            for name, spec in config.LIVE_SETTINGS.items()
-        }
+        values = {name: spec.default for name, spec in config.LIVE_SETTINGS.items()}
         for row in rows:
             setting = str(row["setting"])
             if setting in values:
@@ -764,6 +772,64 @@ class Database:
             await self.conn.commit()
             return True
 
+    async def sell_one_item(self, user_id: int, guild_id: int, item_id: str, refund: float) -> bool:
+        if refund <= 0:
+            return False
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self._ensure_user_no_lock(user_id, guild_id)
+                cursor = await self.conn.execute(
+                    """
+                    SELECT quantity
+                    FROM inventory
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    """,
+                    (guild_id, user_id, item_id),
+                )
+                row = await cursor.fetchone()
+                if row is None or int(row["quantity"]) <= 0:
+                    await self.conn.rollback()
+                    return False
+                new_qty = int(row["quantity"]) - 1
+                if new_qty <= 0:
+                    await self.conn.execute(
+                        """
+                        DELETE FROM inventory
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (guild_id, user_id, item_id),
+                    )
+                    await self.conn.execute(
+                        """
+                        DELETE FROM equipment
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (guild_id, user_id, item_id),
+                    )
+                else:
+                    await self.conn.execute(
+                        """
+                        UPDATE inventory
+                        SET quantity = ?
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (new_qty, guild_id, user_id, item_id),
+                    )
+                await self.conn.execute(
+                    """
+                    UPDATE users
+                    SET wallet = wallet + ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (refund, user_id, guild_id),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True
+
     async def get_inventory(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
         cursor = await self.conn.execute(
             """
@@ -807,7 +873,9 @@ class Database:
             await self.conn.commit()
             return True
 
-    async def grant_item(self, user_id: int, guild_id: int, item_id: str, *, equip_slot: str | None = None) -> None:
+    async def grant_item(
+        self, user_id: int, guild_id: int, item_id: str, *, equip_slot: str | None = None
+    ) -> None:
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -870,7 +938,9 @@ class Database:
                 else:
                     old_max = float(row["max_hp"])
                     old_hp = float(row["hp"])
-                    hp = max_hp if old_max <= 0 else min(max_hp, old_hp + max(0.0, max_hp - old_max))
+                    hp = (
+                        max_hp if old_max <= 0 else min(max_hp, old_hp + max(0.0, max_hp - old_max))
+                    )
                     await self.conn.execute(
                         """
                         UPDATE combat_state
@@ -1209,7 +1279,9 @@ class Database:
         return row
 
     async def count_bounties(self, guild_id: int) -> int:
-        value = await self.fetch_value("SELECT COUNT(*) FROM bounties WHERE guild_id = ?", (guild_id,))
+        value = await self.fetch_value(
+            "SELECT COUNT(*) FROM bounties WHERE guild_id = ?", (guild_id,)
+        )
         return int(value or 0)
 
     async def create_bounty_with_payment(
@@ -1377,7 +1449,14 @@ class Database:
                     INSERT INTO boss_sessions (guild_id, name, variant, hp, max_hp, spawned_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (guild_id, name, variant, hp, hp, time.time() if spawned_at is None else spawned_at),
+                    (
+                        guild_id,
+                        name,
+                        variant,
+                        hp,
+                        hp,
+                        time.time() if spawned_at is None else spawned_at,
+                    ),
                 )
             except Exception:
                 await self.conn.rollback()

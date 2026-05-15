@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import random
 import time
 
 import discord
@@ -9,17 +12,105 @@ from discord.ext import commands, tasks
 import config
 from utils.helpers import fmt_amount, guild_only_message, valid_amount
 
+COIN_DROP_INTERVAL_MINUTES = 30
+COIN_DROP_MIN_TYPERS = 3
+COIN_DROP_MIN_AMOUNT = 15
+COIN_DROP_MAX_AMOUNT = 250
+COIN_DROP_CLAIM_SECONDS = 120
+
+
+def _coin_drop_channel(guild: discord.Guild) -> discord.abc.Messageable | None:
+    bot_member = guild.me
+    if bot_member is None:
+        return None
+    if guild.system_channel is not None:
+        perms = guild.system_channel.permissions_for(bot_member)
+        if perms.send_messages:
+            return guild.system_channel
+    for channel in guild.text_channels:
+        if channel.permissions_for(bot_member).send_messages:
+            return channel
+    return None
+
+
+class CoinDropView(discord.ui.View):
+    """First click wins within ``timeout``; prize is credited on successful claim."""
+
+    def __init__(self, bot: commands.Bot, guild_id: int, amount: float) -> None:
+        super().__init__(timeout=float(COIN_DROP_CLAIM_SECONDS))
+        self.bot = bot
+        self.guild_id = guild_id
+        self.amount = amount
+        self._claimed = False
+        self._claim_lock = asyncio.Lock()
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is None:
+            return
+        try:
+            await self.message.edit(
+                content=(
+                    f"**Coin drop expired.** Nobody claimed **{fmt_amount(self.amount)}** in "
+                    f"{COIN_DROP_CLAIM_SECONDS} seconds."
+                ),
+                view=self,
+            )
+        except (discord.HTTPException, discord.NotFound):
+            logging.exception("Coin drop: timeout edit failed guild %s", self.guild_id)
+
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success)
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message(
+                "This drop is not in your server.", ephemeral=True
+            )
+            return
+        if not isinstance(interaction.user, discord.Member) or interaction.user.bot:
+            await interaction.response.send_message("You cannot claim this.", ephemeral=True)
+            return
+
+        async with self._claim_lock:
+            if self._claimed:
+                await interaction.response.send_message(
+                    "Someone already claimed this drop.", ephemeral=True
+                )
+                return
+            if await self.bot.db.is_restricted(interaction.user.id, self.guild_id):
+                await interaction.response.send_message(
+                    "You cannot claim rewards right now.", ephemeral=True
+                )
+                return
+            await self.bot.db.credit_wallet(interaction.user.id, self.guild_id, self.amount)
+            self._claimed = True
+            for item in self.children:
+                item.disabled = True
+            assert interaction.message is not None
+            await interaction.response.edit_message(
+                content=(
+                    f"**Coin drop claimed!** {interaction.user.mention} grabbed **{fmt_amount(self.amount)}**!"
+                ),
+                allowed_mentions=discord.AllowedMentions(users=[interaction.user]),
+                view=self,
+            )
+            self.stop()
+
 
 class Economy(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.active_chatters: set[tuple[int, int]] = set()
+        self.coin_drop_typers: dict[int, set[int]] = {}
         self.passive_active_tick.start()
         self.vc_earning_tick.start()
+        self.coin_drop_tick.start()
 
     def cog_unload(self) -> None:
         self.passive_active_tick.cancel()
         self.vc_earning_tick.cancel()
+        self.coin_drop_tick.cancel()
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -36,6 +127,33 @@ class Economy(commands.Cog):
             reward,
         )
         self.active_chatters.add((message.guild.id, message.author.id))
+        bucket = self.coin_drop_typers.setdefault(message.guild.id, set())
+        bucket.add(message.author.id)
+
+    @tasks.loop(minutes=COIN_DROP_INTERVAL_MINUTES)
+    async def coin_drop_tick(self) -> None:
+        for guild in self.bot.guilds:
+            typers = self.coin_drop_typers.pop(guild.id, set())
+            if len(typers) < COIN_DROP_MIN_TYPERS:
+                continue
+            amount = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
+            channel = _coin_drop_channel(guild)
+            if channel is None:
+                logging.warning("Coin drop: no channel to announce in guild %s", guild.id)
+                continue
+            body = (
+                f"**Random coin drop!** **{fmt_amount(amount)}** are up for grabs—"
+                f"**first to claim** wins. Anyone can press **Claim** for **{COIN_DROP_CLAIM_SECONDS}** seconds!"
+            )
+            view = CoinDropView(self.bot, guild.id, amount)
+            try:
+                await channel.send(body, view=view)
+            except discord.HTTPException:
+                logging.exception("Coin drop: failed to send in guild %s", guild.id)
+
+    @coin_drop_tick.before_loop
+    async def before_coin_drop_tick(self) -> None:
+        await self.bot.wait_until_ready()
 
     @tasks.loop(hours=1)
     async def passive_active_tick(self) -> None:
@@ -160,7 +278,9 @@ class Economy(commands.Cog):
             amount,
         )
         if not paid:
-            await interaction.response.send_message("You do not have enough nuggets.", ephemeral=True)
+            await interaction.response.send_message(
+                "You do not have enough nuggets.", ephemeral=True
+            )
             return
 
         await interaction.response.send_message(
