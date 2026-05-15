@@ -286,7 +286,8 @@ class Database:
                 variant TEXT NOT NULL,
                 hp REAL NOT NULL CHECK (hp >= 0),
                 max_hp REAL NOT NULL CHECK (max_hp > 0),
-                spawned_at REAL NOT NULL
+                spawned_at REAL NOT NULL,
+                passive_decay_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS boss_damage (
@@ -364,6 +365,7 @@ class Database:
         await self.conn.commit()
         if self.is_postgres:
             await self._migrate_postgres_discord_snowflakes_to_bigint()
+        await self._migrate_boss_passive_decay()
 
     async def _migrate_postgres_discord_snowflakes_to_bigint(self) -> None:
         """Upgrade legacy int4 columns so Discord snowflake IDs bind correctly under asyncpg.
@@ -509,6 +511,50 @@ class Database:
                         f"FOREIGN KEY ({gcol}) REFERENCES {bss}.{bst}({gcol}) ON DELETE CASCADE"
                     )
 
+        await self.conn.commit()
+
+
+    async def _migrate_boss_passive_decay(self) -> None:
+        """Add passive_decay_at for boss HP erosion over real time."""
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'boss_sessions'
+                  AND column_name = 'passive_decay_at'
+                """,
+            )
+            if await cursor.fetchone() is not None:
+                return
+            await self.conn.execute(
+                "ALTER TABLE boss_sessions ADD COLUMN passive_decay_at DOUBLE PRECISION",
+            )
+            await self.conn.execute(
+                """
+                UPDATE boss_sessions
+                SET passive_decay_at = spawned_at
+                WHERE passive_decay_at IS NULL
+                """,
+            )
+            await self.conn.commit()
+            return
+
+        cursor = await self.conn.execute("PRAGMA table_info(boss_sessions)")
+        cols = [row[1] for row in await cursor.fetchall()]
+        if "passive_decay_at" in cols:
+            return
+        await self.conn.execute(
+            "ALTER TABLE boss_sessions ADD COLUMN passive_decay_at REAL",
+        )
+        await self.conn.execute(
+            """
+            UPDATE boss_sessions
+            SET passive_decay_at = spawned_at
+            WHERE passive_decay_at IS NULL
+            """,
+        )
         await self.conn.commit()
 
     async def _load_config_no_lock(self, guild_id: int) -> dict[str, float]:
@@ -1515,6 +1561,64 @@ class Database:
         )
         return await cursor.fetchone()
 
+    async def _apply_passive_decay_to_row_unlocked(
+        self,
+        guild_id: int,
+        boss: Any,
+    ) -> Any | None:
+        """Advance passive boss decay within the current DB transaction."""
+        now = time.time()
+        max_hp = float(boss["max_hp"])
+        hp = float(boss["hp"])
+        spawned_at = float(boss["spawned_at"])
+        try:
+            pd_raw = boss["passive_decay_at"]
+        except (KeyError, TypeError):
+            pd_raw = None
+        checkpoint = float(pd_raw) if pd_raw is not None else spawned_at
+        elapsed = now - checkpoint
+        whole_minutes = int(elapsed // 60)
+        if whole_minutes <= 0:
+            return boss
+        decay_amount = (
+            whole_minutes * config.BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE * max_hp
+        )
+        new_hp = max(0.0, hp - decay_amount)
+        new_checkpoint = checkpoint + whole_minutes * 60.0
+        await self.conn.execute(
+            """
+            UPDATE boss_sessions
+            SET hp = ?, passive_decay_at = ?
+            WHERE guild_id = ?
+            """,
+            (new_hp, new_checkpoint, guild_id),
+        )
+        cursor = await self.conn.execute(
+            "SELECT * FROM boss_sessions WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return await cursor.fetchone()
+
+    async def apply_boss_passive_decay(self, guild_id: int) -> Any | None:
+        """Apply accumulated passive HP decay (commit). Returns boss row or None."""
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    "SELECT * FROM boss_sessions WHERE guild_id = ?",
+                    (guild_id,),
+                )
+                boss = await cursor.fetchone()
+                if boss is None:
+                    await self.conn.rollback()
+                    return None
+                boss = await self._apply_passive_decay_to_row_unlocked(guild_id, boss)
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return boss
+
     async def replace_boss(
         self,
         guild_id: int,
@@ -1527,10 +1631,11 @@ class Database:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
                 await self.conn.execute("DELETE FROM boss_sessions WHERE guild_id = ?", (guild_id,))
+                spawn_ts = time.time() if spawned_at is None else spawned_at
                 await self.conn.execute(
                     """
-                    INSERT INTO boss_sessions (guild_id, name, variant, hp, max_hp, spawned_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO boss_sessions (guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         guild_id,
@@ -1538,7 +1643,8 @@ class Database:
                         variant,
                         hp,
                         hp,
-                        time.time() if spawned_at is None else spawned_at,
+                        spawn_ts,
+                        spawn_ts,
                     ),
                 )
             except Exception:
@@ -1563,6 +1669,13 @@ class Database:
                 if boss is None:
                     await self.conn.rollback()
                     return None
+                boss = await self._apply_passive_decay_to_row_unlocked(guild_id, boss)
+                if boss is None:
+                    await self.conn.rollback()
+                    return None
+                if float(boss["hp"]) <= 0:
+                    await self.conn.commit()
+                    return boss
                 applied = min(float(boss["hp"]), damage)
                 await self.conn.execute(
                     """

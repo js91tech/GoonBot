@@ -90,6 +90,10 @@ LAUNCH_GRANT_WEAPON_ID = "training_stick"
 LAUNCH_GRANT_ARMOR_ID = "cardboard_shield"
 
 BOSS_AUTO_SPAWN_SECONDS = 2 * 60 * 60
+# Fraction of max HP removed per real-time minute while a boss is active (passive anti-stall).
+BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE = 0.01
+BOSS_INFERIOR_DROP_CHANCE = 0.38
+BOSS_EPIC_DROP_CHANCE = 0.03
 BOSS_MIN_HP = 500.0
 BOSS_CIRCULATION_HP_FACTOR = 0.02
 BOSS_HP_CAP = 15_000.0
