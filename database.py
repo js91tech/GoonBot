@@ -545,7 +545,7 @@ class Database:
                         INSERT INTO inventory (guild_id, user_id, item_id, quantity)
                         VALUES (?, ?, ?, 1)
                         ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                            quantity = quantity + 1
+                            quantity = inventory.quantity + excluded.quantity
                         """,
                         (guild_id, user_id, item_id),
                     )
@@ -777,7 +777,7 @@ class Database:
                     INSERT INTO inventory (guild_id, user_id, item_id, quantity)
                     VALUES (?, ?, ?, 1)
                     ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                        quantity = quantity + 1
+                        quantity = inventory.quantity + excluded.quantity
                     """,
                     (guild_id, user_id, item_id),
                 )
@@ -899,7 +899,7 @@ class Database:
                     INSERT INTO inventory (guild_id, user_id, item_id, quantity)
                     VALUES (?, ?, ?, 1)
                     ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                        quantity = quantity + 1
+                        quantity = inventory.quantity + excluded.quantity
                     """,
                     (guild_id, user_id, item_id),
                 )
