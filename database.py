@@ -5,6 +5,7 @@ import logging
 import socket
 import time
 from collections.abc import Iterable
+from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,20 @@ import aiosqlite
 import asyncpg
 
 import config
+
+
+def _spendable_cents(value: object) -> int:
+    """Floor wallet/price to cents for comparisons (avoids float vs shop integer prices)."""
+    if isinstance(value, Decimal):
+        d = value
+    elif isinstance(value, int) and not isinstance(value, bool):
+        d = Decimal(value)
+    elif isinstance(value, float):
+        d = Decimal(repr(value))
+    else:
+        d = Decimal(str(value))
+    d = d.quantize(Decimal("0.01"), rounding=ROUND_FLOOR)
+    return int(d * 100)
 
 
 class PostgresCursor:
@@ -746,7 +761,7 @@ class Database:
                     (user_id, guild_id),
                 )
                 row = await cursor.fetchone()
-                if row is None or float(row["wallet"]) < price:
+                if row is None or _spendable_cents(row["wallet"]) < _spendable_cents(price):
                     await self.conn.rollback()
                     return False
                 await self.conn.execute(
