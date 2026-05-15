@@ -183,8 +183,8 @@ class Database:
         await self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER NOT NULL,
-                guild_id INTEGER NOT NULL,
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
                 wallet REAL NOT NULL DEFAULT 0 CHECK (wallet >= 0),
                 last_daily REAL NOT NULL DEFAULT 0,
                 last_heist REAL NOT NULL DEFAULT 0,
@@ -198,31 +198,31 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS bounties (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id INTEGER NOT NULL,
-                placer_id INTEGER NOT NULL,
-                target_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                placer_id BIGINT NOT NULL,
+                target_id BIGINT NOT NULL,
                 amount REAL NOT NULL CHECK (amount > 0),
                 trigger_word TEXT NOT NULL,
                 created_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS hacker_pots (
-                guild_id INTEGER PRIMARY KEY,
-                holder_id INTEGER NOT NULL,
+                guild_id BIGINT PRIMARY KEY,
+                holder_id BIGINT NOT NULL,
                 pass_count INTEGER NOT NULL DEFAULT 0 CHECK (pass_count >= 0),
                 started_at REAL NOT NULL,
                 expires_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS hacker_cooldowns (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 last_hack REAL NOT NULL,
                 PRIMARY KEY (guild_id, user_id)
             );
 
             CREATE TABLE IF NOT EXISTS boss_sessions (
-                guild_id INTEGER PRIMARY KEY,
+                guild_id BIGINT PRIMARY KEY,
                 name TEXT NOT NULL,
                 variant TEXT NOT NULL,
                 hp REAL NOT NULL CHECK (hp >= 0),
@@ -231,8 +231,8 @@ class Database:
             );
 
             CREATE TABLE IF NOT EXISTS boss_damage (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 damage REAL NOT NULL DEFAULT 0 CHECK (damage >= 0),
                 PRIMARY KEY (guild_id, user_id),
                 FOREIGN KEY (guild_id) REFERENCES boss_sessions(guild_id) ON DELETE CASCADE
@@ -240,31 +240,31 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS boss_heals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id INTEGER NOT NULL,
-                healer_id INTEGER NOT NULL,
-                target_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                healer_id BIGINT NOT NULL,
+                target_id BIGINT NOT NULL,
                 created_at REAL NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS inventory (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 item_id TEXT NOT NULL,
                 quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
                 PRIMARY KEY (guild_id, user_id, item_id)
             );
 
             CREATE TABLE IF NOT EXISTS equipment (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 slot TEXT NOT NULL CHECK (slot IN ('weapon', 'armor')),
                 item_id TEXT NOT NULL,
                 PRIMARY KEY (guild_id, user_id, slot)
             );
 
             CREATE TABLE IF NOT EXISTS combat_state (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 hp REAL NOT NULL CHECK (hp >= 0),
                 max_hp REAL NOT NULL CHECK (max_hp > 0),
                 PRIMARY KEY (guild_id, user_id)
@@ -277,14 +277,14 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS one_time_member_jobs (
                 job_id TEXT NOT NULL,
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
                 completed_at REAL NOT NULL,
                 PRIMARY KEY (job_id, guild_id, user_id)
             );
 
             CREATE TABLE IF NOT EXISTS guild_config (
-                guild_id INTEGER NOT NULL,
+                guild_id BIGINT NOT NULL,
                 setting TEXT NOT NULL,
                 value REAL NOT NULL,
                 updated_at REAL NOT NULL,
@@ -297,6 +297,71 @@ class Database:
                 ON bounties(guild_id);
             """
         )
+        await self.conn.commit()
+        if self.is_postgres:
+            await self._migrate_postgres_discord_snowflakes_to_bigint()
+
+    async def _migrate_postgres_discord_snowflakes_to_bigint(self) -> None:
+        """Upgrade legacy int4 columns so Discord snowflake IDs bind correctly under asyncpg."""
+        cursor = await self.conn.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'users'
+              AND column_name = 'user_id'
+            """,
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return
+        if str(row["data_type"]).lower() == "bigint":
+            return
+
+        logging.info("Migrating Postgres Discord ID columns from INTEGER to BIGINT")
+        cursor_fk = await self.conn.execute(
+            """
+            SELECT conname
+            FROM pg_constraint
+            WHERE conrelid = 'boss_damage'::regclass AND contype = 'f'
+            """,
+        )
+        for fk_row in await cursor_fk.fetchall():
+            cname = str(fk_row["conname"]).replace('"', '""')
+            await self.conn.execute(f'ALTER TABLE boss_damage DROP CONSTRAINT "{cname}"')
+
+        alters = [
+            "ALTER TABLE users ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE users ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE bounties ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE bounties ALTER COLUMN placer_id TYPE BIGINT",
+            "ALTER TABLE bounties ALTER COLUMN target_id TYPE BIGINT",
+            "ALTER TABLE hacker_pots ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE hacker_pots ALTER COLUMN holder_id TYPE BIGINT",
+            "ALTER TABLE hacker_cooldowns ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE hacker_cooldowns ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE boss_sessions ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE boss_damage ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE boss_damage ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE boss_heals ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE boss_heals ALTER COLUMN healer_id TYPE BIGINT",
+            "ALTER TABLE boss_heals ALTER COLUMN target_id TYPE BIGINT",
+            "ALTER TABLE inventory ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE inventory ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE equipment ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE equipment ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE combat_state ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE combat_state ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE one_time_member_jobs ALTER COLUMN guild_id TYPE BIGINT",
+            "ALTER TABLE one_time_member_jobs ALTER COLUMN user_id TYPE BIGINT",
+            "ALTER TABLE guild_config ALTER COLUMN guild_id TYPE BIGINT",
+            (
+                "ALTER TABLE boss_damage ADD CONSTRAINT boss_damage_guild_id_fkey "
+                "FOREIGN KEY (guild_id) REFERENCES boss_sessions(guild_id) ON DELETE CASCADE"
+            ),
+        ]
+        for sql in alters:
+            await self.conn.execute(sql)
         await self.conn.commit()
 
     async def _load_config_no_lock(self, guild_id: int) -> dict[str, float]:
