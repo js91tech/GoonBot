@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import time
@@ -15,6 +16,7 @@ COIN_DROP_INTERVAL_MINUTES = 30
 COIN_DROP_MIN_TYPERS = 3
 COIN_DROP_MIN_AMOUNT = 15
 COIN_DROP_MAX_AMOUNT = 250
+COIN_DROP_CLAIM_SECONDS = 120
 
 
 def _coin_drop_channel(guild: discord.Guild) -> discord.abc.Messageable | None:
@@ -29,6 +31,71 @@ def _coin_drop_channel(guild: discord.Guild) -> discord.abc.Messageable | None:
         if channel.permissions_for(bot_member).send_messages:
             return channel
     return None
+
+
+class CoinDropView(discord.ui.View):
+    """First click wins within ``timeout``; prize is credited on successful claim."""
+
+    def __init__(self, bot: commands.Bot, guild_id: int, amount: float) -> None:
+        super().__init__(timeout=float(COIN_DROP_CLAIM_SECONDS))
+        self.bot = bot
+        self.guild_id = guild_id
+        self.amount = amount
+        self._claimed = False
+        self._claim_lock = asyncio.Lock()
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is None:
+            return
+        try:
+            await self.message.edit(
+                content=(
+                    f"**Coin drop expired.** Nobody claimed **{fmt_amount(self.amount)}** in "
+                    f"{COIN_DROP_CLAIM_SECONDS} seconds."
+                ),
+                view=self,
+            )
+        except (discord.HTTPException, discord.NotFound):
+            logging.exception("Coin drop: timeout edit failed guild %s", self.guild_id)
+
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success)
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message(
+                "This drop is not in your server.", ephemeral=True
+            )
+            return
+        if not isinstance(interaction.user, discord.Member) or interaction.user.bot:
+            await interaction.response.send_message("You cannot claim this.", ephemeral=True)
+            return
+
+        async with self._claim_lock:
+            if self._claimed:
+                await interaction.response.send_message(
+                    "Someone already claimed this drop.", ephemeral=True
+                )
+                return
+            if await self.bot.db.is_restricted(interaction.user.id, self.guild_id):
+                await interaction.response.send_message(
+                    "You cannot claim rewards right now.", ephemeral=True
+                )
+                return
+            await self.bot.db.credit_wallet(interaction.user.id, self.guild_id, self.amount)
+            self._claimed = True
+            for item in self.children:
+                item.disabled = True
+            assert interaction.message is not None
+            await interaction.response.edit_message(
+                content=(
+                    f"**Coin drop claimed!** {interaction.user.mention} grabbed **{fmt_amount(self.amount)}**!"
+                ),
+                allowed_mentions=discord.AllowedMentions(users=[interaction.user]),
+                view=self,
+            )
+            self.stop()
 
 
 class Economy(commands.Cog):
@@ -69,31 +136,18 @@ class Economy(commands.Cog):
             typers = self.coin_drop_typers.pop(guild.id, set())
             if len(typers) < COIN_DROP_MIN_TYPERS:
                 continue
-            eligible = [uid for uid in typers if not await self.bot.db.is_restricted(uid, guild.id)]
-            if not eligible:
-                continue
-            winner_id = random.choice(eligible)
             amount = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
-            await self.bot.db.credit_wallet(winner_id, guild.id, amount)
             channel = _coin_drop_channel(guild)
             if channel is None:
                 logging.warning("Coin drop: no channel to announce in guild %s", guild.id)
                 continue
-            winner_member = guild.get_member(winner_id)
-            if winner_member is not None:
-                body = (
-                    f"**Random coin drop!** {winner_member.mention} found **{fmt_amount(amount)}** "
-                    f"in the couch cushions."
-                )
-                mentions = discord.AllowedMentions(users=[winner_member])
-            else:
-                body = (
-                    f"**Random coin drop!** <@{winner_id}> found **{fmt_amount(amount)}** "
-                    f"in the couch cushions."
-                )
-                mentions = discord.AllowedMentions.none()
+            body = (
+                f"**Random coin drop!** **{fmt_amount(amount)}** are up for grabs—"
+                f"**first to claim** wins. Anyone can press **Claim** for **{COIN_DROP_CLAIM_SECONDS}** seconds!"
+            )
+            view = CoinDropView(self.bot, guild.id, amount)
             try:
-                await channel.send(body, allowed_mentions=mentions)
+                await channel.send(body, view=view)
             except discord.HTTPException:
                 logging.exception("Coin drop: failed to send in guild %s", guild.id)
 
