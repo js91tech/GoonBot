@@ -116,7 +116,7 @@ class Shop(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        shop_item = get_item(item)
+        shop_item = get_item(item.strip())
         if shop_item is None:
             await interaction.response.send_message(
                 "Unknown item. Use autocomplete or `/shop`.", ephemeral=True
@@ -189,7 +189,7 @@ class Shop(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        shop_item = get_item(item)
+        shop_item = get_item(item.strip())
         if shop_item is None:
             await interaction.response.send_message(
                 "Unknown item. Use autocomplete or `/inventory`.", ephemeral=True
@@ -223,7 +223,7 @@ class Shop(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        shop_item = get_item(item)
+        shop_item = get_item(item.strip())
         if shop_item is None:
             await interaction.response.send_message(
                 "Unknown item. Use autocomplete or `/inventory`.", ephemeral=True

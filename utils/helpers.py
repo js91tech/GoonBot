@@ -17,7 +17,25 @@ def now() -> float:
 
 
 def fmt_amount(amount: float) -> str:
-    value = f"{int(amount):,}" if amount == int(amount) else f"{amount:,.1f}"
+    """Format nugget amounts for display.
+
+    Positive fractional balances use one decimal place **rounded down** toward zero
+    so we never show ``250.0`` when the float is still slightly below ``250`` (which
+    would make ``/buy`` look broken next to ``/balance``).
+    """
+    if not math.isfinite(amount):
+        return f"0 {config.CURRENCY_EMOJI}"
+    if amount == int(amount):
+        value = f"{int(amount):,}"
+    elif amount > 0:
+        floored_tenth = math.floor(amount * 10) / 10
+        value = (
+            f"{int(floored_tenth):,}"
+            if floored_tenth == int(floored_tenth)
+            else f"{floored_tenth:,.1f}"
+        )
+    else:
+        value = f"{amount:,.1f}"
     return f"{value} {config.CURRENCY_EMOJI}"
 
 
