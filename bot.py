@@ -12,6 +12,7 @@ import config
 from dashboard import DashboardServer
 from database import Database
 from launch_jobs import run_launch_grant
+from utils.discord_api import OutboundGate, safe_interaction_send
 
 COGS = (
     "cogs.economy",
@@ -84,16 +85,25 @@ class NuggetBot(commands.Bot):
         elif isinstance(error, app_commands.NoPrivateMessage):
             message = "This command can only be used inside a server."
         else:
-            logging.error(
-                "Unhandled app command error",
-                exc_info=(type(error), error, error.__traceback__),
-            )
-            message = "Something went wrong while running that command."
+            original = getattr(error, "original", error)
+            if isinstance(original, discord.HTTPException) and original.status == 429:
+                message = (
+                    "Discord is temporarily rate-limiting this bot. "
+                    "Please wait a minute and try again."
+                )
+            else:
+                logging.error(
+                    "Unhandled app command error",
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+                message = "Something went wrong while running that command."
 
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
+        await safe_interaction_send(
+            interaction,
+            message,
+            ephemeral=True,
+            gate=self.outbound_gate,
+        )
 
 
 async def main() -> None:
@@ -104,8 +114,24 @@ async def main() -> None:
         msg = "DISCORD_TOKEN must be set in the environment"
         raise RuntimeError(msg)
 
-    async with NuggetBot() as bot:
-        await bot.start(token)
+    backoff = config.DISCORD_LOGIN_BACKOFF_SECONDS
+    attempt = 0
+    while True:
+        try:
+            async with NuggetBot() as bot:
+                await bot.start(token)
+            return
+        except discord.HTTPException as exc:
+            if exc.status != 429:
+                raise
+            delay = backoff[min(attempt, len(backoff) - 1)]
+            attempt += 1
+            logging.warning(
+                "Discord global rate limit during login; waiting %ss before retry (attempt %s)",
+                delay,
+                attempt,
+            )
+            await asyncio.sleep(delay)
 
 
 if __name__ == "__main__":
