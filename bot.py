@@ -40,6 +40,7 @@ class NuggetBot(commands.Bot):
         )
         self.db = Database(config.DATABASE_PATH)
         self.dashboard = DashboardServer(self)
+        self.outbound_gate = OutboundGate(config.DISCORD_OUTBOUND_MIN_INTERVAL_SEC)
         self._launch_jobs_started = False
 
     async def setup_hook(self) -> None:

@@ -74,10 +74,10 @@ def unique_member_ids(members: Iterable[discord.Member]) -> set[int]:
 
 
 async def send_error(interaction: discord.Interaction, message: str) -> None:
-    if interaction.response.is_done():
-        await interaction.followup.send(message, ephemeral=True)
-    else:
-        await interaction.response.send_message(message, ephemeral=True)
+    from utils.discord_api import safe_interaction_send
+
+    gate = getattr(getattr(interaction, "client", None), "outbound_gate", None)
+    await safe_interaction_send(interaction, message, ephemeral=True, gate=gate)
 
 
 def guild_only_message() -> str:
