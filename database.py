@@ -1561,6 +1561,11 @@ class Database:
         )
         return await cursor.fetchone()
 
+    async def list_active_boss_guild_ids(self) -> list[int]:
+        cursor = await self.conn.execute("SELECT guild_id FROM boss_sessions")
+        rows = await cursor.fetchall()
+        return [int(row[0]) for row in rows]
+
     async def _apply_passive_decay_to_row_unlocked(
         self,
         guild_id: int,

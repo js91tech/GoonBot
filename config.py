@@ -92,8 +92,16 @@ LAUNCH_GRANT_ARMOR_ID = "cardboard_shield"
 BOSS_AUTO_SPAWN_SECONDS = 2 * 60 * 60
 # Fraction of max HP removed per real-time minute while a boss is active (passive anti-stall).
 BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE = 0.01
+# How often to run the passive decay job (decay math still uses whole minutes).
+BOSS_PASSIVE_DECAY_TICK_SECONDS = 120
 BOSS_INFERIOR_DROP_CHANCE = 0.38
 BOSS_EPIC_DROP_CHANCE = 0.03
+# Minimum spacing between automated channel posts (coin drops, boss embeds, etc.).
+DISCORD_OUTBOUND_MIN_INTERVAL_SEC = 1.25
+# Pause between guilds in background loops that may post to Discord.
+BACKGROUND_GUILD_PAUSE_SECONDS = 1.0
+# Backoff when login/start hits a global 429 (seconds per attempt).
+DISCORD_LOGIN_BACKOFF_SECONDS: tuple[int, ...] = (60, 120, 300, 600, 900)
 BOSS_MIN_HP = 500.0
 BOSS_CIRCULATION_HP_FACTOR = 0.02
 BOSS_HP_CAP = 15_000.0

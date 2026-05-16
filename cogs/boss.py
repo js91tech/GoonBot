@@ -19,6 +19,7 @@ from items import (
     armor_mitigation_percent,
     get_item,
 )
+from utils.discord_api import safe_channel_send, safe_interaction_send
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel
 
 BOSS_NAME = "Hannah"
@@ -122,10 +123,15 @@ class Boss(commands.Cog):
                 "if nobody is attacking."
             )
         )
-        try:
-            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-        except discord.HTTPException:
-            logging.exception("Boss spawn embed failed in guild %s", guild.id)
+        gate = getattr(self.bot, "outbound_gate", None)
+        sent = await safe_channel_send(
+            channel,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+            gate=gate,
+        )
+        if sent is None:
+            logging.warning("Boss spawn embed not sent in guild %s", guild.id)
 
     async def _send_boss_defeat_embed(
         self,
@@ -160,10 +166,15 @@ class Boss(commands.Cog):
                 value="\n".join(gear_lines[:12]),
                 inline=False,
             )
-        try:
-            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-        except discord.HTTPException:
-            logging.exception("Boss defeat embed failed in guild %s", guild.id)
+        gate = getattr(self.bot, "outbound_gate", None)
+        sent = await safe_channel_send(
+            channel,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+            gate=gate,
+        )
+        if sent is None:
+            logging.warning("Boss defeat embed not sent in guild %s", guild.id)
 
     def _display_name(self, guild: discord.Guild, user_id: int) -> str:
         member = guild.get_member(user_id)
@@ -271,9 +282,11 @@ class Boss(commands.Cog):
                     f"{BOSS_NAME} finally collapsed from battle fatigue. "
                     f"Payouts and drops are in {place}."
                 )
-            await interaction.response.send_message(
+            await safe_interaction_send(
+                interaction,
                 msg,
                 allowed_mentions=discord.AllowedMentions.none(),
+                gate=getattr(self.bot, "outbound_gate", None),
             )
 
     async def _gear(self, user_id: int, guild_id: int) -> tuple[ShopItem | None, ShopItem | None]:
@@ -358,15 +371,24 @@ class Boss(commands.Cog):
     async def before_auto_spawn(self) -> None:
         await self.bot.wait_until_ready()
 
-    @tasks.loop(seconds=60)
+    @tasks.loop(seconds=config.BOSS_PASSIVE_DECAY_TICK_SECONDS)
     async def passive_boss_decay_tick(self) -> None:
-        for guild in self.bot.guilds:
-            boss = await self.bot.db.apply_boss_passive_decay(guild.id)
+        guild_ids = await self.bot.db.list_active_boss_guild_ids()
+        if not guild_ids:
+            return
+        pause = config.BACKGROUND_GUILD_PAUSE_SECONDS
+        for guild_id in guild_ids:
+            guild = self.bot.get_guild(guild_id)
+            if guild is None:
+                continue
+            boss = await self.bot.db.apply_boss_passive_decay(guild_id)
             if boss is None:
                 continue
             if float(boss["hp"]) > 0:
                 continue
             await self._complete_boss_defeat(guild, interaction=None, killer_user_id=None)
+            if pause > 0:
+                await asyncio.sleep(pause)
 
     @passive_boss_decay_tick.before_loop
     async def before_passive_boss_decay_tick(self) -> None:
