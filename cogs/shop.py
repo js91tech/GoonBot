@@ -13,6 +13,7 @@ from items import (
     ShopItem,
     get_item,
     items_for_category,
+    sell_refund_for_item,
 )
 from utils.loadout import parse_loadout
 from utils.gear_sets import detect_set_bonus
@@ -22,7 +23,11 @@ from utils.stats import compute_combat_stats, format_combat_stats_block, format_
 
 
 def _item_line(item: ShopItem) -> str:
-    return f"`{item.id}` - **{item.name}** ({fmt_amount(item.price)}): {format_item_stats(item)}"
+    refund = sell_refund_for_item(item)
+    price_bits = [f"buy {fmt_amount(item.price)}"]
+    if refund is not None:
+        price_bits.append(f"sell {fmt_amount(refund)}")
+    return f"`{item.id}` - **{item.name}** ({', '.join(price_bits)}): {format_item_stats(item)}"
 
 
 class Shop(commands.Cog):
@@ -81,8 +86,13 @@ class Shop(commands.Cog):
             if current_lower not in item.id.lower() and current_lower not in item.name.lower():
                 continue
             qty = int(row["quantity"])
+            refund = sell_refund_for_item(item)
+            refund_text = fmt_amount(refund) if refund is not None else "?"
             choices.append(
-                app_commands.Choice(name=f"{item.name} x{qty} ({item.id})", value=item.id),
+                app_commands.Choice(
+                    name=f"{item.name} x{qty} → {refund_text}",
+                    value=item.id,
+                ),
             )
             if len(choices) >= 25:
                 break
@@ -381,13 +391,26 @@ class Shop(commands.Cog):
                 "Unknown item. Use autocomplete or `/inventory`.", ephemeral=True
             )
             return
-        if shop_item.price <= 0:
+        refund_amount = sell_refund_for_item(shop_item)
+        if refund_amount is None:
             await interaction.response.send_message("You cannot sell starter gear.", ephemeral=True)
             return
 
-        refund = max(1, int(shop_item.price // 2))
+        rows = await self.bot.db.get_inventory(interaction.user.id, interaction.guild_id)
+        owned_qty = 0
+        for row in rows:
+            if str(row["item_id"]) == shop_item.id:
+                owned_qty = int(row["quantity"])
+                break
+        if owned_qty <= 0:
+            await interaction.response.send_message(
+                "You do not have that item to sell.", ephemeral=True
+            )
+            return
+
+        total_if_all = refund_amount * owned_qty
         sold = await self.bot.db.sell_one_item(
-            interaction.user.id, interaction.guild_id, shop_item.id, refund
+            interaction.user.id, interaction.guild_id,             shop_item.id, refund_amount
         )
         if not sold:
             await interaction.response.send_message(
@@ -404,8 +427,14 @@ class Shop(commands.Cog):
                 max_hp += float(armor_item.hp_bonus)
         await self.bot.db.sync_combat_hp(interaction.user.id, interaction.guild_id, max_hp)
 
+        extra = ""
+        if owned_qty > 1:
+            extra = (
+                f"\nYou still have **{owned_qty - 1}** left "
+                f"({fmt_amount(refund_amount)} each, {fmt_amount(total_if_all - refund_amount)} if you sold all)."
+            )
         await interaction.response.send_message(
-            f"Sold **{shop_item.name}** for {fmt_amount(float(refund))}.",
+            f"Sold **{shop_item.name}** for **{fmt_amount(refund_amount)}**.{extra}",
             ephemeral=True,
         )
 
@@ -422,9 +451,11 @@ class Shop(commands.Cog):
             equipped = " (armor)"
         else:
             equipped = ""
+        refund = sell_refund_for_item(item)
+        sell_note = f" · sell {fmt_amount(refund)}/ea" if refund is not None else ""
         return (
             f"**{item.name}** x{quantity}{equipped}\n"
-            f"└ {format_item_stats(item)} · `{item.id}`"
+            f"└ {format_item_stats(item)}{sell_note} · `{item.id}`"
         )
 
     @staticmethod

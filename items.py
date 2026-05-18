@@ -317,6 +317,13 @@ def get_item(item_id: str) -> ShopItem | None:
     return ITEMS.get(item_id)
 
 
+def sell_refund_for_item(item: ShopItem) -> float | None:
+    """Nuggets received when selling one copy (half shop price, minimum 1)."""
+    if item.price <= 0:
+        return None
+    return float(max(1, int(item.price // 2)))
+
+
 def armor_mitigation_percent(power: int) -> int:
     return int(round(100 * power / (power + 100)))
 
