@@ -26,6 +26,7 @@ COGS = (
     "cogs.trivia",
     "cogs.gambling",
     "cogs.quests",
+    "cogs.duels",
     "cogs.admin",
 )
 

@@ -189,7 +189,10 @@ class DashboardServer:
         if self.bot.get_guild(guild_id) is None:
             return web.json_response({"error": "guild not found"}, status=404)
         return web.json_response(
-            {"settings": await self._economy_settings_payload(guild_id)}
+            {
+                "economy_settings": await self._economy_settings_payload(guild_id),
+                "duel_settings": await self._duel_settings_payload(guild_id),
+            }
         )
 
     async def api_update_config(self, request: web.Request) -> web.Response:
@@ -216,7 +219,7 @@ class DashboardServer:
 
         updated: dict[str, float] = {}
         for key, raw in settings_payload.items():
-            if key not in config.ECONOMY_TUNING_SETTINGS:
+            if key not in config.DASHBOARD_SLIDER_SETTINGS:
                 continue
             try:
                 value = float(raw)
@@ -231,15 +234,18 @@ class DashboardServer:
             {
                 "ok": True,
                 "updated": updated,
-                "settings": await self._economy_settings_payload(guild_id),
+                "economy_settings": await self._economy_settings_payload(guild_id),
+                "duel_settings": await self._duel_settings_payload(guild_id),
             }
         )
 
-    async def _economy_settings_payload(self, guild_id: int) -> list[dict[str, Any]]:
+    async def _settings_payload(
+        self, guild_id: int, keys: tuple[str, ...]
+    ) -> list[dict[str, Any]]:
         values = await self.bot.db.get_config_values(guild_id)
         custom = await self.bot.db.custom_config_names(guild_id)
         rows: list[dict[str, Any]] = []
-        for key in config.ECONOMY_TUNING_SETTINGS:
+        for key in keys:
             spec = config.LIVE_SETTINGS[key]
             maximum = spec.maximum
             if maximum is None:
@@ -256,6 +262,12 @@ class DashboardServer:
                 }
             )
         return rows
+
+    async def _economy_settings_payload(self, guild_id: int) -> list[dict[str, Any]]:
+        return await self._settings_payload(guild_id, config.ECONOMY_TUNING_SETTINGS)
+
+    async def _duel_settings_payload(self, guild_id: int) -> list[dict[str, Any]]:
+        return await self._settings_payload(guild_id, config.DUEL_TUNING_SETTINGS)
 
     def _authorized(self, request: web.Request) -> bool:
         header = request.headers.get("X-Dashboard-Token", "")
@@ -290,6 +302,7 @@ class DashboardServer:
             channel_settings = await self.bot.db.get_guild_channel_settings(guild.id)
             hall = await self.bot.db.hall_of_fame_snapshot(guild.id, limit=5)
             economy_settings = await self._economy_settings_payload(guild.id)
+            duel_settings = await self._duel_settings_payload(guild.id)
             snapshots.append(
                 {
                     "id": guild.id,
@@ -336,6 +349,7 @@ class DashboardServer:
                         else None
                     ),
                     "economy_settings": economy_settings,
+                    "duel_settings": duel_settings,
                     "hall_of_fame": self._hall_of_fame_snapshot(guild, hall),
                 }
             )
@@ -512,17 +526,17 @@ class DashboardServer:
                 }}
               }});
             }});
-            document.querySelectorAll(".economy-form").forEach((form) => {{
+            document.querySelectorAll(".tuning-form").forEach((form) => {{
               form.addEventListener("submit", async (event) => {{
                 event.preventDefault();
-                const status = form.querySelector(".economy-status");
+                const status = form.querySelector(".tuning-status");
                 const guildId = form.dataset.guildId;
                 const settings = {{}};
                 form.querySelectorAll("[data-setting-key]").forEach((input) => {{
                   settings[input.dataset.settingKey] = parseFloat(input.value);
                 }});
                 status.textContent = "Saving...";
-                status.className = "economy-status";
+                status.className = "tuning-status";
                 try {{
                   const response = await fetch(`/api/guild/${{guildId}}/config`, {{
                     method: "POST",
@@ -532,14 +546,14 @@ class DashboardServer:
                   const data = await response.json();
                   if (!response.ok) {{
                     status.textContent = data.error || "Save failed";
-                    status.className = "economy-status error";
+                    status.className = "tuning-status error";
                     return;
                   }}
-                  status.textContent = "Economy settings saved.";
-                  status.className = "economy-status ok";
+                  status.textContent = "Saved.";
+                  status.className = "tuning-status ok";
                 }} catch (err) {{
                   status.textContent = "Network error";
-                  status.className = "economy-status error";
+                  status.className = "tuning-status error";
                 }}
               }});
             }});
@@ -614,12 +628,20 @@ class DashboardServer:
         hof_kills = self._hof_list(hof.get("boss_kills", []))
         hof_heals = self._hof_list(hof.get("heals", []))
         hof_ach = self._hof_list(hof.get("achievements", []))
-        economy_sliders = self._economy_form_sliders(item.get("economy_settings", []))
+        economy_sliders = self._tuning_form_sliders(item.get("economy_settings", []))
         economy_form = f"""
-          <form class="economy-form" data-guild-id="{item['id']}">
+          <form class="economy-form tuning-form" data-guild-id="{item['id']}">
             {economy_sliders}
             <button type="submit">Save economy tuning</button>
-            <p class="economy-status" aria-live="polite"></p>
+            <p class="economy-status tuning-status" aria-live="polite"></p>
+          </form>
+        """
+        duel_sliders = self._tuning_form_sliders(item.get("duel_settings", []))
+        duel_form = f"""
+          <form class="duel-form tuning-form" data-guild-id="{item['id']}">
+            {duel_sliders}
+            <button type="submit">Save duel tuning</button>
+            <p class="duel-status tuning-status" aria-live="polite"></p>
           </form>
         """
         seasonal = item.get("seasonal_event")
@@ -653,6 +675,8 @@ class DashboardServer:
           {channel_form}
           <h3>Economy tuning</h3>
           {economy_form}
+          <h3>Duel tuning</h3>
+          {duel_form}
           <h3>Hall of fame</h3>
           <div class="hof-grid">
               <div><p class="hof-title">Richest</p><ol class="leaderboard">{hof_richest}</ol></div>
@@ -683,7 +707,7 @@ class DashboardServer:
         return "".join(parts)
 
     @staticmethod
-    def _economy_form_sliders(settings: list[dict[str, Any]]) -> str:
+    def _tuning_form_sliders(settings: list[dict[str, Any]]) -> str:
         parts: list[str] = []
         for row in settings:
             key = str(row["key"])
@@ -693,12 +717,21 @@ class DashboardServer:
             maximum = float(row["maximum"])
             default = float(row["default"])
             custom = "custom" if row.get("is_custom") else "default"
-            if key.endswith("_chance") or key == "gambling_house_tax":
+            if key == "duel_loss_fraction":
+                step = 0.01
+                display = f"{int(round(value * 100))}%"
+            elif key == "duel_same_target_cooldown_seconds":
+                step = 60
+                display = f"{int(value // 60)} min"
+            elif key.endswith("_chance") or key in ("gambling_house_tax",):
                 step = 0.001
                 display = f"{value:.3g}"
             elif key == "prestige_min_wallet":
                 step = 1000
                 display = f"{int(value):,}"
+            elif key == "duel_max_attacks_per_hour":
+                step = 1
+                display = f"{int(value)}"
             else:
                 step = 0.01 if maximum <= 10 else 1
                 display = f"{value:g}"
@@ -949,7 +982,7 @@ class DashboardServer:
             }}
             .channel-status.ok {{ color: #9dffb8; }}
             .channel-status.error {{ color: #ff9a9a; }}
-            .economy-form {{
+            .economy-form, .duel-form, .tuning-form {{
               display: grid;
               gap: 12px;
               margin-bottom: 18px;
@@ -969,13 +1002,13 @@ class DashboardServer:
               width: 100%;
               accent-color: var(--gold);
             }}
-            .economy-status {{
+            .economy-status, .duel-status, .tuning-status {{
               margin: 0;
               font-size: 0.85rem;
               color: var(--muted);
             }}
-            .economy-status.ok {{ color: #9dffb8; }}
-            .economy-status.error {{ color: #ff9a9a; }}
+            .economy-status.ok, .duel-status.ok, .tuning-status.ok {{ color: #9dffb8; }}
+            .economy-status.error, .duel-status.error, .tuning-status.error {{ color: #ff9a9a; }}
             .hof-grid {{
               display: grid;
               grid-template-columns: repeat(2, 1fr);

@@ -159,6 +159,11 @@ GAMBLING_MIN_BET = 10.0
 GAMBLING_MAX_BET = 50_000.0
 GAMBLING_HOUSE_TAX = 0.05
 
+DUEL_LOSS_FRACTION = 0.10
+DUEL_SAME_TARGET_COOLDOWN_SECONDS = 40 * 60
+DUEL_MAX_ATTACKS_PER_HOUR = 3
+DUEL_MAX_COMBAT_ROUNDS = 25
+
 SEASONAL_EVENT_TYPES: tuple[str, ...] = (
     "double_drops",
     "bonus_income",
@@ -256,6 +261,25 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
         "Tax on gambling winnings",
         maximum=0.5,
     ),
+    "duel_loss_fraction": LiveSetting(
+        DUEL_LOSS_FRACTION,
+        "Loser wallet % paid to winner",
+        minimum=0.01,
+        maximum=0.5,
+    ),
+    "duel_same_target_cooldown_seconds": LiveSetting(
+        DUEL_SAME_TARGET_COOLDOWN_SECONDS,
+        "Cooldown before re-attacking same player",
+        minimum=60,
+        integer=True,
+    ),
+    "duel_max_attacks_per_hour": LiveSetting(
+        DUEL_MAX_ATTACKS_PER_HOUR,
+        "Max duels started per hour",
+        minimum=1,
+        maximum=20,
+        integer=True,
+    ),
 }
 
 
@@ -273,3 +297,11 @@ ECONOMY_TUNING_SETTINGS: tuple[str, ...] = (
     "passive_chat_reward",
     "daily_reward",
 )
+
+DUEL_TUNING_SETTINGS: tuple[str, ...] = (
+    "duel_loss_fraction",
+    "duel_same_target_cooldown_seconds",
+    "duel_max_attacks_per_hour",
+)
+
+DASHBOARD_SLIDER_SETTINGS: tuple[str, ...] = ECONOMY_TUNING_SETTINGS + DUEL_TUNING_SETTINGS

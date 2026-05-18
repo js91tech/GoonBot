@@ -396,6 +396,35 @@ class Database:
         await self._migrate_guild_channel_split()
         await self._migrate_progression_tables()
         await self._migrate_quest_tables()
+        await self._migrate_duel_history()
+
+    async def _migrate_duel_history(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS duel_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id BIGINT NOT NULL,
+                attacker_id BIGINT NOT NULL,
+                defender_id BIGINT NOT NULL,
+                winner_id BIGINT NOT NULL,
+                loot_amount REAL NOT NULL CHECK (loot_amount >= 0),
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        await self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_duel_attacker_time
+            ON duel_history(guild_id, attacker_id, created_at)
+            """
+        )
+        await self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_duel_attacker_defender_time
+            ON duel_history(guild_id, attacker_id, defender_id, created_at)
+            """
+        )
+        await self.conn.commit()
 
     async def _migrate_quest_tables(self) -> None:
         await self.conn.execute(
@@ -2549,3 +2578,146 @@ class Database:
             (guild_id, user_id, track),
         )
         return int(value or 0)
+
+    async def duel_same_target_cooldown_remaining(
+        self,
+        guild_id: int,
+        attacker_id: int,
+        defender_id: int,
+        cooldown_seconds: float,
+        *,
+        at: float | None = None,
+    ) -> float | None:
+        now = time.time() if at is None else at
+        cursor = await self.conn.execute(
+            """
+            SELECT MAX(created_at) AS last_at
+            FROM duel_history
+            WHERE guild_id = ? AND attacker_id = ? AND defender_id = ?
+            """,
+            (guild_id, attacker_id, defender_id),
+        )
+        row = await cursor.fetchone()
+        if row is None or row["last_at"] is None:
+            return None
+        remaining = (float(row["last_at"]) + cooldown_seconds) - now
+        return remaining if remaining > 0 else None
+
+    async def duel_attacks_in_last_hour(
+        self,
+        guild_id: int,
+        attacker_id: int,
+        *,
+        at: float | None = None,
+    ) -> int:
+        now = time.time() if at is None else at
+        value = await self.fetch_value(
+            """
+            SELECT COUNT(*) FROM duel_history
+            WHERE guild_id = ? AND attacker_id = ? AND created_at > ?
+            """,
+            (guild_id, attacker_id, now - 3600),
+        )
+        return int(value or 0)
+
+    async def execute_duel(
+        self,
+        guild_id: int,
+        attacker_id: int,
+        defender_id: int,
+        winner_id: int,
+        *,
+        loss_fraction: float,
+        same_target_cooldown_seconds: float,
+        max_attacks_per_hour: int,
+        timestamp: float | None = None,
+    ) -> tuple[float, float] | None:
+        """Record duel and transfer loot. Returns (loot, loser_wallet) or None if blocked."""
+        if winner_id not in (attacker_id, defender_id):
+            return None
+        loser_id = defender_id if winner_id == attacker_id else attacker_id
+        now = time.time() if timestamp is None else timestamp
+
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self._ensure_user_no_lock(attacker_id, guild_id)
+                await self._ensure_user_no_lock(defender_id, guild_id)
+
+                cursor = await self.conn.execute(
+                    """
+                    SELECT MAX(created_at) AS last_at
+                    FROM duel_history
+                    WHERE guild_id = ? AND attacker_id = ? AND defender_id = ?
+                    """,
+                    (guild_id, attacker_id, defender_id),
+                )
+                row = await cursor.fetchone()
+                if row is not None and row["last_at"] is not None:
+                    remaining = (float(row["last_at"]) + same_target_cooldown_seconds) - now
+                    if remaining > 0:
+                        await self.conn.rollback()
+                        return None
+
+                cursor = await self.conn.execute(
+                    """
+                    SELECT COUNT(*) AS cnt FROM duel_history
+                    WHERE guild_id = ? AND attacker_id = ? AND created_at > ?
+                    """,
+                    (guild_id, attacker_id, now - 3600),
+                )
+                count_row = await cursor.fetchone()
+                if count_row is not None and int(count_row["cnt"]) >= max_attacks_per_hour:
+                    await self.conn.rollback()
+                    return None
+
+                cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (loser_id, guild_id),
+                )
+                loser_row = await cursor.fetchone()
+                if loser_row is None:
+                    await self.conn.rollback()
+                    return None
+                loser_wallet = float(loser_row["wallet"])
+                loot = min(loser_wallet, max(0.0, loser_wallet * loss_fraction))
+
+                if loot > 0:
+                    await self.conn.execute(
+                        """
+                        UPDATE users
+                        SET wallet = wallet - ?
+                        WHERE user_id = ? AND guild_id = ?
+                        """,
+                        (loot, loser_id, guild_id),
+                    )
+                    await self.conn.execute(
+                        """
+                        UPDATE users
+                        SET wallet = wallet + ?,
+                            total_earned = total_earned + ?
+                        WHERE user_id = ? AND guild_id = ?
+                        """,
+                        (loot, loot, winner_id, guild_id),
+                    )
+
+                await self.conn.execute(
+                    """
+                    INSERT INTO duel_history (
+                        guild_id, attacker_id, defender_id, winner_id, loot_amount, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (guild_id, attacker_id, defender_id, winner_id, loot, now),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (loser_id, guild_id),
+            )
+            final = await cursor.fetchone()
+            final_wallet = float(final["wallet"]) if final is not None else 0.0
+            return loot, final_wallet
