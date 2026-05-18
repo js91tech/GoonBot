@@ -3,6 +3,8 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+import config
+
 
 @dataclass(frozen=True)
 class JobDef:
@@ -61,9 +63,9 @@ def get_job(job_id: str) -> JobDef | None:
     return JOBS_BY_ID.get(job_id.lower().strip())
 
 
-def roll_job_payout(job: JobDef) -> float:
-    low = int(job.payout_min)
-    high = int(job.payout_max)
+def roll_job_payout(job: JobDef, *, payout_mult: float = 1.0) -> float:
+    low = int(job.payout_min * config.JOB_PAYOUT_MULTIPLIER * payout_mult)
+    high = int(job.payout_max * config.JOB_PAYOUT_MULTIPLIER * payout_mult)
     if high < low:
         high = low
     return float(random.randint(low, high))

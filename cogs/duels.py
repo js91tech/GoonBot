@@ -12,6 +12,8 @@ from utils.duel_combat import (
     simulate_duel,
 )
 from utils.helpers import fmt_amount, guild_only_message
+from utils.skills import get_skill, spell_buff_from_skill
+from utils.spell_effects import combat_state_from_spell
 
 
 class Duels(commands.Cog):
@@ -88,19 +90,34 @@ class Duels(commands.Cog):
         defender_equipment = await self.bot.db.get_equipment(opponent.id, guild_id)
         attacker_progress = await self.bot.db.get_user_progress(attacker.id, guild_id)
         defender_progress = await self.bot.db.get_user_progress(opponent.id, guild_id)
+        await self.bot.db.ensure_jester_class(attacker.id, guild_id)
+        await self.bot.db.ensure_jester_class(opponent.id, guild_id)
+        attacker_class = await self.bot.db.get_class_id(attacker.id, guild_id)
+        defender_class = await self.bot.db.get_class_id(opponent.id, guild_id)
 
         attacker_fighter = fighter_from_equipment(
             attacker.id,
             attacker.display_name,
             attacker_equipment,
             prestige_level=int(attacker_progress["prestige_level"]),
+            class_id=attacker_class,
         )
         defender_fighter = fighter_from_equipment(
             opponent.id,
             opponent.display_name,
             defender_equipment,
             prestige_level=int(defender_progress["prestige_level"]),
+            class_id=defender_class,
         )
+        for fighter, uid in (
+            (attacker_fighter, attacker.id),
+            (defender_fighter, opponent.id),
+        ):
+            skill_id = await self.bot.db.consume_pending_spell(uid, guild_id)
+            if skill_id:
+                skill = get_skill(skill_id)
+                if skill is not None:
+                    fighter.spell_state = combat_state_from_spell(spell_buff_from_skill(skill))
 
         result = simulate_duel(attacker_fighter, defender_fighter)
         fighters: dict[int, DuelFighter] = {
@@ -123,6 +140,23 @@ class Duels(commands.Cog):
                 ephemeral=True,
             )
             return
+
+        xp_win = config.CLASS_XP_DUEL_WIN
+        xp_loss = config.CLASS_XP_DUEL_LOSS
+        await self.bot.db.add_class_xp(
+            result.winner_id,
+            guild_id,
+            xp_win,
+        )
+        await self.bot.db.add_class_xp(result.loser_id, guild_id, xp_loss)
+
+        jester_lines: list[str] = []
+        for jester_id, victim_id, _ in result.jester_steals:
+            steal = await self.bot.db.jester_steal_wallet(victim_id, jester_id, guild_id)
+            if steal > 0:
+                jester_lines.append(
+                    f"**who me?** <@{jester_id}> pockets **{fmt_amount(steal)}** from <@{victim_id}>!"
+                )
 
         loot, _ = settlement
         winner = attacker if result.winner_id == attacker.id else opponent
@@ -166,6 +200,11 @@ class Duels(commands.Cog):
             embed=embed,
             allowed_mentions=discord.AllowedMentions(users=[attacker, opponent]),
         )
+        for line in jester_lines:
+            await interaction.followup.send(
+                line,
+                allowed_mentions=discord.AllowedMentions.users,
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

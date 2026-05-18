@@ -30,6 +30,12 @@ ITEM_SET_MAP: dict[str, str] = {
     "nugget_excalibur": "nugget",
     "nugget_immortal_plate": "nugget",
     "mythic_aetherplate": "nugget",
+    "apex_nuggetblade": "apex",
+    "apex_aegis": "apex",
+    "sovereign_cleaver": "sovereign",
+    "sovereign_bastion": "sovereign",
+    "transcendent_worldsplitter": "transcendent",
+    "transcendent_carapace": "transcendent",
     "mythic_raid_blade": "mythic",
     "mythic_raid_mail": "mythic",
     "boss_slayer_blade": "slayer",
@@ -52,6 +58,9 @@ SET_DISPLAY_NAMES: dict[str, str] = {
     "nugget": "Nugget Royal",
     "mythic": "Mythic Raid",
     "slayer": "Boss Slayer",
+    "apex": "Apex",
+    "sovereign": "Sovereign",
+    "transcendent": "Transcendent",
 }
 
 

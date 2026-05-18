@@ -401,6 +401,112 @@ class Database:
         await self._migrate_boss_summoned()
         await self._migrate_boss_summoner_id()
         await self._migrate_user_character()
+        await self._migrate_class_system()
+        await self._migrate_boss_class_fields()
+        await self._migrate_mana_system()
+
+    async def _migrate_class_system(self) -> None:
+        cols = [
+            ("class_id", "TEXT"),
+            ("class_xp", "INTEGER NOT NULL DEFAULT 0"),
+            ("master_roots", "TEXT NOT NULL DEFAULT ''"),
+        ]
+        if self.is_postgres:
+            for col, typedef in cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_character' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
+
+    async def _migrate_mana_system(self) -> None:
+        cols = [
+            ("mana", "INTEGER NOT NULL DEFAULT 100"),
+            ("mana_cap", "INTEGER NOT NULL DEFAULT 100"),
+            ("mana_updated_at", "REAL NOT NULL DEFAULT 0"),
+            ("pending_spell", "TEXT"),
+            ("pending_spell_expires", "REAL"),
+            ("heist_spell_bonus", "REAL NOT NULL DEFAULT 0"),
+        ]
+        if self.is_postgres:
+            for col, typedef in cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_character' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
+        now = time.time()
+        await self.conn.execute(
+            """
+            UPDATE user_character
+            SET mana_updated_at = ?
+            WHERE mana_updated_at IS NULL OR mana_updated_at = 0
+            """,
+            (now,),
+        )
+        await self.conn.commit()
+
+    async def _migrate_boss_class_fields(self) -> None:
+        cols = [
+            ("element", "TEXT NOT NULL DEFAULT 'fire'"),
+            ("attack_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("mirrored_variant", "TEXT"),
+        ]
+        if self.is_postgres:
+            for col, typedef in cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'boss_sessions' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE boss_sessions ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(boss_sessions)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE boss_sessions ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
 
     async def _migrate_user_character(self) -> None:
         await self.conn.execute(
@@ -1592,6 +1698,41 @@ class Database:
             raise RuntimeError(msg)
         return row
 
+    async def heal_player(
+        self,
+        user_id: int,
+        guild_id: int,
+        amount: float,
+        max_hp: float,
+    ) -> tuple[float, float]:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT hp, max_hp FROM combat_state
+                    WHERE guild_id = ? AND user_id = ?
+                    """,
+                    (guild_id, user_id),
+                )
+                row = await cursor.fetchone()
+                hp = max_hp if row is None else min(max_hp, float(row["hp"]) + max(0.0, amount))
+                await self.conn.execute(
+                    """
+                    INSERT INTO combat_state (guild_id, user_id, hp, max_hp)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                        hp = excluded.hp,
+                        max_hp = excluded.max_hp
+                    """,
+                    (guild_id, user_id, hp, max_hp),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return hp, max_hp
+
     async def damage_player(
         self,
         user_id: int,
@@ -2163,7 +2304,12 @@ class Database:
         spawned_at: float | None = None,
         *,
         summoner_id: int | None = None,
+        element: str | None = None,
+        mirrored_variant: str | None = None,
     ) -> None:
+        import random
+
+        elem = element or random.choice(config.BOSS_ELEMENTS)
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -2173,9 +2319,10 @@ class Database:
                     """
                     INSERT INTO boss_sessions (
                         guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at,
-                        phases_announced, summoned, summoner_id
+                        phases_announced, summoned, summoner_id,
+                        element, attack_count, mirrored_variant
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, ?)
                     """,
                     (
                         guild_id,
@@ -2186,12 +2333,46 @@ class Database:
                         spawn_ts,
                         spawn_ts,
                         summoner_id,
+                        elem,
+                        mirrored_variant,
                     ),
                 )
             except Exception:
                 await self.conn.rollback()
                 raise
             await self.conn.commit()
+
+    async def increment_boss_attack_count(self, guild_id: int) -> tuple[int, float]:
+        """Returns (attack_count, heal_applied)."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT * FROM boss_sessions WHERE guild_id = ?",
+                (guild_id,),
+            )
+            boss = await cursor.fetchone()
+            if boss is None:
+                return 0, 0.0
+            count = int(boss["attack_count"] or 0) + 1
+            heal_applied = 0.0
+            variant = str(boss["variant"])
+            variant_cfg = config.BOSS_VARIANTS.get(variant, {})
+            every = int(variant_cfg.get("heal_every_attacks", 0))
+            cap = float(variant_cfg.get("heal_amount_cap", 0))
+            hp = float(boss["hp"])
+            max_hp = float(boss["max_hp"])
+            if every > 0 and count % every == 0 and hp < max_hp and cap > 0:
+                heal_applied = min(cap, max_hp - hp)
+                hp += heal_applied
+            await self.conn.execute(
+                """
+                UPDATE boss_sessions
+                SET attack_count = ?, hp = ?
+                WHERE guild_id = ?
+                """,
+                (count, hp, guild_id),
+            )
+            await self.conn.commit()
+            return count, heal_applied
 
     async def damage_boss(
         self,
@@ -2394,8 +2575,205 @@ class Database:
     async def get_user_character(self, user_id: int, guild_id: int) -> aiosqlite.Row:
         async with self._write_lock:
             row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            row = await self._refresh_mana_unlocked(user_id, guild_id, row)
             await self.conn.commit()
             return row
+
+    async def _refresh_mana_unlocked(
+        self,
+        user_id: int,
+        guild_id: int,
+        row: aiosqlite.Row,
+    ) -> aiosqlite.Row:
+        from utils.classes import is_healer_class
+        from utils.mana import apply_mana_time_regen, mana_cap_for_class
+
+        try:
+            raw_mana = row["mana"]
+        except (KeyError, IndexError):
+            return row
+
+        class_id = row["class_id"] if row["class_id"] else None
+        healer = is_healer_class(str(class_id) if class_id else None)
+        cap = mana_cap_for_class(str(class_id) if class_id else None)
+        try:
+            stored_cap = int(row["mana_cap"])
+        except (KeyError, IndexError, TypeError):
+            stored_cap = 0
+        if stored_cap != cap:
+            stored_cap = cap
+        current = int(raw_mana or 0)
+        last_at = float(row["mana_updated_at"] or 0)
+        if last_at <= 0:
+            last_at = time.time()
+            current = cap
+        refreshed, advanced = apply_mana_time_regen(
+            current,
+            cap,
+            last_at,
+            is_healer=healer,
+        )
+        if (
+            refreshed != current
+            or advanced != last_at
+            or stored_cap != int(row["mana_cap"] or 0)
+        ):
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET mana = ?, mana_cap = ?, mana_updated_at = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (refreshed, cap, advanced, user_id, guild_id),
+            )
+            cursor = await self.conn.execute(
+                "SELECT * FROM user_character WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            updated = await cursor.fetchone()
+            if updated is not None:
+                return updated
+        return row
+
+    async def get_mana_snapshot(self, user_id: int, guild_id: int):
+        from utils.classes import is_healer_class
+        from utils.mana import mana_snapshot as snap
+
+        row = await self.get_user_character(user_id, guild_id)
+        class_id = str(row["class_id"]) if row["class_id"] else None
+        return snap(
+            int(row["mana"]),
+            int(row["mana_cap"]),
+            float(row["mana_updated_at"]),
+            is_healer=is_healer_class(class_id),
+        )
+
+    async def spend_mana(self, user_id: int, guild_id: int, amount: int) -> tuple[bool, str]:
+        if amount <= 0:
+            return False, "invalid"
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            row = await self._refresh_mana_unlocked(user_id, guild_id, row)
+            current = int(row["mana"])
+            if current < amount:
+                await self.conn.commit()
+                return False, "mana"
+            await self.conn.execute(
+                """
+                UPDATE user_character SET mana = mana - ? WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, user_id, guild_id),
+            )
+            await self.conn.commit()
+            return True, "ok"
+
+    async def restore_mana_from_damage(
+        self,
+        user_id: int,
+        guild_id: int,
+        damage: int,
+    ) -> int:
+        from utils.classes import is_healer_class
+        from utils.mana import mana_from_damage
+
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            row = await self._refresh_mana_unlocked(user_id, guild_id, row)
+            class_id = str(row["class_id"]) if row["class_id"] else None
+            gain = mana_from_damage(damage, is_healer=is_healer_class(class_id))
+            cap = int(row["mana_cap"])
+            new_mana = min(cap, int(row["mana"]) + gain)
+            await self.conn.execute(
+                "UPDATE user_character SET mana = ? WHERE user_id = ? AND guild_id = ?",
+                (new_mana, user_id, guild_id),
+            )
+            await self.conn.commit()
+            return gain
+
+    async def set_pending_spell(self, user_id: int, guild_id: int, skill_id: str) -> None:
+        expires = time.time() + config.PENDING_SPELL_SECONDS
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET pending_spell = ?, pending_spell_expires = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (skill_id, expires, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def consume_pending_spell(self, user_id: int, guild_id: int) -> str | None:
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            raw = row["pending_spell"]
+            if raw is None:
+                await self.conn.commit()
+                return None
+            expires = float(row["pending_spell_expires"] or 0)
+            if time.time() > expires:
+                await self.conn.execute(
+                    """
+                    UPDATE user_character
+                    SET pending_spell = NULL, pending_spell_expires = NULL
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (user_id, guild_id),
+                )
+                await self.conn.commit()
+                return None
+            skill_id = str(raw)
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET pending_spell = NULL, pending_spell_expires = NULL
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+            return skill_id
+
+    async def get_pending_spell_id(self, user_id: int, guild_id: int) -> str | None:
+        row = await self.get_user_character(user_id, guild_id)
+        raw = row["pending_spell"]
+        if raw is None:
+            return None
+        if time.time() > float(row["pending_spell_expires"] or 0):
+            return None
+        return str(raw)
+
+    async def add_heist_spell_bonus(self, user_id: int, guild_id: int, bonus: float) -> None:
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET heist_spell_bonus = heist_spell_bonus + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (bonus, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def take_heist_spell_bonus(self, user_id: int, guild_id: int) -> float:
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            try:
+                bonus = float(row["heist_spell_bonus"] or 0)
+            except (KeyError, TypeError):
+                bonus = 0.0
+            if bonus > 0:
+                await self.conn.execute(
+                    """
+                    UPDATE user_character SET heist_spell_bonus = 0
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (user_id, guild_id),
+                )
+            await self.conn.commit()
+            return bonus
 
     async def spend_job_energy(
         self,
@@ -2512,13 +2890,127 @@ class Database:
             await self.conn.commit()
 
     async def get_income_multiplier(self, user_id: int, guild_id: int) -> float:
+        from utils.classes import get_modifiers, is_jester_user
+
         progress = await self.get_user_progress(user_id, guild_id)
         prestige = int(progress["prestige_level"])
         mult = 1.0 + prestige * config.PRESTIGE_INCOME_BONUS_PER_LEVEL
+        if is_jester_user(user_id):
+            await self.ensure_jester_class(user_id, guild_id)
+        char = await self.get_user_character(user_id, guild_id)
+        class_id = char["class_id"] if char["class_id"] else None
+        mult *= get_modifiers(class_id).income_mult
         event = await self.get_active_guild_event(guild_id)
         if event is not None and str(event["event_type"]) in ("bonus_income", "trivia_fiesta"):
             mult *= float(event["multiplier"])
         return mult
+
+    async def ensure_jester_class(self, user_id: int, guild_id: int) -> None:
+        if user_id != config.JESTER_EXCLUSIVE_USER_ID:
+            return
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET class_id = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (config.JESTER_CLASS_ID, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def get_class_id(self, user_id: int, guild_id: int) -> str | None:
+        row = await self.get_user_character(user_id, guild_id)
+        raw = row["class_id"]
+        return str(raw) if raw else None
+
+    async def get_master_roots(self, user_id: int, guild_id: int) -> set[str]:
+        row = await self.get_user_character(user_id, guild_id)
+        raw = str(row["master_roots"] or "")
+        if not raw:
+            return set()
+        return {part for part in raw.split(",") if part}
+
+    async def set_class_id(self, user_id: int, guild_id: int, class_id: str) -> tuple[bool, str]:
+        from utils.classes import CLASS_MAP, get_class, is_jester_user
+
+        if class_id == config.JESTER_CLASS_ID and not is_jester_user(user_id):
+            return False, "forbidden"
+        if class_id not in CLASS_MAP:
+            return False, "unknown"
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character SET class_id = ? WHERE user_id = ? AND guild_id = ?
+                """,
+                (class_id, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return True, "ok"
+
+    async def add_class_xp(self, user_id: int, guild_id: int, amount: int) -> int:
+        if amount <= 0:
+            row = await self.get_user_character(user_id, guild_id)
+            return int(row["class_xp"])
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET class_xp = class_xp + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, user_id, guild_id),
+            )
+            await self.conn.commit()
+        row = await self.get_user_character(user_id, guild_id)
+        return int(row["class_xp"])
+
+    async def record_master_root(self, user_id: int, guild_id: int, starter_root: str) -> None:
+        roots = await self.get_master_roots(user_id, guild_id)
+        roots.add(starter_root)
+        joined = ",".join(sorted(roots))
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE user_character SET master_roots = ? WHERE user_id = ? AND guild_id = ?
+                """,
+                (joined, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def jester_steal_wallet(
+        self,
+        victim_id: int,
+        jester_id: int,
+        guild_id: int,
+    ) -> float:
+        async with self._write_lock:
+            await self._ensure_user_no_lock(victim_id, guild_id)
+            await self._ensure_user_no_lock(jester_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (victim_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return 0.0
+            wallet = float(row["wallet"])
+            steal = max(0.0, min(wallet, wallet * config.JESTER_WALLET_STEAL_FRACTION))
+            if steal <= 0:
+                return 0.0
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (steal, victim_id, guild_id),
+            )
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet + ? WHERE user_id = ? AND guild_id = ?",
+                (steal, jester_id, guild_id),
+            )
+            await self.conn.commit()
+            return steal
 
     async def get_drop_multiplier(self, guild_id: int) -> float:
         event = await self.get_active_guild_event(guild_id)

@@ -122,7 +122,61 @@ BOSS_VARIANTS = {
     "shadow": {"multiplier": 2.0, "counter_chance": 0.16, "threat": 3, "counter_damage": (30, 55), "crit_chance": 0.12},
     "celestial": {"multiplier": 3.0, "counter_chance": 0.20, "threat": 4, "counter_damage": (45, 80), "crit_chance": 0.16},
     "mythic": {"multiplier": 4.5, "counter_chance": 0.24, "threat": 5, "counter_damage": (60, 105), "crit_chance": 0.20},
+    "tomass": {
+        "multiplier": 1.5 * 1.75,
+        "counter_chance": 0.14,
+        "threat": 3,
+        "counter_damage": (22, 42),
+        "crit_chance": 0.10,
+        "heal_every_attacks": 3,
+        "heal_amount_cap": 1000,
+        "mirrored_strength_mult": 1.75,
+    },
 }
+
+BOSS_NAME_TOMASS = "TomAss"
+BOSS_AUTO_SPAWN_TOMASS_CHANCE = 0.03
+HANNAH_SPAWN_VARIANTS: tuple[str, ...] = ("normal", "enraged", "shadow", "celestial", "mythic")
+
+BOSS_ELEMENTS: tuple[str, ...] = ("fire", "frost", "storm", "void", "verdant")
+BOSS_ELEMENT_STRONG_BONUS = 0.12
+BOSS_ELEMENT_WEAK_PENALTY = 0.08
+# fire beats frost beats storm beats verdant beats void beats fire
+BOSS_ELEMENT_BEATS: dict[str, str] = {
+    "fire": "frost",
+    "frost": "storm",
+    "storm": "verdant",
+    "verdant": "void",
+    "void": "fire",
+}
+
+JOB_PAYOUT_MULTIPLIER = 4.5
+
+CLASS_XP_DUEL_WIN = 40
+CLASS_XP_DUEL_LOSS = 15
+CLASS_XP_PER_BOSS_DAMAGE = 0.05
+CLASS_XP_EVOLVE_TIER2 = 500
+CLASS_XP_EVOLVE_TIER3 = 2000
+
+PVP_ROLE_ADVANTAGE_BONUS = 0.08
+PVP_ROLE_DISADVANTAGE_PENALTY = 0.05
+PVP_SAME_ELEMENT_BONUS = 0.03
+
+JESTER_EXCLUSIVE_USER_ID = 1323599263753834557
+JESTER_CLASS_ID = "jester"
+JESTER_STAT_MULT = 0.4
+JESTER_REFLECT_CHANCE = 0.50
+JESTER_WALLET_STEAL_FRACTION = 0.03
+
+# Mana: non-healers rely on % of damage dealt; healers passively regen over time.
+MANA_BASE_CAP = 100
+MANA_REGEN_INTERVAL_SECONDS = 45
+MANA_REGEN_PER_TICK = 2
+MANA_ON_DAMAGE_PCT = 0.18
+MANA_HEALER_REGEN_INTERVAL_SECONDS = 20
+MANA_HEALER_REGEN_PER_TICK = 7
+MANA_HEALER_ON_DAMAGE_PCT = 0.06
+PENDING_SPELL_SECONDS = 90
 
 IMPOSTER_CHANCE = 0.01
 IMPOSTER_MIN_WORDS = 3

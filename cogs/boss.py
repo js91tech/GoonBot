@@ -4,6 +4,7 @@ import asyncio
 import logging
 import random
 import time
+from dataclasses import replace
 from typing import Any
 
 import discord
@@ -27,9 +28,17 @@ from utils.quests import record_quest_event
 from utils.discord_api import safe_channel_send, safe_interaction_send
 from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
+from utils.combat_engine import (
+    attack_context_for_class,
+    roll_jester_reflect,
+    roll_player_damage,
+)
+from utils.skills import get_skill, spell_buff_from_skill
+from utils.spell_effects import combat_state_from_spell
 from utils.stats import hp_bar
 
 BOSS_NAME = "Hannah"
+BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
 COUNTER_HP_BONUS = 0.30
 COUNTER_MULTI_SECOND = 0.65
 COUNTER_MULTI_THIRD = 0.55
@@ -56,21 +65,48 @@ class Boss(commands.Cog):
         hp *= await self.bot.db.get_boss_hp_multiplier(guild_id)
         return hp
 
+    async def _tomass_hp(self, guild_id: int, mirrored_variant: str) -> float:
+        circulation = await self.bot.db.total_circulation(guild_id)
+        scale_factor = await self.bot.db.get_config_value(guild_id, "boss_health_scale_factor")
+        scaled_hp = max(config.BOSS_MIN_HP, circulation * scale_factor)
+        base_hp = min(config.BOSS_HP_CAP, scaled_hp)
+        mirror_mult = float(config.BOSS_VARIANTS[mirrored_variant]["multiplier"])
+        strength = float(config.BOSS_VARIANTS["tomass"]["mirrored_strength_mult"])
+        hp = base_hp * mirror_mult * strength
+        hp *= await self.bot.db.get_boss_hp_multiplier(guild_id)
+        return hp
+
     async def _spawn_boss(
         self,
         guild_id: int,
         variant: str,
         *,
         summoner_id: int | None = None,
+        boss_name: str | None = None,
+        mirrored_variant: str | None = None,
     ) -> float:
-        hp = await self._boss_hp(guild_id, variant)
-        await self.bot.db.replace_boss(
-            guild_id,
-            BOSS_NAME,
-            variant,
-            hp,
-            summoner_id=summoner_id,
-        )
+        name = boss_name or BOSS_NAME
+        if variant == "tomass":
+            mirror = mirrored_variant or "enraged"
+            hp = await self._tomass_hp(guild_id, mirror)
+            await self.bot.db.replace_boss(
+                guild_id,
+                BOSS_NAME_TOMASS,
+                variant,
+                hp,
+                summoner_id=summoner_id,
+                mirrored_variant=mirror,
+            )
+        else:
+            hp = await self._boss_hp(guild_id, variant)
+            await self.bot.db.replace_boss(
+                guild_id,
+                name,
+                variant,
+                hp,
+                summoner_id=summoner_id,
+                mirrored_variant=mirrored_variant,
+            )
         return hp
 
     @staticmethod
@@ -158,13 +194,15 @@ class Boss(commands.Cog):
         variant: str,
         hp: float,
         summoner_id: int | None = None,
+        element: str | None = None,
     ) -> None:
         channel = await resolve_bot_announcement_channel(guild, self.bot.db)
         if channel is None:
             logging.warning("Boss spawn embed skipped: no channel in guild %s", guild.id)
             return
         title = "Boss summoned!" if summoner_id is not None else "Boss raid incoming!"
-        desc = f"A **{variant}** **{BOSS_NAME}** crashes the party—time to rally the raid!"
+        boss_label = BOSS_NAME_TOMASS if variant == "tomass" else BOSS_NAME
+        desc = f"A **{variant}** **{boss_label}** crashes the party—time to rally the raid!"
         embed = discord.Embed(
             title=title,
             description=desc,
@@ -177,6 +215,8 @@ class Boss(commands.Cog):
             value=channel.mention,
             inline=True,
         )
+        if element:
+            embed.add_field(name="Element", value=element.title(), inline=True)
         threat = config.BOSS_VARIANTS[variant]["threat"]
         embed.add_field(name="Threat tier", value=str(threat), inline=True)
         if summoner_id is not None:
@@ -389,8 +429,12 @@ class Boss(commands.Cog):
         return parse_loadout(equipment)
 
     async def _max_hp(self, user_id: int, guild_id: int) -> float:
+        from utils.classes import get_modifiers
+        from utils.combat_engine import max_hp_from_armor
+
         loadout = await self._loadout(user_id, guild_id)
-        return float(config.PLAYER_BASE_HP + (loadout.armor.hp_bonus if loadout.armor else 0))
+        class_id = await self.bot.db.get_class_id(user_id, guild_id)
+        return float(max_hp_from_armor(loadout.armor, class_modifiers=get_modifiers(class_id)))
 
     @staticmethod
     def _attack_roll(
@@ -466,8 +510,9 @@ class Boss(commands.Cog):
             "shadow": ("void-crushes", "shadow-rakes", "ambushes"),
             "celestial": ("meteor-crits", "starfalls onto", "supernovas"),
             "mythic": ("reality-tears", "cataclysm-strikes", "doom-crashes"),
+            "tomass": ("ass-smacks", "cheek-claps", "thunder-cheeks"),
         }
-        return damage, mitigated, critical, random.choice(moves[variant])
+        return damage, mitigated, critical, random.choice(moves.get(variant, moves["normal"]))
 
     @staticmethod
     def _counter_chance(variant: str, hp: float, max_hp: float) -> float:
@@ -497,9 +542,27 @@ class Boss(commands.Cog):
         for guild in self.bot.guilds:
             if await self.bot.db.get_active_boss(guild.id) is not None:
                 continue
-            variant = random.choice(tuple(config.BOSS_VARIANTS))
+            if random.random() < config.BOSS_AUTO_SPAWN_TOMASS_CHANCE:
+                mirror = random.choice(config.HANNAH_SPAWN_VARIANTS)
+                hp = await self._spawn_boss(
+                    guild.id,
+                    "tomass",
+                    mirrored_variant=mirror,
+                )
+                boss_row = await self.bot.db.get_active_boss(guild.id)
+                elem = str(boss_row["element"]) if boss_row else None
+                await self._send_boss_spawn_embed(
+                    guild,
+                    variant="tomass",
+                    hp=hp,
+                    element=elem,
+                )
+                continue
+            variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
             hp = await self._spawn_boss(guild.id, variant)
-            await self._send_boss_spawn_embed(guild, variant=variant, hp=hp)
+            boss_row = await self.bot.db.get_active_boss(guild.id)
+            elem = str(boss_row["element"]) if boss_row else None
+            await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, element=elem)
 
     @auto_spawn.before_loop
     async def before_auto_spawn(self) -> None:
@@ -530,30 +593,58 @@ class Boss(commands.Cog):
 
     @app_commands.command(
         name="summon",
-        description="Admin only: spawn an enraged boss (you take a combat penalty).",
+        description="Admin only: spawn a boss (you take a combat penalty).",
+    )
+    @app_commands.describe(
+        boss="Boss to summon",
+    )
+    @app_commands.choices(
+        boss=[
+            app_commands.Choice(name="Hannah (enraged)", value="hannah_enraged"),
+            app_commands.Choice(name="TomAss (enraged mirror ×1.75)", value="tomass"),
+        ],
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    async def summon(self, interaction: discord.Interaction) -> None:
+    async def summon(
+        self,
+        interaction: discord.Interaction,
+        boss: str = "hannah_enraged",
+    ) -> None:
         if interaction.guild_id is None or interaction.guild is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
-        spawn_variant = "enraged"
-        hp = await self._spawn_boss(
-            interaction.guild_id,
-            spawn_variant,
-            summoner_id=interaction.user.id,
-        )
+        if boss == "tomass":
+            mirror = "enraged"
+            hp = await self._spawn_boss(
+                interaction.guild_id,
+                "tomass",
+                summoner_id=interaction.user.id,
+                mirrored_variant=mirror,
+            )
+            label = BOSS_NAME_TOMASS
+            spawn_variant = "tomass"
+        else:
+            spawn_variant = "enraged"
+            hp = await self._spawn_boss(
+                interaction.guild_id,
+                spawn_variant,
+                summoner_id=interaction.user.id,
+            )
+            label = BOSS_NAME
         await interaction.response.send_message(
-            f"Summoned an **enraged** {BOSS_NAME} with {fmt_amount(hp)} HP. "
+            f"Summoned **{spawn_variant}** {label} with {fmt_amount(hp)} HP. "
             f"You take **-{SUMMONER_DEBUFF_PCT}%** attack and defense for calling it."
         )
+        boss_row = await self.bot.db.get_active_boss(interaction.guild_id)
+        elem = str(boss_row["element"]) if boss_row else None
         await self._send_boss_spawn_embed(
             interaction.guild,
             variant=spawn_variant,
             hp=hp,
             summoner_id=interaction.user.id,
+            element=elem,
         )
 
     @app_commands.command(name="boss", description="Check boss status.")
@@ -618,18 +709,57 @@ class Boss(commands.Cog):
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         progress = await self.bot.db.get_user_progress(interaction.user.id, interaction.guild_id)
         prestige = int(progress["prestige_level"])
-        damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
-        extra_crit = prestige * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
-        damage, attack_critical, attack_verb = self._attack_roll(
+        await self.bot.db.ensure_jester_class(interaction.user.id, interaction.guild_id)
+        class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
+        boss_element = None
+        try:
+            boss_element = str(boss["element"])
+        except (KeyError, TypeError):
+            pass
+        ctx = attack_context_for_class(
+            class_id,
+            prestige_level=prestige,
+            boss_element=boss_element,
+            for_boss=True,
+        )
+        spell_note = ""
+        skill_id = await self.bot.db.consume_pending_spell(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        if skill_id:
+            skill = get_skill(skill_id)
+            if skill is not None:
+                spell_state = combat_state_from_spell(spell_buff_from_skill(skill))
+                if spell_state.damage_mult > 1.0 or spell_state.extra_crit > 0:
+                    ctx = replace(
+                        ctx,
+                        damage_mult=ctx.damage_mult * spell_state.damage_mult,
+                        extra_crit=ctx.extra_crit + spell_state.extra_crit,
+                    )
+                    spell_note = f" via **{skill.name}**"
+        damage, attack_critical, attack_verb = roll_player_damage(
             loadout.primary,
             off_hand=loadout.off_hand,
-            damage_mult=damage_mult,
-            extra_crit=extra_crit,
+            ctx=ctx,
+            set_bonus=set_bonus,
         )
         summoner_debuff = self._summoner_debuffed(boss, interaction.user.id)
         if summoner_debuff:
             damage = self._apply_summoner_attack_debuff(damage)
+        mana_gain = await self.bot.db.restore_mana_from_damage(
+            interaction.user.id,
+            interaction.guild_id,
+            damage,
+        )
+        heal_applied = 0.0
         updated = await self.bot.db.damage_boss(interaction.guild_id, interaction.user.id, damage)
+        xp_gain = max(1, int(damage * config.CLASS_XP_PER_BOSS_DAMAGE))
+        await self.bot.db.add_class_xp(interaction.user.id, interaction.guild_id, xp_gain)
+        if updated is not None:
+            _, heal_applied = await self.bot.db.increment_boss_attack_count(interaction.guild_id)
+        if heal_applied > 0:
+            updated = await self.bot.db.get_active_boss(interaction.guild_id)
         if updated is None:
             await interaction.response.send_message("No boss is active right now.", ephemeral=True)
             return
@@ -662,8 +792,9 @@ class Boss(commands.Cog):
         boss_max = float(updated["max_hp"])
         bar = hp_bar(boss_hp, boss_max)
         pct = int(round(100 * boss_hp / boss_max)) if boss_max > 0 else 0
+        active_name = str(updated["name"])
         embed = discord.Embed(
-            title=f"{interaction.user.display_name} → {BOSS_NAME}",
+            title=f"{interaction.user.display_name} → {active_name}",
             color=discord.Color.green() if attack_critical else discord.Color.blurple(),
         )
         weapon_text = loadout.primary.name if loadout.primary is not None else "bare hands"
@@ -671,9 +802,10 @@ class Boss(commands.Cog):
             weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
         embed.add_field(
             name="Hit",
-            value=f"{attack_verb} for **{damage}** with {weapon_text}",
+            value=f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}",
             inline=True,
         )
+        embed.add_field(name="Mana", value=f"+{mana_gain} from damage", inline=True)
         if attack_critical:
             embed.add_field(name="Crit", value="**YES**", inline=True)
         if summoner_debuff:
@@ -683,10 +815,18 @@ class Boss(commands.Cog):
                 inline=True,
             )
         embed.add_field(
-            name=f"{BOSS_NAME} HP",
+            name=f"{active_name} HP",
             value=f"`{bar}` {fmt_amount(boss_hp)}/{fmt_amount(boss_max)} ({pct}%)",
             inline=False,
         )
+        if heal_applied > 0:
+            embed.add_field(
+                name="TomAss regen",
+                value=f"**{fmt_amount(heal_applied)}** HP restored!",
+                inline=False,
+            )
+        if boss_element:
+            embed.add_field(name="Element", value=boss_element.title(), inline=True)
         if counter_text:
             embed.add_field(name="Counterattack", value=counter_text.strip(), inline=False)
         if phase_note:
@@ -726,6 +866,29 @@ class Boss(commands.Cog):
         *,
         boss_row: Any,
     ) -> str:
+        await self.bot.db.ensure_jester_class(victim_id, guild_id)
+        victim_class = await self.bot.db.get_class_id(victim_id, guild_id)
+        reflect = roll_jester_reflect(victim_class)
+        if reflect.proc:
+            boss_name = str(boss_row["name"])
+            damage_rows = await self.bot.db.list_boss_damage(guild_id)
+            raiders = [int(r["user_id"]) for r in damage_rows if int(r["user_id"]) != victim_id]
+            steal = 0.0
+            downed_note = ""
+            if raiders:
+                unlucky = random.choice(raiders)
+                steal = await self.bot.db.jester_steal_wallet(unlucky, victim_id, guild_id)
+                downed_seconds = await self.bot.db.get_config_value(guild_id, "boss_downed_seconds")
+                await self.bot.db.set_downed_until(
+                    unlucky,
+                    guild_id,
+                    time.time() + downed_seconds,
+                )
+                downed_note = f" <@{unlucky}> is instantly downed!"
+            steal_note = f" **{fmt_amount(steal)}** stolen!" if steal > 0 else ""
+            return (
+                f"\n**who me?** <@{victim_id}> deflects {boss_name}'s counter!{downed_note}{steal_note}"
+            )
         loadout = await self._loadout(victim_id, guild_id)
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         max_hp = await self._max_hp(victim_id, guild_id)
@@ -822,6 +985,14 @@ class Boss(commands.Cog):
         )
         self_heal = target.id == interaction.user.id
         heal_reward = config.HEALER_SELF_REWARD if self_heal else config.HEALER_ALLY_REWARD
+        bless_id = await self.bot.db.consume_pending_spell(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        if bless_id:
+            bless = get_skill(bless_id)
+            if bless is not None and bless.effect == "heal_ally":
+                heal_reward *= 1.0 + bless.magnitude
         await self.bot.db.credit_wallet(
             interaction.user.id,
             interaction.guild_id,
