@@ -129,7 +129,11 @@ class Jobs(commands.Cog):
             )
             return
 
-        payout = roll_job_payout(job_def)
+        from utils.classes import get_modifiers
+
+        class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
+        job_mult = get_modifiers(class_id).job_payout_mult
+        payout = roll_job_payout(job_def, payout_mult=job_mult)
         await self.bot.db.credit_wallet(
             interaction.user.id,
             interaction.guild_id,

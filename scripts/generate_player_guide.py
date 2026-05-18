@@ -125,6 +125,7 @@ def build() -> None:
     pdf.body("Armor: reduces boss counter damage and adds max HP in raids.")
     pdf.body("Top shop tier: Nugget Excalibur + Nugget Immortal Plate (120,000 each).")
     pdf.body("Beyond that: Mythic Voidreaver + Mythic Aetherplate (175,000 each).")
+    pdf.body("Ultimate shop: Apex / Sovereign / Transcendent sets (500k / 750k / 1.5M per piece).")
     pdf.ln(2)
     pdf.chapter_title("Gear sets (bonus)")
     pdf.body(
@@ -146,6 +147,8 @@ def build() -> None:
     pdf.bullet("/heal @user - revive downed raiders (+1000 nuggets; +100 if you revive yourself)")
     pdf.ln(2)
     pdf.body("Boss variants (weakest to strongest): normal, enraged, shadow, celestial, mythic.")
+    pdf.body("TomAss: rare enraged mirror boss with regen every 3 hits (admin /summon).")
+    pdf.body("Bosses have elements - class element can boost or reduce your /attack damage.")
     pdf.body("At 75%, 50%, and 25% HP Hannah enters new phases - counters get nastier.")
     pdf.body("Loot: battle-worn gear (common), epic raid pieces (rare), mythic drops on celestial/mythic kills.")
     pdf.body("/craft - upgrade battle-worn drops into real shop items for a fee.")
@@ -198,10 +201,18 @@ def build() -> None:
     pdf.body("Watch the embed timer bar - do not hold it when time is low!")
 
     # 9 - Progression
-    pdf.chapter_title("9. Progression")
-    pdf.bullet("/achievements - track 11 unlockable goals")
+    pdf.chapter_title("9. Progression and classes")
+    pdf.bullet("/achievements - track unlockable goals")
     pdf.bullet("/prestige confirm:true - reset wallet (need 100k+) for permanent +crit and +income")
     pdf.bullet("Max prestige 10 - stacks +1% crit and +2% income per level")
+    pdf.ln(2)
+    pdf.body("Classes:")
+    pdf.bullet("/class-choose - pick Vanguard, Mogul, or Shade (one time)")
+    pdf.bullet("/class - view XP and modifiers; /class-evolve when ready")
+    pdf.bullet("Earn class XP from duels and boss /attack damage")
+    pdf.bullet("Hybrids Warlord and Archon unlock after two master paths")
+    pdf.ln(2)
+    pdf.body("Jobs (/jobs, /work) pay 4.5x base rates; class can further modify payouts.")
     pdf.ln(2)
     pdf.body("Achievement examples: first boss kill, 25 raids, mythic slayer, heist king, field medic, own Excalibur.")
 

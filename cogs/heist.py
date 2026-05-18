@@ -82,9 +82,17 @@ class Heist(commands.Cog):
         equipment = await self.bot.db.get_equipment(interaction.user.id, interaction.guild_id)
         loadout = parse_loadout(equipment)
         intimidation = heist_intimidation_bonus(loadout.primary, off_hand=loadout.off_hand)
+        from utils.classes import get_modifiers
+
+        class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
+        class_mod = get_modifiers(class_id)
         success_chance = min(
             config.HEIST_MAX_SUCCESS,
-            base_success + (len(participants) - 1) * config.HEIST_CREW_BONUS + intimidation,
+            base_success
+            + (len(participants) - 1) * config.HEIST_CREW_BONUS
+            + intimidation
+            + class_mod.heist_success_bonus
+            - class_mod.heist_success_penalty,
         )
 
         if random.random() > success_chance:

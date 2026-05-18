@@ -28,6 +28,7 @@ COGS = (
     "cogs.quests",
     "cogs.duels",
     "cogs.jobs",
+    "cogs.classes",
     "cogs.admin",
 )
 

@@ -222,6 +222,10 @@ class Shop(commands.Cog):
         progress = await self.bot.db.get_user_progress(target.id, guild_id)
         prestige = int(progress["prestige_level"])
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
+        from utils.classes import format_modifiers_summary, get_class
+
+        class_id = await self.bot.db.get_class_id(target.id, guild_id)
+        cls = get_class(class_id)
         combat_stats = compute_combat_stats(
             loadout.primary,
             loadout.armor,
@@ -230,6 +234,9 @@ class Shop(commands.Cog):
             prestige_level=prestige,
             set_bonus=set_bonus,
         )
+        class_blurb = ""
+        if cls is not None:
+            class_blurb = f"\n**{cls.emoji} {cls.name}** — {format_modifiers_summary(cls.modifiers)}"
         user_row = await self.bot.db.get_user(target.id, guild_id)
         wallet = float(user_row["wallet"])
         total_earned = float(user_row["total_earned"])
@@ -242,7 +249,8 @@ class Shop(commands.Cog):
                 set_bonus=set_bonus,
                 prestige_level=prestige,
                 off_hand=loadout.off_hand,
-            ),
+            )
+            + class_blurb,
             color=discord.Color.gold(),
         )
         embed.set_thumbnail(url=target.display_avatar.url)

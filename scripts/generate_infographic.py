@@ -123,8 +123,8 @@ def build() -> None:
             GOLD,
             [
                 "/daily — 24h claim",
-                "Chat, VC & coin drops",
-                "/pay · /leaderboard",
+                "/jobs · /work — 4.5× payouts",
+                "/class-choose · /class-evolve",
                 "/quests — onboarding & daily goals",
             ],
         ),
@@ -133,7 +133,7 @@ def build() -> None:
             PINK,
             [
                 "/shop · /buy · /equip",
-                "Weapons & armor tiers",
+                "Apex / Sovereign / Transcendent sets",
                 "Match sets for +5% dmg",
                 "/craft battle-worn drops",
             ],
@@ -143,7 +143,7 @@ def build() -> None:
             GREEN,
             [
                 "/boss · /attack · /heal",
-                "Shared loot by damage",
+                "Elements & TomAss raids",
                 "Phases at 75/50/25% HP",
                 "/raid-leaderboard",
             ],
@@ -209,8 +209,8 @@ def build() -> None:
     foot_y = H - 100
     _rounded_rect(draw, (margin, foot_y, W - margin, H - 40), 18, (18, 24, 40), outline=GOLD)
     footer_cmds = (
-        "/daily  ·  /shop  ·  /attack  ·  /duel  ·  /quests  ·  /hall-of-fame  ·  "
-        "/coinflip  ·  /blackjack  ·  /heist  ·  /prestige  ·  /stats"
+        "/daily  ·  /shop  ·  /attack  ·  /duel  ·  /class  ·  /work  ·  /quests  ·  "
+        "/hall-of-fame  ·  /coinflip  ·  /heist  ·  /prestige  ·  /stats"
     )
     draw.text((W // 2, foot_y + 22), "Slash commands", fill=GOLD, font=section_font, anchor="mm")
     for i, line in enumerate(_wrap(draw, footer_cmds, small_font, W - 2 * margin - 40)):
