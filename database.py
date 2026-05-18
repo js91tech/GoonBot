@@ -400,6 +400,23 @@ class Database:
         await self._migrate_duel_history()
         await self._migrate_boss_summoned()
         await self._migrate_boss_summoner_id()
+        await self._migrate_user_character()
+
+    async def _migrate_user_character(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_character (
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                energy INTEGER NOT NULL DEFAULT 0 CHECK (energy >= 0),
+                energy_cap INTEGER NOT NULL DEFAULT 0 CHECK (energy_cap > 0),
+                cap_upgrades INTEGER NOT NULL DEFAULT 0 CHECK (cap_upgrades >= 0),
+                energy_updated_at REAL NOT NULL,
+                PRIMARY KEY (user_id, guild_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_boss_summoned(self) -> None:
         """Legacy flag from first summon debuff iteration (unused after summoner_id)."""
@@ -1277,6 +1294,10 @@ class Database:
             )
             await self.conn.execute(
                 "DELETE FROM user_progress WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM user_character WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             )
             await self.conn.execute(
@@ -2293,6 +2314,163 @@ class Database:
             msg = "Expected user progress row"
             raise RuntimeError(msg)
         return row
+
+    async def _ensure_character_no_lock(self, user_id: int, guild_id: int) -> None:
+        from utils.energy import energy_cap_for_upgrades
+
+        await self._ensure_user_no_lock(user_id, guild_id)
+        cursor = await self.conn.execute(
+            "SELECT user_id FROM user_character WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        if await cursor.fetchone() is not None:
+            return
+        cap = energy_cap_for_upgrades(0)
+        now = time.time()
+        await self.conn.execute(
+            """
+            INSERT INTO user_character (
+                user_id, guild_id, energy, energy_cap, cap_upgrades, energy_updated_at
+            )
+            VALUES (?, ?, ?, ?, 0, ?)
+            """,
+            (user_id, guild_id, cap, cap, now),
+        )
+
+    async def _refresh_character_energy_unlocked(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> aiosqlite.Row:
+        from utils.energy import apply_energy_regen, energy_cap_for_upgrades
+
+        await self._ensure_character_no_lock(user_id, guild_id)
+        cursor = await self.conn.execute(
+            "SELECT * FROM user_character WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            msg = "Expected user_character row"
+            raise RuntimeError(msg)
+
+        regen_per_tick = int(
+            await self.get_config_value(guild_id, "energy_regen_per_tick")
+        )
+        tick_seconds = float(
+            await self.get_config_value(guild_id, "energy_regen_interval_seconds")
+        )
+        expected_cap = energy_cap_for_upgrades(int(row["cap_upgrades"]))
+        current_cap = int(row["energy_cap"])
+        if current_cap != expected_cap:
+            current_cap = expected_cap
+
+        refreshed, advanced_at = apply_energy_regen(
+            int(row["energy"]),
+            current_cap,
+            float(row["energy_updated_at"]),
+            regen_per_tick=regen_per_tick,
+            tick_seconds=tick_seconds,
+        )
+        if refreshed != int(row["energy"]) or advanced_at != float(row["energy_updated_at"]):
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET energy = ?, energy_cap = ?, energy_updated_at = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (refreshed, current_cap, advanced_at, user_id, guild_id),
+            )
+        cursor = await self.conn.execute(
+            "SELECT * FROM user_character WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        updated = await cursor.fetchone()
+        if updated is None:
+            msg = "Expected user_character row after refresh"
+            raise RuntimeError(msg)
+        return updated
+
+    async def get_user_character(self, user_id: int, guild_id: int) -> aiosqlite.Row:
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            await self.conn.commit()
+            return row
+
+    async def spend_job_energy(
+        self,
+        user_id: int,
+        guild_id: int,
+        energy_cost: int,
+    ) -> tuple[bool, str | None]:
+        """Spend energy after regen sync. Returns (ok, error_code)."""
+        if energy_cost <= 0:
+            return False, "invalid"
+
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+                current = int(row["energy"])
+                if current < energy_cost:
+                    await self.conn.rollback()
+                    return False, "energy"
+
+                await self.conn.execute(
+                    """
+                    UPDATE user_character
+                    SET energy = energy - ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (energy_cost, user_id, guild_id),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True, None
+
+    async def upgrade_energy_cap(self, user_id: int, guild_id: int, cost: float) -> bool:
+        from utils.energy import energy_cap_for_upgrades
+
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self._ensure_user_no_lock(user_id, guild_id)
+                cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (user_id, guild_id),
+                )
+                user_row = await cursor.fetchone()
+                if user_row is None or float(user_row["wallet"]) < cost:
+                    await self.conn.rollback()
+                    return False
+
+                row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+                upgrades = int(row["cap_upgrades"]) + 1
+                new_cap = energy_cap_for_upgrades(upgrades)
+
+                await self.conn.execute(
+                    """
+                    UPDATE users
+                    SET wallet = wallet - ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (cost, user_id, guild_id),
+                )
+                await self.conn.execute(
+                    """
+                    UPDATE user_character
+                    SET cap_upgrades = ?, energy_cap = ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (upgrades, new_cap, user_id, guild_id),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True
 
     async def get_active_guild_event(self, guild_id: int) -> aiosqlite.Row | None:
         cursor = await self.conn.execute(

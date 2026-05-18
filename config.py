@@ -171,6 +171,14 @@ DUEL_SAME_TARGET_COOLDOWN_SECONDS = 40 * 60
 DUEL_MAX_ATTACKS_PER_HOUR = 3
 DUEL_MAX_COMBAT_ROUNDS = 25
 
+# Job shifts consume energy; energy refills on a fixed timer up to a cap.
+ENERGY_BASE_CAP = 30
+ENERGY_CAP_PER_UPGRADE = 15
+ENERGY_UPGRADE_COST = 20_000.0
+ENERGY_REGEN_INTERVAL_SECONDS = 5 * 60
+ENERGY_REGEN_PER_TICK = 5
+ENERGY_WORK_COST_DEFAULT = 10
+
 SEASONAL_EVENT_TYPES: tuple[str, ...] = (
     "double_drops",
     "bonus_income",
@@ -285,6 +293,19 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
         "Max duels started per hour",
         minimum=1,
         maximum=20,
+        integer=True,
+    ),
+    "energy_regen_per_tick": LiveSetting(
+        ENERGY_REGEN_PER_TICK,
+        "Energy restored each 5-minute tick",
+        minimum=1,
+        maximum=50,
+        integer=True,
+    ),
+    "energy_regen_interval_seconds": LiveSetting(
+        ENERGY_REGEN_INTERVAL_SECONDS,
+        "Seconds between energy regen ticks",
+        minimum=60,
         integer=True,
     ),
 }

@@ -27,6 +27,7 @@ COGS = (
     "cogs.gambling",
     "cogs.quests",
     "cogs.duels",
+    "cogs.jobs",
     "cogs.admin",
 )
 
