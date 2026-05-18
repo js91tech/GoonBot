@@ -15,12 +15,15 @@ from items import (
     BOSS_SLAYER_BLADE,
     BOSS_SLAYER_MAIL,
     BOSS_WEAK_ITEMS,
+    MYTHIC_RAID_BLADE,
+    MYTHIC_RAID_MAIL,
     ShopItem,
     armor_mitigation_percent,
     get_item,
 )
 from utils.discord_api import safe_channel_send, safe_interaction_send
 from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
+from utils.stats import hp_bar
 
 BOSS_NAME = "Hannah"
 COUNTER_HP_BONUS = 0.30
@@ -84,6 +87,23 @@ class Boss(commands.Cog):
                 granted.append((uid, epic))
         return granted
 
+    async def _roll_mythic_loot(
+        self,
+        guild_id: int,
+        rows: list[Any],
+        variant: str,
+    ) -> list[tuple[int, ShopItem]]:
+        if variant not in ("celestial", "mythic") or not rows:
+            return []
+        if random.random() >= config.BOSS_MYTHIC_DROP_CHANCE:
+            return []
+        uid = Boss._weighted_random_damage_user(rows)
+        if uid is None:
+            return []
+        mythic = random.choice((MYTHIC_RAID_BLADE, MYTHIC_RAID_MAIL))
+        await self.bot.db.grant_item(uid, guild_id, mythic.id)
+        return [(uid, mythic)]
+
     async def _send_boss_spawn_embed(
         self,
         guild: discord.Guild,
@@ -103,7 +123,8 @@ class Boss(commands.Cog):
             description=desc,
             color=discord.Color.dark_red(),
         )
-        embed.add_field(name="Health", value=f"**{fmt_amount(hp)}** HP", inline=True)
+        bar = hp_bar(hp, hp)
+        embed.add_field(name="Health", value=f"`{bar}` **{fmt_amount(hp)}** HP", inline=True)
         embed.add_field(
             name="Battle room",
             value=channel.mention,
@@ -247,6 +268,7 @@ class Boss(commands.Cog):
             reward_lines.append(f"{name}: {fmt_amount(reward)}")
 
         loot_rows = await self._roll_boss_loot(guild_id, rows)
+        loot_rows.extend(await self._roll_mythic_loot(guild_id, rows, variant))
         gear_lines = [
             f"**{self._display_name(guild, uid)}** · **{item.name}** (`{item.id}`)"
             for uid, item in loot_rows
@@ -335,6 +357,7 @@ class Boss(commands.Cog):
             "enraged": ("rage-smashes", "uppercuts", "body-slams"),
             "shadow": ("void-crushes", "shadow-rakes", "ambushes"),
             "celestial": ("meteor-crits", "starfalls onto", "supernovas"),
+            "mythic": ("reality-tears", "cataclysm-strikes", "doom-crashes"),
         }
         return damage, mitigated, critical, random.choice(moves[variant])
 
@@ -443,10 +466,21 @@ class Boss(commands.Cog):
             )
             return
 
-        await interaction.response.send_message(
-            f"{boss_row['variant'].title()} {boss_row['name']}: "
-            f"{fmt_amount(float(boss_row['hp']))}/{fmt_amount(float(boss_row['max_hp']))} HP"
+        hp = float(boss_row["hp"])
+        max_hp = float(boss_row["max_hp"])
+        variant = str(boss_row["variant"])
+        bar = hp_bar(hp, max_hp)
+        pct = int(round(100 * hp / max_hp)) if max_hp > 0 else 0
+        embed = discord.Embed(
+            title=f"{variant.title()} {boss_row['name']}",
+            description=f"`{bar}` **{pct}%**",
+            color=discord.Color.dark_red(),
         )
+        embed.add_field(name="HP", value=f"{fmt_amount(hp)} / {fmt_amount(max_hp)}", inline=True)
+        threat = config.BOSS_VARIANTS[variant]["threat"]
+        embed.add_field(name="Threat", value=str(threat), inline=True)
+        embed.set_footer(text="Use /attack to fight · /heal for downed allies")
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="attack", description="Attack the active boss.")
     @app_commands.guild_only()
@@ -480,12 +514,31 @@ class Boss(commands.Cog):
 
         counter_text = await self._maybe_counterattack(interaction.guild_id, updated)
 
-        weapon_text = f" with **{weapon.name}**" if weapon is not None else ""
-        crit_text = " **Critical hit!**" if attack_critical else ""
+        boss_hp = float(updated["hp"])
+        boss_max = float(updated["max_hp"])
+        bar = hp_bar(boss_hp, boss_max)
+        pct = int(round(100 * boss_hp / boss_max)) if boss_max > 0 else 0
+        embed = discord.Embed(
+            title=f"{interaction.user.display_name} → {BOSS_NAME}",
+            color=discord.Color.green() if attack_critical else discord.Color.blurple(),
+        )
+        weapon_text = weapon.name if weapon is not None else "bare hands"
+        embed.add_field(
+            name="Hit",
+            value=f"{attack_verb} for **{damage}** with {weapon_text}",
+            inline=True,
+        )
+        if attack_critical:
+            embed.add_field(name="Crit", value="**YES**", inline=True)
+        embed.add_field(
+            name=f"{BOSS_NAME} HP",
+            value=f"`{bar}` {fmt_amount(boss_hp)}/{fmt_amount(boss_max)} ({pct}%)",
+            inline=False,
+        )
+        if counter_text:
+            embed.add_field(name="Counterattack", value=counter_text.strip(), inline=False)
         await interaction.response.send_message(
-            f"{interaction.user.mention} {attack_verb} {BOSS_NAME}{weapon_text} "
-            f"for {damage} damage.{crit_text} "
-            f"HP: {fmt_amount(float(updated['hp']))}.{counter_text}",
+            embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
         )
 

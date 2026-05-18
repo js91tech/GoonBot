@@ -96,6 +96,7 @@ BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE = 0.01
 BOSS_PASSIVE_DECAY_TICK_SECONDS = 120
 BOSS_INFERIOR_DROP_CHANCE = 0.38
 BOSS_EPIC_DROP_CHANCE = 0.03
+BOSS_MYTHIC_DROP_CHANCE = 0.015
 # Minimum spacing between automated channel posts (coin drops, boss embeds, etc.).
 DISCORD_OUTBOUND_MIN_INTERVAL_SEC = 1.25
 # Pause between guilds in background loops that may post to Discord.
@@ -118,6 +119,7 @@ BOSS_VARIANTS = {
     "enraged": {"multiplier": 1.5, "counter_chance": 0.12, "threat": 2, "counter_damage": (18, 36), "crit_chance": 0.08},
     "shadow": {"multiplier": 2.0, "counter_chance": 0.16, "threat": 3, "counter_damage": (30, 55), "crit_chance": 0.12},
     "celestial": {"multiplier": 3.0, "counter_chance": 0.20, "threat": 4, "counter_damage": (45, 80), "crit_chance": 0.16},
+    "mythic": {"multiplier": 4.5, "counter_chance": 0.24, "threat": 5, "counter_damage": (60, 105), "crit_chance": 0.20},
 }
 
 IMPOSTER_CHANCE = 0.01

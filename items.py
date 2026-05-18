@@ -65,6 +65,16 @@ WEAPONS: tuple[ShopItem, ...] = (
         ("obliterates", "royally slashes"),
         crit_chance=0.16,
     ),
+    ShopItem(
+        "mythic_voidreaver",
+        "Mythic Voidreaver",
+        "weapon",
+        175_000,
+        328,
+        "Forged past the shop ceiling for raid veterans.",
+        ("void-renders", "annihilates"),
+        crit_chance=0.18,
+    ),
 )
 
 ARMOR: tuple[ShopItem, ...] = (
@@ -85,6 +95,15 @@ ARMOR: tuple[ShopItem, ...] = (
         200,
         "Endgame armor for dedicated grinders.",
         hp_bonus=345,
+    ),
+    ShopItem(
+        "mythic_aetherplate",
+        "Mythic Aetherplate",
+        "armor",
+        175_000,
+        220,
+        "Reality-bent plating for players who outgrew the shop.",
+        hp_bonus=385,
     ),
 )
 
@@ -107,6 +126,27 @@ BOSS_SLAYER_MAIL = ShopItem(
     84,
     "Plates tempered in Hannah's defeat — prized raid salvage.",
     hp_bonus=148,
+    shop_listed=False,
+)
+MYTHIC_RAID_BLADE = ShopItem(
+    "mythic_raid_blade",
+    "Hannah's Shattered Fang",
+    "weapon",
+    0,
+    142,
+    "Ultra-rare mythic boss drop — stronger than Heartsplitter Fang.",
+    ("shatters", "eclipses"),
+    crit_chance=0.11,
+    shop_listed=False,
+)
+MYTHIC_RAID_MAIL = ShopItem(
+    "mythic_raid_mail",
+    "Hannah's Aegis Fragment",
+    "armor",
+    0,
+    98,
+    "Ultra-rare mythic boss drop — endgame raid trophy armor.",
+    hp_bonus=178,
     shop_listed=False,
 )
 
@@ -145,6 +185,8 @@ ITEMS: dict[str, ShopItem] = {
         *ARMOR,
         BOSS_SLAYER_BLADE,
         BOSS_SLAYER_MAIL,
+        MYTHIC_RAID_BLADE,
+        MYTHIC_RAID_MAIL,
         *BOSS_WEAK_ITEMS,
     )
 }
