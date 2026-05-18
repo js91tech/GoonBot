@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from utils.gear_sets import hack_penalty_multiplier
 from utils.helpers import fmt_amount, guild_only_message
 from utils.stats import hp_bar
 
@@ -21,10 +22,14 @@ class Hacker(commands.Cog):
         for task in self.timers.values():
             task.cancel()
 
-    async def _penalty(self, guild_id: int, pass_count: int) -> float:
+    async def _penalty(self, guild_id: int, pass_count: int, holder_id: int | None = None) -> float:
         base = await self.bot.db.get_config_value(guild_id, "hack_base_penalty")
         increment = await self.bot.db.get_config_value(guild_id, "hack_penalty_increment")
-        return base + pass_count * increment
+        penalty = base + pass_count * increment
+        if holder_id is not None:
+            wallet = await self.bot.db.get_balance(holder_id, guild_id)
+            penalty *= hack_penalty_multiplier(wallet)
+        return penalty
 
     def _replace_timer(self, guild_id: int, channel_id: int) -> None:
         old_task = self.timers.pop(guild_id, None)
@@ -77,8 +82,9 @@ class Hacker(commands.Cog):
         pot = await self.bot.db.get_hacker_pot(guild_id)
         if pot is None:
             return
-        penalty = await self._penalty(guild_id, int(pot["pass_count"]))
-        removed = await self.bot.db.remove_up_to_balance(int(pot["holder_id"]), guild_id, penalty)
+        holder_id = int(pot["holder_id"])
+        penalty = await self._penalty(guild_id, int(pot["pass_count"]), holder_id)
+        removed = await self.bot.db.remove_up_to_balance(holder_id, guild_id, penalty)
         await self.bot.db.clear_hacker_pot(guild_id)
 
         channel = self.bot.get_channel(channel_id)
@@ -138,7 +144,7 @@ class Hacker(commands.Cog):
             current + timer_seconds,
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
-        penalty = await self._penalty(interaction.guild_id, 0)
+        penalty = await self._penalty(interaction.guild_id, 0, target.id)
         embed = self._virus_embed(
             title="Virus deployed",
             holder=target,
@@ -186,7 +192,7 @@ class Hacker(commands.Cog):
             current + timer_seconds,
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
-        penalty = await self._penalty(interaction.guild_id, next_pass_count)
+        penalty = await self._penalty(interaction.guild_id, next_pass_count, target.id)
         seconds_left = float(pot["expires_at"]) - current
         seconds_left = min(float(timer_seconds), max(0.0, seconds_left))
         embed = self._virus_embed(

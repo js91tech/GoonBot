@@ -360,6 +360,33 @@ class Database:
                 ON users(guild_id, wallet DESC);
             CREATE INDEX IF NOT EXISTS idx_bounties_guild
                 ON bounties(guild_id);
+
+            CREATE TABLE IF NOT EXISTS user_progress (
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                prestige_level INTEGER NOT NULL DEFAULT 0 CHECK (prestige_level >= 0),
+                bosses_killed INTEGER NOT NULL DEFAULT 0 CHECK (bosses_killed >= 0),
+                heists_won INTEGER NOT NULL DEFAULT 0 CHECK (heists_won >= 0),
+                heals_given INTEGER NOT NULL DEFAULT 0 CHECK (heals_given >= 0),
+                mythic_kills INTEGER NOT NULL DEFAULT 0 CHECK (mythic_kills >= 0),
+                crafts_done INTEGER NOT NULL DEFAULT 0 CHECK (crafts_done >= 0),
+                PRIMARY KEY (user_id, guild_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS achievements (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                achievement_id TEXT NOT NULL,
+                unlocked_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id, achievement_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS guild_events (
+                guild_id BIGINT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                multiplier REAL NOT NULL DEFAULT 1.0,
+                ends_at REAL NOT NULL
+            );
             """
         )
         await self.conn.commit()
@@ -367,6 +394,7 @@ class Database:
             await self._migrate_postgres_discord_snowflakes_to_bigint()
         await self._migrate_boss_passive_decay()
         await self._migrate_guild_channel_split()
+        await self._migrate_progression_tables()
 
     async def _migrate_guild_channel_split(self) -> None:
         """Add designated channel + split-announcements toggle for guild_channels."""
@@ -603,6 +631,66 @@ class Database:
             WHERE passive_decay_at IS NULL
             """,
         )
+        await self.conn.commit()
+
+    async def _migrate_progression_tables(self) -> None:
+        """Progression tables and boss phase tracking for existing databases."""
+        statements = (
+            """
+            CREATE TABLE IF NOT EXISTS user_progress (
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                prestige_level INTEGER NOT NULL DEFAULT 0,
+                bosses_killed INTEGER NOT NULL DEFAULT 0,
+                heists_won INTEGER NOT NULL DEFAULT 0,
+                heals_given INTEGER NOT NULL DEFAULT 0,
+                mythic_kills INTEGER NOT NULL DEFAULT 0,
+                crafts_done INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, guild_id)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS achievements (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                achievement_id TEXT NOT NULL,
+                unlocked_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id, achievement_id)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS guild_events (
+                guild_id BIGINT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                multiplier REAL NOT NULL DEFAULT 1.0,
+                ends_at REAL NOT NULL
+            )
+            """,
+        )
+        for ddl in statements:
+            await self.conn.execute(ddl)
+
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'boss_sessions'
+                  AND column_name = 'phases_announced'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.conn.execute(
+                    "ALTER TABLE boss_sessions ADD COLUMN phases_announced INTEGER NOT NULL DEFAULT 0",
+                )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(boss_sessions)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            if "phases_announced" not in cols:
+                await self.conn.execute(
+                    "ALTER TABLE boss_sessions ADD COLUMN phases_announced INTEGER NOT NULL DEFAULT 0",
+                )
         await self.conn.commit()
 
     async def _load_config_no_lock(self, guild_id: int) -> dict[str, float]:
@@ -931,9 +1019,18 @@ class Database:
         row = await self.get_user(user_id, guild_id)
         return float(row["wallet"])
 
-    async def credit_wallet(self, user_id: int, guild_id: int, amount: float) -> None:
+    async def credit_wallet(
+        self,
+        user_id: int,
+        guild_id: int,
+        amount: float,
+        *,
+        apply_bonuses: bool = True,
+    ) -> None:
         if amount <= 0:
             return
+        if apply_bonuses:
+            amount = await self._apply_income_bonuses(user_id, guild_id, amount)
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
             await self.conn.execute(
@@ -1012,6 +1109,14 @@ class Database:
             )
             await self.conn.execute(
                 "DELETE FROM combat_state WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM user_progress WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM achievements WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             )
             await self.conn.commit()
@@ -1418,6 +1523,7 @@ class Database:
             return True
 
     async def record_message_reward(self, user_id: int, guild_id: int, amount: float) -> None:
+        amount = await self._apply_income_bonuses(user_id, guild_id, amount)
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
             await self.conn.execute(
@@ -1440,6 +1546,7 @@ class Database:
         cooldown_seconds: float,
         timestamp: float,
     ) -> float | None:
+        bonus_reward = await self._apply_income_bonuses(user_id, guild_id, reward)
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -1462,7 +1569,7 @@ class Database:
                         last_daily = ?
                     WHERE user_id = ? AND guild_id = ?
                     """,
-                    (reward, reward, timestamp, user_id, guild_id),
+                    (bonus_reward, bonus_reward, timestamp, user_id, guild_id),
                 )
             except Exception:
                 await self.conn.rollback()
@@ -1820,8 +1927,10 @@ class Database:
                 spawn_ts = time.time() if spawned_at is None else spawned_at
                 await self.conn.execute(
                     """
-                    INSERT INTO boss_sessions (guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO boss_sessions (
+                        guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at, phases_announced
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
                     """,
                     (
                         guild_id,
@@ -1934,3 +2043,287 @@ class Database:
         if row is None:
             return None
         return row[0]
+
+    async def _ensure_progress_no_lock(self, user_id: int, guild_id: int) -> None:
+        await self._ensure_user_no_lock(user_id, guild_id)
+        await self.conn.execute(
+            """
+            INSERT INTO user_progress (user_id, guild_id)
+            VALUES (?, ?)
+            ON CONFLICT(user_id, guild_id) DO NOTHING
+            """,
+            (user_id, guild_id),
+        )
+
+    async def get_user_progress(self, user_id: int, guild_id: int) -> aiosqlite.Row:
+        async with self._write_lock:
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            await self.conn.commit()
+        cursor = await self.conn.execute(
+            "SELECT * FROM user_progress WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            msg = "Expected user progress row"
+            raise RuntimeError(msg)
+        return row
+
+    async def get_active_guild_event(self, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM guild_events WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        if float(row["ends_at"]) <= time.time():
+            await self.clear_guild_event(guild_id)
+            return None
+        return row
+
+    async def set_guild_event(
+        self,
+        guild_id: int,
+        event_type: str,
+        multiplier: float,
+        ends_at: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO guild_events (guild_id, event_type, multiplier, ends_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    event_type = excluded.event_type,
+                    multiplier = excluded.multiplier,
+                    ends_at = excluded.ends_at
+                """,
+                (guild_id, event_type, multiplier, ends_at),
+            )
+            await self.conn.commit()
+
+    async def clear_guild_event(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute("DELETE FROM guild_events WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+    async def get_income_multiplier(self, user_id: int, guild_id: int) -> float:
+        progress = await self.get_user_progress(user_id, guild_id)
+        prestige = int(progress["prestige_level"])
+        mult = 1.0 + prestige * config.PRESTIGE_INCOME_BONUS_PER_LEVEL
+        event = await self.get_active_guild_event(guild_id)
+        if event is not None and str(event["event_type"]) in ("bonus_income", "trivia_fiesta"):
+            mult *= float(event["multiplier"])
+        return mult
+
+    async def get_drop_multiplier(self, guild_id: int) -> float:
+        event = await self.get_active_guild_event(guild_id)
+        if event is not None and str(event["event_type"]) == "double_drops":
+            return float(event["multiplier"])
+        return 1.0
+
+    async def get_boss_hp_multiplier(self, guild_id: int) -> float:
+        event = await self.get_active_guild_event(guild_id)
+        if event is not None and str(event["event_type"]) == "festival_boss":
+            return float(event["multiplier"])
+        return 1.0
+
+    async def _apply_income_bonuses(self, user_id: int, guild_id: int, amount: float) -> float:
+        return amount * await self.get_income_multiplier(user_id, guild_id)
+
+    async def list_achievements(self, user_id: int, guild_id: int) -> set[str]:
+        cursor = await self.conn.execute(
+            """
+            SELECT achievement_id
+            FROM achievements
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        return {str(row["achievement_id"]) for row in await cursor.fetchall()}
+
+    async def unlock_achievement(self, user_id: int, guild_id: int, achievement_id: str) -> bool:
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO achievements (guild_id, user_id, achievement_id, unlocked_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, achievement_id) DO NOTHING
+                """,
+                (guild_id, user_id, achievement_id, time.time()),
+            )
+            await self.conn.commit()
+            return bool(getattr(cursor, "rowcount", 0))
+
+    async def increment_progress(
+        self,
+        user_id: int,
+        guild_id: int,
+        *,
+        bosses_killed: int = 0,
+        heists_won: int = 0,
+        heals_given: int = 0,
+        mythic_kills: int = 0,
+        crafts_done: int = 0,
+    ) -> None:
+        if not any((bosses_killed, heists_won, heals_given, mythic_kills, crafts_done)):
+            return
+        async with self._write_lock:
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_progress
+                SET bosses_killed = bosses_killed + ?,
+                    heists_won = heists_won + ?,
+                    heals_given = heals_given + ?,
+                    mythic_kills = mythic_kills + ?,
+                    crafts_done = crafts_done + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (
+                    bosses_killed,
+                    heists_won,
+                    heals_given,
+                    mythic_kills,
+                    crafts_done,
+                    user_id,
+                    guild_id,
+                ),
+            )
+            await self.conn.commit()
+
+    async def increment_boss_kills_for_raid(
+        self,
+        guild_id: int,
+        user_ids: Iterable[int],
+        *,
+        mythic: bool,
+    ) -> None:
+        mythic_inc = 1 if mythic else 0
+        for user_id in set(user_ids):
+            await self.increment_progress(
+                user_id,
+                guild_id,
+                bosses_killed=1,
+                mythic_kills=mythic_inc,
+            )
+
+    async def prestige_user(self, user_id: int, guild_id: int) -> int:
+        async with self._write_lock:
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                SELECT prestige_level FROM user_progress
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            current = int(row["prestige_level"]) if row is not None else 0
+            new_level = current + 1
+            await self.conn.execute(
+                """
+                UPDATE user_progress
+                SET prestige_level = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (new_level, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET wallet = 0
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+            return new_level
+
+    async def consume_inventory_item(self, user_id: int, guild_id: int, item_id: str) -> bool:
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT quantity FROM inventory
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    """,
+                    (guild_id, user_id, item_id),
+                )
+                row = await cursor.fetchone()
+                if row is None or int(row["quantity"]) <= 0:
+                    await self.conn.rollback()
+                    return False
+                qty = int(row["quantity"]) - 1
+                if qty <= 0:
+                    await self.conn.execute(
+                        """
+                        DELETE FROM inventory
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (guild_id, user_id, item_id),
+                    )
+                else:
+                    await self.conn.execute(
+                        """
+                        UPDATE inventory
+                        SET quantity = ?
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (qty, guild_id, user_id, item_id),
+                    )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return True
+
+    async def try_mark_boss_phase(self, guild_id: int, hp_ratio: float) -> int | None:
+        """Return newly crossed phase threshold (75, 50, or 25) or None."""
+        phase_bits = {75: 1, 50: 2, 25: 4}
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT phases_announced FROM boss_sessions WHERE guild_id = ?",
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            mask = int(row["phases_announced"] or 0)
+            hp_percent = hp_ratio * 100.0
+            for threshold in config.BOSS_PHASE_THRESHOLDS:
+                pct = int(threshold * 100)
+                bit = phase_bits.get(pct)
+                if bit is None:
+                    continue
+                if hp_percent > pct or mask & bit:
+                    continue
+                mask |= bit
+                await self.conn.execute(
+                    """
+                    UPDATE boss_sessions
+                    SET phases_announced = ?
+                    WHERE guild_id = ?
+                    """,
+                    (mask, guild_id),
+                )
+                await self.conn.commit()
+                return pct
+        return None
+
+    async def gear_distribution(self, guild_id: int, limit: int = 8) -> list[tuple[str, int]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT item_id, COUNT(*) AS equipped_count
+            FROM equipment
+            WHERE guild_id = ?
+            GROUP BY item_id
+            ORDER BY equipped_count DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [(str(row["item_id"]), int(row["equipped_count"])) for row in await cursor.fetchall()]

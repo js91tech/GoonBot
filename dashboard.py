@@ -202,6 +202,9 @@ class DashboardServer:
             virus = await self.bot.db.get_hacker_pot(guild.id)
             custom_settings = await self.bot.db.custom_config_names(guild.id)
             leaderboard = await self.bot.db.leaderboard(guild.id, limit=5)
+            raid_rows = await self.bot.db.list_boss_damage(guild.id) if boss is not None else []
+            gear_rows = await self.bot.db.gear_distribution(guild.id, limit=6)
+            event = await self.bot.db.get_active_guild_event(guild.id)
             channel_settings = await self.bot.db.get_guild_channel_settings(guild.id)
             snapshots.append(
                 {
@@ -225,6 +228,29 @@ class DashboardServer:
                         }
                         for row in leaderboard
                     ],
+                    "raid_leaderboard": [
+                        {
+                            "name": self._member_name(guild, int(row["user_id"])),
+                            "damage": float(row["damage"]),
+                        }
+                        for row in raid_rows[:5]
+                    ],
+                    "gear_distribution": [
+                        {
+                            "item_id": item_id,
+                            "count": count,
+                        }
+                        for item_id, count in gear_rows
+                    ],
+                    "seasonal_event": (
+                        {
+                            "type": str(event["event_type"]),
+                            "multiplier": float(event["multiplier"]),
+                            "seconds_left": int(max(0, float(event["ends_at"]) - time.time())),
+                        }
+                        if event is not None
+                        else None
+                    ),
                 }
             )
         return snapshots
@@ -439,6 +465,24 @@ class DashboardServer:
             f"<li><span>{html.escape(row['name'])}</span><strong>{fmt_amount(row['wallet'])}</strong></li>"
             for row in item["leaderboard"]
         ) or "<li><span>No wallet data yet</span></li>"
+        raid_rows = item.get("raid_leaderboard", [])
+        raid_board = "\n".join(
+            f"<li><span>{html.escape(row['name'])}</span><strong>{fmt_amount(row['damage'])}</strong></li>"
+            for row in raid_rows
+        ) or "<li><span>No raid damage yet</span></li>"
+        gear_rows = item.get("gear_distribution", [])
+        gear_board = "\n".join(
+            f"<li><span>{html.escape(row['item_id'])}</span><strong>{row['count']}</strong></li>"
+            for row in gear_rows
+        ) or "<li><span>No equipped gear tracked</span></li>"
+        seasonal = item.get("seasonal_event")
+        if seasonal is None:
+            event_text = "None"
+        else:
+            hours = seasonal["seconds_left"] // 3600
+            event_text = (
+                f"{html.escape(seasonal['type'])} ({seasonal['multiplier']:g}×) — {hours}h left"
+            )
         return f"""
         <article class="guild-card">
           <div class="card-title">
@@ -456,11 +500,16 @@ class DashboardServer:
             <p><strong>Boss:</strong> {boss_text}</p>
             <p><strong>Virus:</strong> {virus_text}</p>
             <p><strong>Custom config:</strong> {settings_text}</p>
+            <p><strong>Seasonal event:</strong> {event_text}</p>
           </div>
           <h3>Channels</h3>
           {channel_form}
           <h3>Top wallets</h3>
           <ol class="leaderboard">{leaderboard}</ol>
+          <h3>Active raid damage</h3>
+          <ol class="leaderboard">{raid_board}</ol>
+          <h3>Equipped gear</h3>
+          <ol class="leaderboard">{gear_board}</ol>
         </article>
         """
 

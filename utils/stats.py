@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import config
 from items import ShopItem, armor_mitigation_percent
+from utils.gear_sets import SetBonus
 
 
 @dataclass(frozen=True)
@@ -41,19 +42,26 @@ def compute_combat_stats(
     armor: ShopItem | None,
     *,
     current_hp: float | None = None,
+    prestige_level: int = 0,
+    set_bonus: SetBonus | None = None,
 ) -> CombatStats:
     armor_bonus = armor.hp_bonus if armor is not None else 0
     max_hp = config.PLAYER_BASE_HP + armor_bonus
+    damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
     if weapon is None:
-        damage_min = config.BOSS_UNARMED_MIN
-        damage_max = config.BOSS_UNARMED_MAX
+        damage_min = int(config.BOSS_UNARMED_MIN * damage_mult)
+        damage_max = int(config.BOSS_UNARMED_MAX * damage_mult)
         crit_pct = int(round(config.PLAYER_BASE_CRIT_CHANCE * 100))
     else:
-        damage_min = weapon.power + config.BOSS_ATTACK_BONUS_MIN
-        damage_max = weapon.power + config.BOSS_ATTACK_BONUS_MAX
-        crit_pct = int(round((config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance) * 100))
+        damage_min = int((weapon.power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
+        damage_max = int((weapon.power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
+        crit_rate = config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance
+        crit_rate += prestige_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
+        crit_pct = int(round(crit_rate * 100))
     crit_damage_max = int(damage_max * config.PLAYER_ATTACK_CRIT_MULTIPLIER)
     mitigation = armor_mitigation_percent(armor.power) if armor is not None else 0
+    if set_bonus is not None and armor is not None:
+        mitigation = min(90, mitigation + int(round(set_bonus.mitigation_bonus * 100)))
     hp_display = int(current_hp) if current_hp is not None else None
     return CombatStats(
         max_hp=max_hp,
@@ -67,7 +75,12 @@ def compute_combat_stats(
     )
 
 
-def format_combat_stats_block(stats: CombatStats) -> str:
+def format_combat_stats_block(
+    stats: CombatStats,
+    *,
+    set_bonus: SetBonus | None = None,
+    prestige_level: int = 0,
+) -> str:
     hp_line = f"**{stats.max_hp}** max HP"
     if stats.current_hp is not None:
         bar = hp_bar(float(stats.current_hp), float(stats.max_hp))
@@ -80,4 +93,11 @@ def format_combat_stats_block(stats: CombatStats) -> str:
         lines.append(f"**{stats.mitigation_pct}%** damage blocked ({stats.armor_hp_bonus} bonus HP from armor)")
     else:
         lines.append("No armor equipped")
+    if set_bonus is not None:
+        lines.append(f"**{set_bonus.name} set** active (+{int(config.SET_DAMAGE_BONUS * 100)}% dmg)")
+    if prestige_level > 0:
+        lines.append(
+            f"Prestige **{prestige_level}** (+{int(prestige_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL * 100)}% crit, "
+            f"+{int(prestige_level * config.PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)}% income)"
+        )
     return "\n".join(lines)

@@ -21,7 +21,9 @@ from items import (
     armor_mitigation_percent,
     get_item,
 )
+from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.discord_api import safe_channel_send, safe_interaction_send
+from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
 from utils.stats import hp_bar
 
@@ -47,7 +49,9 @@ class Boss(commands.Cog):
         scale_factor = await self.bot.db.get_config_value(guild_id, "boss_health_scale_factor")
         scaled_hp = max(config.BOSS_MIN_HP, circulation * scale_factor)
         base_hp = min(config.BOSS_HP_CAP, scaled_hp)
-        return base_hp * float(config.BOSS_VARIANTS[variant]["multiplier"])
+        hp = base_hp * float(config.BOSS_VARIANTS[variant]["multiplier"])
+        hp *= await self.bot.db.get_boss_hp_multiplier(guild_id)
+        return hp
 
     async def _spawn_boss(self, guild_id: int, variant: str) -> float:
         hp = await self._boss_hp(guild_id, variant)
@@ -72,14 +76,15 @@ class Boss(commands.Cog):
     async def _roll_boss_loot(self, guild_id: int, rows: list[Any]) -> list[tuple[int, ShopItem]]:
         if not rows:
             return []
+        drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
         granted: list[tuple[int, ShopItem]] = []
-        if random.random() < config.BOSS_INFERIOR_DROP_CHANCE:
+        if random.random() < config.BOSS_INFERIOR_DROP_CHANCE * drop_mult:
             uid = Boss._weighted_random_damage_user(rows)
             if uid is not None:
                 drop = random.choice(BOSS_WEAK_ITEMS)
                 await self.bot.db.grant_item(uid, guild_id, drop.id)
                 granted.append((uid, drop))
-        if random.random() < config.BOSS_EPIC_DROP_CHANCE:
+        if random.random() < config.BOSS_EPIC_DROP_CHANCE * drop_mult:
             uid = Boss._weighted_random_damage_user(rows)
             if uid is not None:
                 epic = random.choice((BOSS_SLAYER_BLADE, BOSS_SLAYER_MAIL))
@@ -95,7 +100,8 @@ class Boss(commands.Cog):
     ) -> list[tuple[int, ShopItem]]:
         if variant not in ("celestial", "mythic") or not rows:
             return []
-        if random.random() >= config.BOSS_MYTHIC_DROP_CHANCE:
+        drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
+        if random.random() >= config.BOSS_MYTHIC_DROP_CHANCE * drop_mult:
             return []
         uid = Boss._weighted_random_damage_user(rows)
         if uid is None:
@@ -276,6 +282,14 @@ class Boss(commands.Cog):
 
         await self.bot.db.clear_boss(guild_id)
 
+        contributor_ids = [int(row["user_id"]) for row in rows]
+        mythic = variant == "mythic"
+        await self.bot.db.increment_boss_kills_for_raid(
+            guild_id,
+            contributor_ids,
+            mythic=mythic,
+        )
+
         if killer_user_id is not None:
             summary = f"The killing blow goes to <@{killer_user_id}>."
         else:
@@ -310,6 +324,15 @@ class Boss(commands.Cog):
                 allowed_mentions=discord.AllowedMentions.none(),
                 gate=getattr(self.bot, "outbound_gate", None),
             )
+            if killer_user_id is not None:
+                unlocked = await evaluate_unlocks(
+                    self.bot.db,
+                    guild_id,
+                    killer_user_id,
+                )
+                unlock_msg = format_unlock_message(unlocked)
+                if unlock_msg:
+                    await interaction.followup.send(unlock_msg, ephemeral=True)
 
     async def _gear(self, user_id: int, guild_id: int) -> tuple[ShopItem | None, ShopItem | None]:
         equipment = await self.bot.db.get_equipment(user_id, guild_id)
@@ -322,36 +345,58 @@ class Boss(commands.Cog):
         return float(config.PLAYER_BASE_HP + (armor.hp_bonus if armor is not None else 0))
 
     @staticmethod
-    def _attack_roll(weapon: ShopItem | None) -> tuple[int, bool, str]:
+    def _attack_roll(
+        weapon: ShopItem | None,
+        *,
+        damage_mult: float = 1.0,
+        extra_crit: float = 0.0,
+    ) -> tuple[int, bool, str]:
         if weapon is None:
-            damage = random.randint(config.BOSS_UNARMED_MIN, config.BOSS_UNARMED_MAX)
+            low = int(config.BOSS_UNARMED_MIN * damage_mult)
+            high = int(config.BOSS_UNARMED_MAX * damage_mult)
+            damage = random.randint(low, max(low, high))
             verb = "hits"
-            crit_chance = config.PLAYER_BASE_CRIT_CHANCE
+            crit_chance = config.PLAYER_BASE_CRIT_CHANCE + extra_crit
         else:
-            damage = random.randint(config.BOSS_ATTACK_BONUS_MIN, config.BOSS_ATTACK_BONUS_MAX) + weapon.power
+            low = int((weapon.power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
+            high = int((weapon.power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
+            damage = random.randint(low, max(low, high))
             verb = random.choice(weapon.verbs or ("strikes",))
-            crit_chance = config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance
+            crit_chance = config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance + extra_crit
         critical = random.random() < crit_chance
         if critical:
             damage = int(damage * config.PLAYER_ATTACK_CRIT_MULTIPLIER)
         return damage, critical, verb
 
     @staticmethod
-    def _apply_armor_mitigation(raw_damage: int, armor: ShopItem | None) -> tuple[int, int]:
+    def _apply_armor_mitigation(
+        raw_damage: int,
+        armor: ShopItem | None,
+        *,
+        set_bonus: SetBonus | None = None,
+    ) -> tuple[int, int]:
         if armor is None:
             return raw_damage, 0
         mitigated = int(raw_damage * armor.power / (armor.power + 100))
+        if set_bonus is not None:
+            mitigated += int(raw_damage * set_bonus.mitigation_bonus)
+        mitigated = min(raw_damage - 1, mitigated)
         return max(1, raw_damage - mitigated), mitigated
 
     @staticmethod
-    def _counter_roll(variant: str, armor: ShopItem | None) -> tuple[int, int, bool, str]:
+    def _counter_roll(
+        variant: str,
+        armor: ShopItem | None,
+        *,
+        set_bonus: SetBonus | None = None,
+    ) -> tuple[int, int, bool, str]:
         variant_config = config.BOSS_VARIANTS[variant]
         low, high = variant_config["counter_damage"]
         raw_damage = random.randint(int(low), int(high))
         critical = random.random() < float(variant_config["crit_chance"])
         if critical:
             raw_damage = int(raw_damage * 1.75)
-        damage, mitigated = Boss._apply_armor_mitigation(raw_damage, armor)
+        damage, mitigated = Boss._apply_armor_mitigation(raw_damage, armor, set_bonus=set_bonus)
         moves = {
             "normal": ("backhands", "shoulder-checks", "bonks"),
             "enraged": ("rage-smashes", "uppercuts", "body-slams"),
@@ -367,7 +412,10 @@ class Boss(commands.Cog):
         if max_hp <= 0:
             return base
         desperation = 1.0 - (hp / max_hp)
-        return min(0.95, base + desperation * COUNTER_HP_BONUS)
+        chance = min(0.95, base + desperation * COUNTER_HP_BONUS)
+        if hp / max_hp <= config.BOSS_PHASE_THRESHOLDS[-1]:
+            chance = min(0.95, chance + config.BOSS_PHASE_ENRAGE_BONUS)
+        return chance
 
     @staticmethod
     def _counter_target_count(pool_size: int, hp: float, max_hp: float) -> int:
@@ -497,8 +545,17 @@ class Boss(commands.Cog):
             await interaction.response.send_message("No boss is active right now.", ephemeral=True)
             return
 
-        weapon, _ = await self._gear(interaction.user.id, interaction.guild_id)
-        damage, attack_critical, attack_verb = self._attack_roll(weapon)
+        weapon, armor = await self._gear(interaction.user.id, interaction.guild_id)
+        set_bonus = detect_set_bonus(weapon, armor)
+        progress = await self.bot.db.get_user_progress(interaction.user.id, interaction.guild_id)
+        prestige = int(progress["prestige_level"])
+        damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
+        extra_crit = prestige * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
+        damage, attack_critical, attack_verb = self._attack_roll(
+            weapon,
+            damage_mult=damage_mult,
+            extra_crit=extra_crit,
+        )
         updated = await self.bot.db.damage_boss(interaction.guild_id, interaction.user.id, damage)
         if updated is None:
             await interaction.response.send_message("No boss is active right now.", ephemeral=True)
@@ -511,6 +568,13 @@ class Boss(commands.Cog):
                 killer_user_id=interaction.user.id,
             )
             return
+
+        boss_hp = float(updated["hp"])
+        boss_max = float(updated["max_hp"])
+        phase_pct = await self.bot.db.try_mark_boss_phase(interaction.guild_id, boss_hp / boss_max)
+        phase_note = ""
+        if phase_pct is not None:
+            phase_note = f"\n**Phase {phase_pct}%** — {BOSS_NAME} enrages!"
 
         counter_text = await self._maybe_counterattack(interaction.guild_id, updated)
 
@@ -537,6 +601,10 @@ class Boss(commands.Cog):
         )
         if counter_text:
             embed.add_field(name="Counterattack", value=counter_text.strip(), inline=False)
+        if phase_note:
+            embed.add_field(name="Boss phase", value=phase_note.strip(), inline=False)
+        if set_bonus is not None:
+            embed.set_footer(text=f"{set_bonus.name} set bonus active")
         await interaction.response.send_message(
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
@@ -562,10 +630,15 @@ class Boss(commands.Cog):
         return "".join(parts)
 
     async def _counterattack_text(self, guild_id: int, victim_id: int, variant: str) -> str:
-        _, armor = await self._gear(victim_id, guild_id)
+        weapon, armor = await self._gear(victim_id, guild_id)
+        set_bonus = detect_set_bonus(weapon, armor)
         max_hp = await self._max_hp(victim_id, guild_id)
         await self.bot.db.sync_combat_hp(victim_id, guild_id, max_hp)
-        damage, mitigated, critical, move = self._counter_roll(variant, armor)
+        damage, mitigated, critical, move = self._counter_roll(
+            variant,
+            armor,
+            set_bonus=set_bonus,
+        )
         hp, max_hp = await self.bot.db.damage_player(victim_id, guild_id, damage, max_hp)
         armor_text = ""
         if armor is not None and mitigated > 0:
@@ -584,6 +657,40 @@ class Boss(commands.Cog):
             f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
             f"{crit_text}{armor_text} HP: {int(hp)}/{int(max_hp)}."
         )
+
+    @app_commands.command(name="raid-leaderboard", description="Top damage dealers on the active boss.")
+    @app_commands.guild_only()
+    async def raid_leaderboard(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None or interaction.guild is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        boss = await self.bot.db.get_active_boss(interaction.guild_id)
+        if boss is None:
+            await interaction.response.send_message("No boss is active right now.", ephemeral=True)
+            return
+
+        rows = await self.bot.db.list_boss_damage(interaction.guild_id)
+        if not rows:
+            await interaction.response.send_message("Nobody has attacked yet.", ephemeral=True)
+            return
+
+        total = sum(float(row["damage"]) for row in rows)
+        lines = []
+        for index, row in enumerate(rows[:10], start=1):
+            user_id = int(row["user_id"])
+            dmg = float(row["damage"])
+            share = int(round(100 * dmg / total)) if total > 0 else 0
+            name = self._display_name(interaction.guild, user_id)
+            lines.append(f"**{index}.** {name} — **{fmt_amount(dmg)}** ({share}%)")
+
+        embed = discord.Embed(
+            title=f"Raid damage — {boss['variant'].title()} {boss['name']}",
+            description="\n".join(lines),
+            color=discord.Color.orange(),
+        )
+        embed.set_footer(text="Rewards scale with your damage share when the boss falls")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="heal", description="Revive a downed teammate.")
     @app_commands.describe(target="Downed user to heal")
@@ -606,10 +713,38 @@ class Boss(commands.Cog):
             await self._max_hp(target.id, interaction.guild_id),
         )
         await self.bot.db.record_heal(interaction.guild_id, interaction.user.id, target.id)
+        await self.bot.db.increment_progress(
+            interaction.user.id,
+            interaction.guild_id,
+            heals_given=1,
+        )
+        await self.bot.db.credit_wallet(
+            interaction.user.id,
+            interaction.guild_id,
+            config.HEALER_RAID_REWARD,
+        )
+        embed = discord.Embed(
+            title="Field medic",
+            description=f"{interaction.user.mention} revived {target.mention}.",
+            color=discord.Color.green(),
+        )
+        embed.add_field(
+            name="Reward",
+            value=f"+{fmt_amount(config.HEALER_RAID_REWARD)}",
+            inline=True,
+        )
         await interaction.response.send_message(
-            f"{interaction.user.mention} revived {target.mention}.",
+            embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
         )
+        unlocked = await evaluate_unlocks(
+            self.bot.db,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+        unlock_msg = format_unlock_message(unlocked)
+        if unlock_msg:
+            await interaction.followup.send(unlock_msg, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
