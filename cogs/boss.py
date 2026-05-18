@@ -22,6 +22,7 @@ from items import (
     get_item,
 )
 from utils.achievements import evaluate_unlocks, format_unlock_message
+from utils.loadout import PlayerLoadout, off_hand_crit_bonus, off_hand_power_bonus, parse_loadout
 from utils.quests import record_quest_event
 from utils.discord_api import safe_channel_send, safe_interaction_send
 from utils.gear_sets import SetBonus, detect_set_bonus
@@ -338,20 +339,19 @@ class Boss(commands.Cog):
                 if unlock_msg:
                     await interaction.followup.send(unlock_msg, ephemeral=True)
 
-    async def _gear(self, user_id: int, guild_id: int) -> tuple[ShopItem | None, ShopItem | None]:
+    async def _loadout(self, user_id: int, guild_id: int) -> PlayerLoadout:
         equipment = await self.bot.db.get_equipment(user_id, guild_id)
-        weapon = get_item(equipment["weapon"]) if "weapon" in equipment else None
-        armor = get_item(equipment["armor"]) if "armor" in equipment else None
-        return weapon, armor
+        return parse_loadout(equipment)
 
     async def _max_hp(self, user_id: int, guild_id: int) -> float:
-        _, armor = await self._gear(user_id, guild_id)
-        return float(config.PLAYER_BASE_HP + (armor.hp_bonus if armor is not None else 0))
+        loadout = await self._loadout(user_id, guild_id)
+        return float(config.PLAYER_BASE_HP + (loadout.armor.hp_bonus if loadout.armor else 0))
 
     @staticmethod
     def _attack_roll(
         weapon: ShopItem | None,
         *,
+        off_hand: ShopItem | None = None,
         damage_mult: float = 1.0,
         extra_crit: float = 0.0,
     ) -> tuple[int, bool, str]:
@@ -362,11 +362,17 @@ class Boss(commands.Cog):
             verb = "hits"
             crit_chance = config.PLAYER_BASE_CRIT_CHANCE + extra_crit
         else:
-            low = int((weapon.power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
-            high = int((weapon.power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
+            attack_power = weapon.power + off_hand_power_bonus(off_hand)
+            low = int((attack_power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
+            high = int((attack_power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
             damage = random.randint(low, max(low, high))
             verb = random.choice(weapon.verbs or ("strikes",))
-            crit_chance = config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance + extra_crit
+            crit_chance = (
+                config.PLAYER_BASE_CRIT_CHANCE
+                + weapon.crit_chance
+                + off_hand_crit_bonus(off_hand)
+                + extra_crit
+            )
         critical = random.random() < crit_chance
         if critical:
             damage = int(damage * config.PLAYER_ATTACK_CRIT_MULTIPLIER)
@@ -549,14 +555,15 @@ class Boss(commands.Cog):
             await interaction.response.send_message("No boss is active right now.", ephemeral=True)
             return
 
-        weapon, armor = await self._gear(interaction.user.id, interaction.guild_id)
-        set_bonus = detect_set_bonus(weapon, armor)
+        loadout = await self._loadout(interaction.user.id, interaction.guild_id)
+        set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         progress = await self.bot.db.get_user_progress(interaction.user.id, interaction.guild_id)
         prestige = int(progress["prestige_level"])
         damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
         extra_crit = prestige * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
         damage, attack_critical, attack_verb = self._attack_roll(
-            weapon,
+            loadout.primary,
+            off_hand=loadout.off_hand,
             damage_mult=damage_mult,
             extra_crit=extra_crit,
         )
@@ -597,7 +604,9 @@ class Boss(commands.Cog):
             title=f"{interaction.user.display_name} → {BOSS_NAME}",
             color=discord.Color.green() if attack_critical else discord.Color.blurple(),
         )
-        weapon_text = weapon.name if weapon is not None else "bare hands"
+        weapon_text = loadout.primary.name if loadout.primary is not None else "bare hands"
+        if loadout.off_hand is not None:
+            weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
         embed.add_field(
             name="Hit",
             value=f"{attack_verb} for **{damage}** with {weapon_text}",
@@ -641,20 +650,20 @@ class Boss(commands.Cog):
         return "".join(parts)
 
     async def _counterattack_text(self, guild_id: int, victim_id: int, variant: str) -> str:
-        weapon, armor = await self._gear(victim_id, guild_id)
-        set_bonus = detect_set_bonus(weapon, armor)
+        loadout = await self._loadout(victim_id, guild_id)
+        set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         max_hp = await self._max_hp(victim_id, guild_id)
         await self.bot.db.sync_combat_hp(victim_id, guild_id, max_hp)
         damage, mitigated, critical, move = self._counter_roll(
             variant,
-            armor,
+            loadout.armor,
             set_bonus=set_bonus,
         )
         hp, max_hp = await self.bot.db.damage_player(victim_id, guild_id, damage, max_hp)
         armor_text = ""
-        if armor is not None and mitigated > 0:
-            pct = armor_mitigation_percent(armor.power)
-            armor_text = f" {armor.name} mitigates {mitigated} ({pct}%)."
+        if loadout.armor is not None and mitigated > 0:
+            pct = armor_mitigation_percent(loadout.armor.power)
+            armor_text = f" {loadout.armor.name} mitigates {mitigated} ({pct}%)."
         crit_text = " Critical blow!" if critical else ""
         threat = int(config.BOSS_VARIANTS[variant]["threat"])
         if hp <= 0:

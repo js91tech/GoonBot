@@ -70,10 +70,18 @@ def detect_set_bonus(weapon: ShopItem | None, armor: ShopItem | None) -> SetBonu
     )
 
 
-def heist_intimidation_bonus(weapon: ShopItem | None) -> float:
-    if weapon is None:
+def heist_intimidation_bonus(
+    weapon: ShopItem | None,
+    *,
+    off_hand: ShopItem | None = None,
+) -> float:
+    if weapon is None and off_hand is None:
         return 0.0
-    return min(config.HEIST_INTIMIDATION_CAP, weapon.power * config.HEIST_INTIMIDATION_PER_POWER)
+    from utils.loadout import off_hand_power_bonus
+
+    power = weapon.power if weapon is not None else 0
+    power += off_hand_power_bonus(off_hand)
+    return min(config.HEIST_INTIMIDATION_CAP, power * config.HEIST_INTIMIDATION_PER_POWER)
 
 
 def hack_penalty_multiplier(wallet: float) -> float:

@@ -12,6 +12,7 @@ from items import get_item
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.gear_sets import heist_intimidation_bonus
 from utils.helpers import fmt_amount, guild_only_message
+from utils.loadout import parse_loadout
 
 
 class Heist(commands.Cog):
@@ -79,8 +80,8 @@ class Heist(commands.Cog):
         await self.bot.db.set_last_heist(interaction.user.id, interaction.guild_id, current)
         base_success = await self.bot.db.get_config_value(interaction.guild_id, "heist_base_success")
         equipment = await self.bot.db.get_equipment(interaction.user.id, interaction.guild_id)
-        weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
-        intimidation = heist_intimidation_bonus(weapon)
+        loadout = parse_loadout(equipment)
+        intimidation = heist_intimidation_bonus(loadout.primary, off_hand=loadout.off_hand)
         success_chance = min(
             config.HEIST_MAX_SUCCESS,
             base_success + (len(participants) - 1) * config.HEIST_CREW_BONUS + intimidation,

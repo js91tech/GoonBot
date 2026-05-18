@@ -309,13 +309,6 @@ CATEGORIES = ("all", "weapon", "gun", "armor")
 SHOP_CATEGORIES = ("all", "weapon", "gun", "armor")
 
 
-def equip_slot_for(item: ShopItem) -> str:
-    """Database equipment slot for an item (guns share the weapon slot)."""
-    if item.category in ("weapon", "gun"):
-        return "weapon"
-    return item.category
-
-
 def is_damage_dealer(item: ShopItem) -> bool:
     return item.category in ("weapon", "gun")
 
