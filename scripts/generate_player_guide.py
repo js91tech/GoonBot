@@ -214,6 +214,24 @@ def build() -> None:
     pdf.ln(2)
     pdf.body("Jobs (/jobs, /work) pay 4.5x base rates; class can further modify payouts.")
     pdf.ln(2)
+    pdf.chapter_title("Mana and class skills")
+    pdf.bullet("/mana - mana bar, regen rules, ready spell")
+    pdf.bullet("/skills - list your class spells and mana costs")
+    pdf.bullet("/cast skill_id - spend mana to cast (see /skills for ids)")
+    pdf.ln(2)
+    pdf.body(
+        "Most classes regen mana slowly over time (+2 every 45s) but mainly refill from "
+        "dealing damage (18% of boss hit damage). High DPS = more casts."
+    )
+    pdf.body(
+        "Healer classes (Vanguard Warden branch) regen mana faster over time (+7 every 20s) "
+        "and get less mana from damage (6%) so they can heal without spam-attacking."
+    )
+    pdf.body(
+        "Offensive spells charge your next /attack or /duel. Self-heals apply on cast. "
+        "Blessing boosts your next /heal payout. Smoke skills buff your next /heist."
+    )
+    pdf.ln(2)
     pdf.body("Achievement examples: first boss kill, 25 raids, mythic slayer, heist king, field medic, own Excalibur.")
 
     # 10 - Events
@@ -232,7 +250,8 @@ def build() -> None:
         ("Economy", "/daily, /balance, /pay, /leaderboard, /hall-of-fame"),
         ("Shop", "/shop, /buy, /inventory, /equip, /sell, /stats"),
         ("Raid", "/boss, /attack, /raid-leaderboard, /heal"),
-        ("Progress", "/achievements, /prestige, /craft, /event, /quests"),
+        ("Progress", "/class, /class-choose, /class-evolve, /mana, /skills, /cast"),
+        ("More", "/achievements, /prestige, /craft, /event, /quests, /jobs, /work"),
         ("Crime", "/heist, /arrest, /bounty, /bounties, /hack, /transfer"),
         ("PvP", "/duel, /coinflip, /coinflip-duel, /blackjack"),
         ("Fun", "/trivia, /quest-hint"),
@@ -254,6 +273,8 @@ def build() -> None:
     pdf.bullet("Use /stats public:true to show off your build in channel.")
     pdf.bullet("Check /quests daily for bonus nuggets.")
     pdf.bullet("Duel prepared opponents - gear and HP matter.")
+    pdf.bullet("Cast a spell before /attack or /duel for bonus damage or defense.")
+    pdf.bullet("Warden healers: /cast mend, then keep raiding without burning out on mana.")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(OUTPUT))

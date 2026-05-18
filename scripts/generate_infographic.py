@@ -101,7 +101,7 @@ def build() -> None:
     draw.text((W // 2, 48), "NUGGETBOT", fill=GOLD, font=hero_font, anchor="mm")
     draw.text(
         (W // 2, 88),
-        "How to Play  ·  May 2026 Update",
+        "How to Play  ·  Classes, Mana & Skills",
         fill=MUTED,
         font=section_font,
         anchor="mm",
@@ -168,13 +168,13 @@ def build() -> None:
             ],
         ),
         (
-            "Hall of Fame",
-            GOLD,
+            "Mana & Skills",
+            CYAN,
             [
-                "/hall-of-fame",
-                "Richest wallets",
-                "Most boss kills & heals",
-                "Achievement leaders",
+                "/mana · /skills · /cast",
+                "Warden: fast time regen",
+                "DPS: mana from damage",
+                "Spells buff /attack or /duel",
             ],
         ),
         (
@@ -209,8 +209,8 @@ def build() -> None:
     foot_y = H - 100
     _rounded_rect(draw, (margin, foot_y, W - margin, H - 40), 18, (18, 24, 40), outline=GOLD)
     footer_cmds = (
-        "/daily  ·  /shop  ·  /attack  ·  /duel  ·  /class  ·  /work  ·  /quests  ·  "
-        "/hall-of-fame  ·  /coinflip  ·  /heist  ·  /prestige  ·  /stats"
+        "/daily  ·  /shop  ·  /attack  ·  /cast  ·  /duel  ·  /class  ·  /skills  ·  "
+        "/mana  ·  /work  ·  /quests  ·  /hall-of-fame  ·  /heist  ·  /stats"
     )
     draw.text((W // 2, foot_y + 22), "Slash commands", fill=GOLD, font=section_font, anchor="mm")
     for i, line in enumerate(_wrap(draw, footer_cmds, small_font, W - 2 * margin - 40)):
