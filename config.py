@@ -113,6 +113,8 @@ BOSS_UNARMED_MAX = 15
 PLAYER_ATTACK_CRIT_MULTIPLIER = 2.0
 PLAYER_BASE_CRIT_CHANCE = 0.03
 BOSS_DOWN_SECONDS = 2 * 60
+# Admin /summon spawns: boss atk and def operate at this fraction (60% debuff → 40% retained).
+BOSS_SUMMONED_STAT_RETENTION = 0.4
 PLAYER_BASE_HP = 100
 BOSS_VARIANTS = {
     "normal": {"multiplier": 1.0, "counter_chance": 0.08, "threat": 1, "counter_damage": (10, 22), "crit_chance": 0.05},

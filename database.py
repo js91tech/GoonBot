@@ -398,6 +398,32 @@ class Database:
         await self._migrate_quest_tables()
         await self._migrate_equipment_off_hand()
         await self._migrate_duel_history()
+        await self._migrate_boss_summoned()
+
+    async def _migrate_boss_summoned(self) -> None:
+        """Track admin-summoned bosses for combat debuffs."""
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'boss_sessions'
+                  AND column_name = 'summoned'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.conn.execute(
+                    "ALTER TABLE boss_sessions ADD COLUMN summoned INTEGER NOT NULL DEFAULT 0",
+                )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(boss_sessions)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            if "summoned" not in cols:
+                await self.conn.execute(
+                    "ALTER TABLE boss_sessions ADD COLUMN summoned INTEGER NOT NULL DEFAULT 0",
+                )
+        await self.conn.commit()
 
     async def _migrate_equipment_off_hand(self) -> None:
         """Allow off_hand equipment slot on existing databases."""
@@ -2077,6 +2103,8 @@ class Database:
         variant: str,
         hp: float,
         spawned_at: float | None = None,
+        *,
+        summoned: bool = False,
     ) -> None:
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
@@ -2086,9 +2114,10 @@ class Database:
                 await self.conn.execute(
                     """
                     INSERT INTO boss_sessions (
-                        guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at, phases_announced
+                        guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at,
+                        phases_announced, summoned
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
                     """,
                     (
                         guild_id,
@@ -2098,6 +2127,7 @@ class Database:
                         hp,
                         spawn_ts,
                         spawn_ts,
+                        1 if summoned else 0,
                     ),
                 )
             except Exception:
