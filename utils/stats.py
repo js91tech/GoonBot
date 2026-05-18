@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import config
-from items import ShopItem, armor_mitigation_percent
+from items import ShopItem, armor_mitigation_percent, is_damage_dealer
 from utils.gear_sets import SetBonus
 
 
@@ -28,7 +28,7 @@ def hp_bar(current: float, maximum: float, *, length: int = 12) -> str:
 
 
 def format_item_stats(item: ShopItem) -> str:
-    if item.category == "weapon":
+    if is_damage_dealer(item):
         crit = f", {int(item.crit_chance * 100)}% crit" if item.crit_chance > 0 else ""
         lo = item.power + config.BOSS_ATTACK_BONUS_MIN
         hi = item.power + config.BOSS_ATTACK_BONUS_MAX

@@ -8,9 +8,10 @@ from discord.ext import commands
 
 import config
 from items import (
-    CATEGORIES,
+    SHOP_CATEGORIES,
     ITEMS,
     ShopItem,
+    equip_slot_for,
     get_item,
     items_for_category,
 )
@@ -87,12 +88,13 @@ class Shop(commands.Cog):
                 break
         return choices
 
-    @app_commands.command(name="shop", description="Browse weapons and armor.")
+    @app_commands.command(name="shop", description="Browse weapons, guns, and armor.")
     @app_commands.describe(category="Item category to view")
     @app_commands.choices(
         category=[
             app_commands.Choice(name="All", value="all"),
             app_commands.Choice(name="Weapons", value="weapon"),
+            app_commands.Choice(name="Guns", value="gun"),
             app_commands.Choice(name="Armor", value="armor"),
         ]
     )
@@ -101,12 +103,24 @@ class Shop(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        if category not in CATEGORIES:
-            await interaction.response.send_message("Choose all, weapon, or armor.", ephemeral=True)
+        if category not in SHOP_CATEGORIES:
+            await interaction.response.send_message(
+                "Choose all, weapon, gun, or armor.", ephemeral=True
+            )
             return
 
         items = items_for_category(category)
-        title = "Nugget Shop" if category == "all" else f"Nugget Shop - {category.title()}"
+        category_labels = {
+            "all": "All",
+            "weapon": "Weapons",
+            "gun": "Guns",
+            "armor": "Armor",
+        }
+        title = (
+            "Nugget Shop"
+            if category == "all"
+            else f"Nugget Shop — {category_labels.get(category, category.title())}"
+        )
         embed = discord.Embed(
             title=title,
             description="\n".join(_item_line(item) for item in items),
@@ -320,10 +334,11 @@ class Shop(commands.Cog):
             )
             return
 
+        slot = equip_slot_for(shop_item)
         equipped = await self.bot.db.equip_item(
             interaction.user.id,
             interaction.guild_id,
-            shop_item.category,
+            slot,
             shop_item.id,
         )
         if not equipped:
@@ -332,8 +347,9 @@ class Shop(commands.Cog):
             )
             return
 
+        slot_label = "gun" if shop_item.category == "gun" else shop_item.category
         await interaction.response.send_message(
-            f"Equipped **{shop_item.name}** as your {shop_item.category}.",
+            f"Equipped **{shop_item.name}** ({slot_label} slot).",
             ephemeral=True,
         )
 

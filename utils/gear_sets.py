@@ -34,6 +34,13 @@ ITEM_SET_MAP: dict[str, str] = {
     "mythic_raid_mail": "mythic",
     "boss_slayer_blade": "slayer",
     "boss_slayer_mail": "slayer",
+    "flare_pistol": "ember",
+    "storm_rifle": "storm",
+    "void_carbine": "void",
+    "mythic_annihilator": "void",
+    "dragon_shotgun": "dragon",
+    "cosmic_railgun": "cosmic",
+    "nugget_minigun": "nugget",
 }
 
 SET_DISPLAY_NAMES: dict[str, str] = {
