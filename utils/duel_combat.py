@@ -12,6 +12,7 @@ from utils.combat_engine import (
     roll_jester_reflect,
     roll_player_damage,
 )
+from utils.spell_effects import CombatSpellState
 from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.loadout import parse_loadout
 
@@ -25,9 +26,12 @@ class DuelFighter:
     armor: ShopItem | None
     set_bonus: SetBonus | None
     prestige_level: int
-    class_id: str | None
     max_hp: int
     hp: int
+    class_id: str | None = None
+    spell_state: CombatSpellState | None = None
+    spell_offense_used: bool = False
+    spell_defense_used: bool = False
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,24 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         )
 
     ctx = _attack_context(attacker, defender)
+    damage_mult = ctx.damage_mult
+    extra_crit = ctx.extra_crit
+    if attacker.spell_state is not None and not attacker.spell_offense_used:
+        st = attacker.spell_state
+        if st.damage_mult > 1.0:
+            damage_mult *= st.damage_mult
+            attacker.spell_offense_used = True
+        if st.extra_crit > 0:
+            extra_crit += st.extra_crit
+            attacker.spell_offense_used = True
+    ctx = AttackContext(
+        prestige_level=ctx.prestige_level,
+        class_modifiers=ctx.class_modifiers,
+        damage_mult=damage_mult,
+        extra_crit=extra_crit,
+        pvp_matchup_mult=ctx.pvp_matchup_mult,
+        boss_element_mult=ctx.boss_element_mult,
+    )
     raw, critical, verb = roll_player_damage(
         attacker.weapon,
         off_hand=attacker.off_hand,
@@ -116,8 +138,14 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
     )
     from utils.classes import get_modifiers
 
+    fortify_mult = 1.0
+    if defender.spell_state is not None and not defender.spell_defense_used:
+        if defender.spell_state.fortify_mult < 1.0:
+            fortify_mult = defender.spell_state.fortify_mult
+            defender.spell_defense_used = True
+    mitigated_raw = max(1, int(raw * fortify_mult)) if fortify_mult < 1.0 else raw
     damage, mitigated = apply_armor_mitigation(
-        raw,
+        mitigated_raw,
         defender.armor,
         set_bonus=defender.set_bonus,
         class_modifiers=get_modifiers(defender.class_id),

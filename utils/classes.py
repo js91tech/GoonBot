@@ -305,6 +305,16 @@ def is_jester_user(user_id: int) -> bool:
     return user_id == config.JESTER_EXCLUSIVE_USER_ID
 
 
+def is_healer_class(class_id: str | None) -> bool:
+    """Warden branch and their masters — strong mana regen over time."""
+    if not class_id:
+        return False
+    parts = class_id.split("_")
+    if len(parts) >= 2 and parts[1] == "warden":
+        return True
+    return False
+
+
 def element_multiplier(attacker_element: Element | None, boss_element: str | None) -> float:
     if attacker_element is None or not boss_element:
         return 1.0

@@ -12,6 +12,8 @@ from utils.duel_combat import (
     simulate_duel,
 )
 from utils.helpers import fmt_amount, guild_only_message
+from utils.skills import get_skill, spell_buff_from_skill
+from utils.spell_effects import combat_state_from_spell
 
 
 class Duels(commands.Cog):
@@ -107,6 +109,15 @@ class Duels(commands.Cog):
             prestige_level=int(defender_progress["prestige_level"]),
             class_id=defender_class,
         )
+        for fighter, uid in (
+            (attacker_fighter, attacker.id),
+            (defender_fighter, opponent.id),
+        ):
+            skill_id = await self.bot.db.consume_pending_spell(uid, guild_id)
+            if skill_id:
+                skill = get_skill(skill_id)
+                if skill is not None:
+                    fighter.spell_state = combat_state_from_spell(spell_buff_from_skill(skill))
 
         result = simulate_duel(attacker_fighter, defender_fighter)
         fighters: dict[int, DuelFighter] = {

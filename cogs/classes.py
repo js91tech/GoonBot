@@ -58,6 +58,20 @@ class Classes(commands.Cog):
                 color=discord.Color.gold(),
             )
             embed.add_field(name="Modifiers", value=format_modifiers_summary(cls.modifiers), inline=False)
+            snap = await self.bot.db.get_mana_snapshot(target.id, interaction.guild_id)
+            from utils.mana import mana_bar
+            from utils.classes import is_healer_class
+
+            regen_hint = (
+                "healer time regen"
+                if is_healer_class(class_id)
+                else f"{int(config.MANA_ON_DAMAGE_PCT * 100)}% dmg → mana"
+            )
+            embed.add_field(
+                name="Mana",
+                value=f"`{mana_bar(snap.current, snap.cap)}` {snap.current}/{snap.cap} ({regen_hint})",
+                inline=False,
+            )
             if roots:
                 embed.add_field(name="Master roots", value=", ".join(sorted(roots)), inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=user is None)

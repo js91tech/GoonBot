@@ -4,6 +4,7 @@ import asyncio
 import logging
 import random
 import time
+from dataclasses import replace
 from typing import Any
 
 import discord
@@ -28,11 +29,12 @@ from utils.discord_api import safe_channel_send, safe_interaction_send
 from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
 from utils.combat_engine import (
-    apply_armor_mitigation,
     attack_context_for_class,
     roll_jester_reflect,
     roll_player_damage,
 )
+from utils.skills import get_skill, spell_buff_from_skill
+from utils.spell_effects import combat_state_from_spell
 from utils.stats import hp_bar
 
 BOSS_NAME = "Hannah"
@@ -720,6 +722,22 @@ class Boss(commands.Cog):
             boss_element=boss_element,
             for_boss=True,
         )
+        spell_note = ""
+        skill_id = await self.bot.db.consume_pending_spell(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        if skill_id:
+            skill = get_skill(skill_id)
+            if skill is not None:
+                spell_state = combat_state_from_spell(spell_buff_from_skill(skill))
+                if spell_state.damage_mult > 1.0 or spell_state.extra_crit > 0:
+                    ctx = replace(
+                        ctx,
+                        damage_mult=ctx.damage_mult * spell_state.damage_mult,
+                        extra_crit=ctx.extra_crit + spell_state.extra_crit,
+                    )
+                    spell_note = f" via **{skill.name}**"
         damage, attack_critical, attack_verb = roll_player_damage(
             loadout.primary,
             off_hand=loadout.off_hand,
@@ -729,6 +747,11 @@ class Boss(commands.Cog):
         summoner_debuff = self._summoner_debuffed(boss, interaction.user.id)
         if summoner_debuff:
             damage = self._apply_summoner_attack_debuff(damage)
+        mana_gain = await self.bot.db.restore_mana_from_damage(
+            interaction.user.id,
+            interaction.guild_id,
+            damage,
+        )
         heal_applied = 0.0
         updated = await self.bot.db.damage_boss(interaction.guild_id, interaction.user.id, damage)
         xp_gain = max(1, int(damage * config.CLASS_XP_PER_BOSS_DAMAGE))
@@ -779,9 +802,10 @@ class Boss(commands.Cog):
             weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
         embed.add_field(
             name="Hit",
-            value=f"{attack_verb} for **{damage}** with {weapon_text}",
+            value=f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}",
             inline=True,
         )
+        embed.add_field(name="Mana", value=f"+{mana_gain} from damage", inline=True)
         if attack_critical:
             embed.add_field(name="Crit", value="**YES**", inline=True)
         if summoner_debuff:
@@ -961,6 +985,14 @@ class Boss(commands.Cog):
         )
         self_heal = target.id == interaction.user.id
         heal_reward = config.HEALER_SELF_REWARD if self_heal else config.HEALER_ALLY_REWARD
+        bless_id = await self.bot.db.consume_pending_spell(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        if bless_id:
+            bless = get_skill(bless_id)
+            if bless is not None and bless.effect == "heal_ally":
+                heal_reward *= 1.0 + bless.magnitude
         await self.bot.db.credit_wallet(
             interaction.user.id,
             interaction.guild_id,
