@@ -33,7 +33,7 @@ BOSS_NAME = "Hannah"
 COUNTER_HP_BONUS = 0.30
 COUNTER_MULTI_SECOND = 0.65
 COUNTER_MULTI_THIRD = 0.55
-SUMMONED_DEBUFF_PCT = int(round((1.0 - config.BOSS_SUMMONED_STAT_RETENTION) * 100))
+SUMMONER_DEBUFF_PCT = int(round((1.0 - config.SUMMONER_DEBUFF_STAT_RETENTION) * 100))
 
 
 class Boss(commands.Cog):
@@ -56,38 +56,45 @@ class Boss(commands.Cog):
         hp *= await self.bot.db.get_boss_hp_multiplier(guild_id)
         return hp
 
-    async def _spawn_boss(self, guild_id: int, variant: str, *, summoned: bool = False) -> float:
+    async def _spawn_boss(
+        self,
+        guild_id: int,
+        variant: str,
+        *,
+        summoner_id: int | None = None,
+    ) -> float:
         hp = await self._boss_hp(guild_id, variant)
         await self.bot.db.replace_boss(
             guild_id,
             BOSS_NAME,
             variant,
             hp,
-            summoned=summoned,
+            summoner_id=summoner_id,
         )
         return hp
 
     @staticmethod
-    def _boss_summoned(boss_row: Any) -> bool:
+    def _boss_summoner_id(boss_row: Any) -> int | None:
         try:
-            return bool(int(boss_row["summoned"]))
-        except (KeyError, IndexError, TypeError, ValueError):
-            return False
+            raw = boss_row["summoner_id"]
+        except (KeyError, IndexError, TypeError):
+            return None
+        if raw is None:
+            return None
+        try:
+            uid = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return uid if uid > 0 else None
+
+    @classmethod
+    def _summoner_debuffed(cls, boss_row: Any, user_id: int) -> bool:
+        summoner_id = cls._boss_summoner_id(boss_row)
+        return summoner_id is not None and summoner_id == user_id
 
     @staticmethod
-    def _summoned_incoming_damage(damage: int) -> int:
-        retention = config.BOSS_SUMMONED_STAT_RETENTION
-        if retention <= 0:
-            return damage
-        return max(1, int(damage / retention))
-
-    @staticmethod
-    def _summoned_counter_damage(damage: int, mitigated: int) -> tuple[int, int]:
-        retention = config.BOSS_SUMMONED_STAT_RETENTION
-        return (
-            max(1, int(damage * retention)),
-            max(0, int(mitigated * retention)),
-        )
+    def _apply_summoner_attack_debuff(damage: int) -> int:
+        return max(1, int(damage * config.SUMMONER_DEBUFF_STAT_RETENTION))
 
     @staticmethod
     def _weighted_random_damage_user(rows: list[Any]) -> int | None:
@@ -150,13 +157,13 @@ class Boss(commands.Cog):
         *,
         variant: str,
         hp: float,
-        summoned: bool,
+        summoner_id: int | None = None,
     ) -> None:
         channel = await resolve_bot_announcement_channel(guild, self.bot.db)
         if channel is None:
             logging.warning("Boss spawn embed skipped: no channel in guild %s", guild.id)
             return
-        title = "Boss summoned!" if summoned else "Boss raid incoming!"
+        title = "Boss summoned!" if summoner_id is not None else "Boss raid incoming!"
         desc = f"A **{variant}** **{BOSS_NAME}** crashes the party—time to rally the raid!"
         embed = discord.Embed(
             title=title,
@@ -172,12 +179,12 @@ class Boss(commands.Cog):
         )
         threat = config.BOSS_VARIANTS[variant]["threat"]
         embed.add_field(name="Threat tier", value=str(threat), inline=True)
-        if summoned:
+        if summoner_id is not None:
             embed.add_field(
-                name="Summoned debuff",
+                name="Summoner penalty",
                 value=(
-                    f"**-{SUMMONED_DEBUFF_PCT}%** attack and defense "
-                    f"({int(round(config.BOSS_SUMMONED_STAT_RETENTION * 100))}% effectiveness)"
+                    f"<@{summoner_id}> called this raid and fights at "
+                    f"**-{SUMMONER_DEBUFF_PCT}%** attack and defense."
                 ),
                 inline=False,
             )
@@ -422,10 +429,12 @@ class Boss(commands.Cog):
         armor: ShopItem | None,
         *,
         set_bonus: SetBonus | None = None,
+        defense_retention: float = 1.0,
     ) -> tuple[int, int]:
         if armor is None:
             return raw_damage, 0
-        mitigated = int(raw_damage * armor.power / (armor.power + 100))
+        armor_power = armor.power * max(0.0, defense_retention)
+        mitigated = int(raw_damage * armor_power / (armor_power + 100))
         if set_bonus is not None:
             mitigated += int(raw_damage * set_bonus.mitigation_bonus)
         mitigated = min(raw_damage - 1, mitigated)
@@ -437,6 +446,7 @@ class Boss(commands.Cog):
         armor: ShopItem | None,
         *,
         set_bonus: SetBonus | None = None,
+        defense_retention: float = 1.0,
     ) -> tuple[int, int, bool, str]:
         variant_config = config.BOSS_VARIANTS[variant]
         low, high = variant_config["counter_damage"]
@@ -444,7 +454,12 @@ class Boss(commands.Cog):
         critical = random.random() < float(variant_config["crit_chance"])
         if critical:
             raw_damage = int(raw_damage * 1.75)
-        damage, mitigated = Boss._apply_armor_mitigation(raw_damage, armor, set_bonus=set_bonus)
+        damage, mitigated = Boss._apply_armor_mitigation(
+            raw_damage,
+            armor,
+            set_bonus=set_bonus,
+            defense_retention=defense_retention,
+        )
         moves = {
             "normal": ("backhands", "shoulder-checks", "bonks"),
             "enraged": ("rage-smashes", "uppercuts", "body-slams"),
@@ -484,7 +499,7 @@ class Boss(commands.Cog):
                 continue
             variant = random.choice(tuple(config.BOSS_VARIANTS))
             hp = await self._spawn_boss(guild.id, variant)
-            await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, summoned=False)
+            await self._send_boss_spawn_embed(guild, variant=variant, hp=hp)
 
     @auto_spawn.before_loop
     async def before_auto_spawn(self) -> None:
@@ -513,33 +528,32 @@ class Boss(commands.Cog):
     async def before_passive_boss_decay_tick(self) -> None:
         await self.bot.wait_until_ready()
 
-    @app_commands.command(name="summon", description="Admin only: force-spawn a boss.")
-    @app_commands.describe(variant="Boss variant")
+    @app_commands.command(
+        name="summon",
+        description="Admin only: spawn an enraged boss (you take a combat penalty).",
+    )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    async def summon(self, interaction: discord.Interaction, variant: str = "normal") -> None:
+    async def summon(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None or interaction.guild is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
-        normalized = variant.lower().strip()
-        if normalized not in config.BOSS_VARIANTS:
-            choices = ", ".join(config.BOSS_VARIANTS)
-            await interaction.response.send_message(
-                f"Unknown variant. Choose one of: {choices}.",
-                ephemeral=True,
-            )
-            return
-
-        hp = await self._spawn_boss(interaction.guild_id, normalized, summoned=True)
+        spawn_variant = "enraged"
+        hp = await self._spawn_boss(
+            interaction.guild_id,
+            spawn_variant,
+            summoner_id=interaction.user.id,
+        )
         await interaction.response.send_message(
-            f"Summoned a {normalized} {BOSS_NAME} with {fmt_amount(hp)} HP."
+            f"Summoned an **enraged** {BOSS_NAME} with {fmt_amount(hp)} HP. "
+            f"You take **-{SUMMONER_DEBUFF_PCT}%** attack and defense for calling it."
         )
         await self._send_boss_spawn_embed(
             interaction.guild,
-            variant=normalized,
+            variant=spawn_variant,
             hp=hp,
-            summoned=True,
+            summoner_id=interaction.user.id,
         )
 
     @app_commands.command(name="boss", description="Check boss status.")
@@ -575,10 +589,11 @@ class Boss(commands.Cog):
         embed.add_field(name="HP", value=f"{fmt_amount(hp)} / {fmt_amount(max_hp)}", inline=True)
         threat = config.BOSS_VARIANTS[variant]["threat"]
         embed.add_field(name="Threat", value=str(threat), inline=True)
-        if self._boss_summoned(boss_row):
+        summoner_id = self._boss_summoner_id(boss_row)
+        if summoner_id is not None:
             embed.add_field(
-                name="Summoned debuff",
-                value=f"**-{SUMMONED_DEBUFF_PCT}%** attack and defense",
+                name="Summoner penalty",
+                value=f"<@{summoner_id}> **-{SUMMONER_DEBUFF_PCT}%** atk/def",
                 inline=True,
             )
         embed.set_footer(text="Use /attack to fight · /heal for downed allies")
@@ -611,8 +626,9 @@ class Boss(commands.Cog):
             damage_mult=damage_mult,
             extra_crit=extra_crit,
         )
-        if self._boss_summoned(boss):
-            damage = self._summoned_incoming_damage(damage)
+        summoner_debuff = self._summoner_debuffed(boss, interaction.user.id)
+        if summoner_debuff:
+            damage = self._apply_summoner_attack_debuff(damage)
         updated = await self.bot.db.damage_boss(interaction.guild_id, interaction.user.id, damage)
         if updated is None:
             await interaction.response.send_message("No boss is active right now.", ephemeral=True)
@@ -660,6 +676,12 @@ class Boss(commands.Cog):
         )
         if attack_critical:
             embed.add_field(name="Crit", value="**YES**", inline=True)
+        if summoner_debuff:
+            embed.add_field(
+                name="Summoner penalty",
+                value=f"**-{SUMMONER_DEBUFF_PCT}%** attack",
+                inline=True,
+            )
         embed.add_field(
             name=f"{BOSS_NAME} HP",
             value=f"`{bar}` {fmt_amount(boss_hp)}/{fmt_amount(boss_max)} ({pct}%)",
@@ -690,9 +712,8 @@ class Boss(commands.Cog):
         attacker_ids = list({int(row["user_id"]) for row in damage_rows})
         target_count = self._counter_target_count(len(attacker_ids), hp, max_hp)
         victims = random.sample(attacker_ids, target_count)
-        summoned = self._boss_summoned(boss_row)
         parts = [
-            await self._counterattack_text(guild_id, victim_id, variant, summoned=summoned)
+            await self._counterattack_text(guild_id, victim_id, variant, boss_row=boss_row)
             for victim_id in victims
         ]
         return "".join(parts)
@@ -703,19 +724,23 @@ class Boss(commands.Cog):
         victim_id: int,
         variant: str,
         *,
-        summoned: bool = False,
+        boss_row: Any,
     ) -> str:
         loadout = await self._loadout(victim_id, guild_id)
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         max_hp = await self._max_hp(victim_id, guild_id)
         await self.bot.db.sync_combat_hp(victim_id, guild_id, max_hp)
+        defense_retention = (
+            config.SUMMONER_DEBUFF_STAT_RETENTION
+            if self._summoner_debuffed(boss_row, victim_id)
+            else 1.0
+        )
         damage, mitigated, critical, move = self._counter_roll(
             variant,
             loadout.armor,
             set_bonus=set_bonus,
+            defense_retention=defense_retention,
         )
-        if summoned:
-            damage, mitigated = self._summoned_counter_damage(damage, mitigated)
         hp, max_hp = await self.bot.db.damage_player(victim_id, guild_id, damage, max_hp)
         armor_text = ""
         if loadout.armor is not None and mitigated > 0:

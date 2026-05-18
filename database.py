@@ -399,9 +399,10 @@ class Database:
         await self._migrate_equipment_off_hand()
         await self._migrate_duel_history()
         await self._migrate_boss_summoned()
+        await self._migrate_boss_summoner_id()
 
     async def _migrate_boss_summoned(self) -> None:
-        """Track admin-summoned bosses for combat debuffs."""
+        """Legacy flag from first summon debuff iteration (unused after summoner_id)."""
         if self.is_postgres:
             cursor = await self.conn.execute(
                 """
@@ -422,6 +423,31 @@ class Database:
             if "summoned" not in cols:
                 await self.conn.execute(
                     "ALTER TABLE boss_sessions ADD COLUMN summoned INTEGER NOT NULL DEFAULT 0",
+                )
+        await self.conn.commit()
+
+    async def _migrate_boss_summoner_id(self) -> None:
+        """Track who used /summon for per-player combat debuff."""
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'boss_sessions'
+                  AND column_name = 'summoner_id'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.conn.execute(
+                    "ALTER TABLE boss_sessions ADD COLUMN summoner_id BIGINT",
+                )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(boss_sessions)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            if "summoner_id" not in cols:
+                await self.conn.execute(
+                    "ALTER TABLE boss_sessions ADD COLUMN summoner_id INTEGER",
                 )
         await self.conn.commit()
 
@@ -2104,7 +2130,7 @@ class Database:
         hp: float,
         spawned_at: float | None = None,
         *,
-        summoned: bool = False,
+        summoner_id: int | None = None,
     ) -> None:
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
@@ -2115,9 +2141,9 @@ class Database:
                     """
                     INSERT INTO boss_sessions (
                         guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at,
-                        phases_announced, summoned
+                        phases_announced, summoned, summoner_id
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
                     """,
                     (
                         guild_id,
@@ -2127,7 +2153,7 @@ class Database:
                         hp,
                         spawn_ts,
                         spawn_ts,
-                        1 if summoned else 0,
+                        summoner_id,
                     ),
                 )
             except Exception:
