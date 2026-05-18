@@ -143,7 +143,7 @@ def build() -> None:
     pdf.bullet("/boss - HP bar and threat level")
     pdf.bullet("/attack - hit Hannah (need gear equipped for best damage)")
     pdf.bullet("/raid-leaderboard - who is contributing most")
-    pdf.bullet("/heal @user - revive downed raiders (+15 nugget healer reward)")
+    pdf.bullet("/heal @user - revive downed raiders (+1000 nuggets; +100 if you revive yourself)")
     pdf.ln(2)
     pdf.body("Boss variants (weakest to strongest): normal, enraged, shadow, celestial, mythic.")
     pdf.body("At 75%, 50%, and 25% HP Hannah enters new phases - counters get nastier.")
