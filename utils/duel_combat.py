@@ -4,8 +4,9 @@ import random
 from dataclasses import dataclass, field
 
 import config
-from items import ShopItem, get_item
+from items import ShopItem
 from utils.gear_sets import SetBonus, detect_set_bonus
+from utils.loadout import off_hand_crit_bonus, off_hand_power_bonus, parse_loadout
 
 
 @dataclass
@@ -13,6 +14,7 @@ class DuelFighter:
     user_id: int
     display_name: str
     weapon: ShopItem | None
+    off_hand: ShopItem | None
     armor: ShopItem | None
     set_bonus: SetBonus | None
     prestige_level: int
@@ -75,10 +77,16 @@ def _attack_roll(
         crit_chance = config.PLAYER_BASE_CRIT_CHANCE + extra_crit
         verb = "hits"
     else:
-        low = int((weapon.power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
-        high = int((weapon.power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
+        attack_power = weapon.power + off_hand_power_bonus(attacker.off_hand)
+        low = int((attack_power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
+        high = int((attack_power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
         damage = random.randint(low, max(low, high))
-        crit_chance = config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance + extra_crit
+        crit_chance = (
+            config.PLAYER_BASE_CRIT_CHANCE
+            + weapon.crit_chance
+            + off_hand_crit_bonus(attacker.off_hand)
+            + extra_crit
+        )
         verb = random.choice(weapon.verbs or ("strikes",))
     critical = random.random() < crit_chance
     if critical:
