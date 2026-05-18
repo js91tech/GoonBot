@@ -14,6 +14,7 @@ from items import (
     get_item,
     items_for_category,
 )
+from utils.gear_sets import detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message
 from utils.stats import compute_combat_stats, format_combat_stats_block, format_item_stats
 
@@ -159,12 +160,16 @@ class Shop(commands.Cog):
         name="stats",
         description="View combat stats for yourself or another player.",
     )
-    @app_commands.describe(user="Player to inspect. Defaults to you.")
+    @app_commands.describe(
+        user="Player to inspect. Defaults to you.",
+        public="Show your stats in the channel instead of privately",
+    )
     @app_commands.guild_only()
     async def stats(
         self,
         interaction: discord.Interaction,
         user: discord.Member | None = None,
+        public: bool = False,
     ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
@@ -180,7 +185,16 @@ class Shop(commands.Cog):
         combat = await self.bot.db.get_combat_state(target.id, guild_id)
         current_hp = combat[0] if combat is not None else max_hp
 
-        combat_stats = compute_combat_stats(weapon, armor, current_hp=current_hp)
+        progress = await self.bot.db.get_user_progress(target.id, guild_id)
+        prestige = int(progress["prestige_level"])
+        set_bonus = detect_set_bonus(weapon, armor)
+        combat_stats = compute_combat_stats(
+            weapon,
+            armor,
+            current_hp=current_hp,
+            prestige_level=prestige,
+            set_bonus=set_bonus,
+        )
         user_row = await self.bot.db.get_user(target.id, guild_id)
         wallet = float(user_row["wallet"])
         total_earned = float(user_row["total_earned"])
@@ -188,7 +202,11 @@ class Shop(commands.Cog):
 
         embed = discord.Embed(
             title=f"{target.display_name}'s Stats",
-            description=format_combat_stats_block(combat_stats),
+            description=format_combat_stats_block(
+                combat_stats,
+                set_bonus=set_bonus,
+                prestige_level=prestige,
+            ),
             color=discord.Color.gold(),
         )
         embed.set_thumbnail(url=target.display_avatar.url)
@@ -224,8 +242,15 @@ class Shop(commands.Cog):
         if status_parts:
             embed.add_field(name="Status", value=" · ".join(status_parts), inline=False)
 
+        achievements = await self.bot.db.list_achievements(target.id, guild_id)
+        embed.add_field(
+            name="Achievements",
+            value=f"**{len(achievements)}** unlocked · Prestige **{prestige}**",
+            inline=False,
+        )
         embed.set_footer(text="Use /inventory to see all owned items with per-item stats.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        ephemeral = not (public and target.id == interaction.user.id)
+        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
 
     @app_commands.command(name="inventory", description="View your owned and equipped gear.")
     @app_commands.describe(user="User to inspect. Defaults to you.")
@@ -251,7 +276,18 @@ class Shop(commands.Cog):
 
         weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
         armor = get_item(equipment.get("armor")) if equipment.get("armor") else None
-        summary = format_combat_stats_block(compute_combat_stats(weapon, armor))
+        progress = await self.bot.db.get_user_progress(target.id, interaction.guild_id)
+        set_bonus = detect_set_bonus(weapon, armor)
+        summary = format_combat_stats_block(
+            compute_combat_stats(
+                weapon,
+                armor,
+                prestige_level=int(progress["prestige_level"]),
+                set_bonus=set_bonus,
+            ),
+            set_bonus=set_bonus,
+            prestige_level=int(progress["prestige_level"]),
+        )
 
         embed = discord.Embed(
             title=f"{target.display_name}'s Gear",

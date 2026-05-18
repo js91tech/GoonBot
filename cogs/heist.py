@@ -8,6 +8,9 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from items import get_item
+from utils.achievements import evaluate_unlocks, format_unlock_message
+from utils.gear_sets import heist_intimidation_bonus
 from utils.helpers import fmt_amount, guild_only_message
 
 
@@ -75,9 +78,12 @@ class Heist(commands.Cog):
 
         await self.bot.db.set_last_heist(interaction.user.id, interaction.guild_id, current)
         base_success = await self.bot.db.get_config_value(interaction.guild_id, "heist_base_success")
+        equipment = await self.bot.db.get_equipment(interaction.user.id, interaction.guild_id)
+        weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
+        intimidation = heist_intimidation_bonus(weapon)
         success_chance = min(
             config.HEIST_MAX_SUCCESS,
-            base_success + (len(participants) - 1) * config.HEIST_CREW_BONUS,
+            base_success + (len(participants) - 1) * config.HEIST_CREW_BONUS + intimidation,
         )
 
         if random.random() > success_chance:
@@ -99,12 +105,25 @@ class Heist(commands.Cog):
         split = stolen / len(participants)
         for member in participants:
             await self.bot.db.credit_wallet(member.id, interaction.guild_id, split)
+        await self.bot.db.increment_progress(
+            interaction.user.id,
+            interaction.guild_id,
+            heists_won=1,
+        )
 
         crew_names = ", ".join(member.mention for member in participants)
         await interaction.response.send_message(
             f"Heist success! {crew_names} stole {fmt_amount(stolen)} from {target.mention}.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
+        unlocked = await evaluate_unlocks(
+            self.bot.db,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+        unlock_msg = format_unlock_message(unlocked)
+        if unlock_msg:
+            await interaction.followup.send(unlock_msg, ephemeral=True)
 
     @app_commands.command(name="arrest", description="Arrest a thief after a failed heist.")
     @app_commands.describe(thief="The failed thief")
