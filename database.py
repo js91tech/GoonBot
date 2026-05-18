@@ -451,21 +451,32 @@ class Database:
                 )
         await self.conn.commit()
 
-    async def _migrate_equipment_off_hand(self) -> None:
-        """Allow off_hand equipment slot on existing databases."""
+    async def _equipment_slot_allows_off_hand(self) -> bool:
         if self.is_postgres:
-            return
+            cursor = await self.conn.execute(
+                """
+                SELECT pg_get_constraintdef(c.oid) AS def
+                FROM pg_constraint c
+                JOIN pg_class rel ON rel.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = rel.relnamespace
+                WHERE rel.relname = 'equipment'
+                  AND c.contype = 'c'
+                  AND n.nspname = ANY (current_schemas(true))
+                """,
+            )
+            rows = await cursor.fetchall()
+            return any("off_hand" in str(row["def"]) for row in rows)
 
         cursor = await self.conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment'"
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment'",
         )
         row = await cursor.fetchone()
         if row is None:
-            return
+            return True
         ddl = str(row[0] if not hasattr(row, "keys") else row["sql"])
-        if "off_hand" in ddl:
-            return
+        return "off_hand" in ddl
 
+    async def _rebuild_equipment_for_off_hand(self) -> None:
         await self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS equipment_dual (
@@ -475,16 +486,25 @@ class Database:
                 item_id TEXT NOT NULL,
                 PRIMARY KEY (guild_id, user_id, slot)
             )
-            """
+            """,
         )
         await self.conn.execute(
             """
             INSERT INTO equipment_dual (guild_id, user_id, slot, item_id)
             SELECT guild_id, user_id, slot, item_id FROM equipment
-            """
+            """,
         )
         await self.conn.execute("DROP TABLE equipment")
-        await self.conn.execute("ALTER TABLE equipment_dual RENAME TO equipment")
+        if self.is_postgres:
+            await self.conn.execute("ALTER TABLE equipment_dual RENAME TO equipment")
+        else:
+            await self.conn.execute("ALTER TABLE equipment_dual RENAME TO equipment")
+
+    async def _migrate_equipment_off_hand(self) -> None:
+        """Allow off_hand equipment slot on existing databases."""
+        if await self._equipment_slot_allows_off_hand():
+            return
+        await self._rebuild_equipment_for_off_hand()
         await self.conn.commit()
 
     async def _migrate_duel_history(self) -> None:
@@ -1445,15 +1465,6 @@ class Database:
                             """,
                             (guild_id, user_id, current_weapon_id),
                         )
-
-                if item.category == "gun" and slot == "weapon":
-                    await self.conn.execute(
-                        """
-                        DELETE FROM equipment
-                        WHERE guild_id = ? AND user_id = ? AND slot = 'off_hand'
-                        """,
-                        (guild_id, user_id),
-                    )
 
                 await self.conn.execute(
                     """

@@ -62,10 +62,13 @@ def equip_target_slot(item: ShopItem, equipment: dict[str, str]) -> str:
     if item.category == "armor":
         return "armor"
     if item.category == "gun":
-        primary_id = equipment.get("weapon")
-        primary = get_item(primary_id) if primary_id else None
-        if primary is not None and primary.category == "weapon":
-            return "off_hand"
+        weapon_id = equipment.get("weapon")
+        weapon_item = get_item(weapon_id) if weapon_id else None
+        if weapon_item is not None:
+            if weapon_item.category == "weapon":
+                return "off_hand"
+            if weapon_item.category == "gun":
+                return "off_hand"
         return "weapon"
     # melee weapon
     return "weapon"

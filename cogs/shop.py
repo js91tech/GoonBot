@@ -370,8 +370,13 @@ class Shop(commands.Cog):
             "off_hand": "off-hand",
             "armor": "armor",
         }
+        extra = ""
+        if shop_item.category == "gun" and slot == "weapon":
+            extra = " Equip a **sword** in main hand first to dual-wield with off-hand bonuses."
+        elif shop_item.category == "gun" and slot == "off_hand":
+            extra = " Dual-wield active with your main-hand blade."
         await interaction.response.send_message(
-            f"Equipped **{shop_item.name}** ({slot_labels.get(slot, slot)}).",
+            f"Equipped **{shop_item.name}** ({slot_labels.get(slot, slot)}).{extra}",
             ephemeral=True,
         )
 
