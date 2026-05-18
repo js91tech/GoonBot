@@ -78,11 +78,36 @@ class Spells(commands.Cog):
             description=format_skills_list(class_id),
             color=discord.Color.purple(),
         )
-        embed.set_footer(text="Cast with /cast <skill_id> · Buffs last until your next attack or duel")
+        embed.set_footer(text="Use /cast and pick a skill from the list · Buffs last until your next attack or duel")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    async def skill_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        if interaction.guild_id is None:
+            return []
+        class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
+        if not class_id:
+            return []
+        needle = current.lower().strip()
+        choices: list[app_commands.Choice[str]] = []
+        for skill_def in skills_for_class(class_id):
+            haystack = f"{skill_def.skill_id} {skill_def.name}".lower()
+            if needle and needle not in haystack:
+                continue
+            choices.append(
+                app_commands.Choice(
+                    name=f"{skill_def.emoji} {skill_def.name} — {skill_def.mana_cost} mana",
+                    value=skill_def.skill_id,
+                )
+            )
+        return choices[:25]
+
     @app_commands.command(name="cast", description="Cast a class skill (costs mana).")
-    @app_commands.describe(skill="Skill id from /skills")
+    @app_commands.describe(skill="Skill to cast")
+    @app_commands.autocomplete(skill=skill_autocomplete)
     @app_commands.guild_only()
     async def cast(self, interaction: discord.Interaction, skill: str) -> None:
         if interaction.guild_id is None:
