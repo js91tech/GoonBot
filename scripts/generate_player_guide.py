@@ -103,12 +103,14 @@ def build() -> None:
     pdf.bullet("Coin drops - first to click Claim wins (needs several active chatters)")
     pdf.bullet("/pay @user amount - send nuggets to friends")
     pdf.bullet("/leaderboard - richest players")
+    pdf.bullet("/hall-of-fame - richest, boss kills, heals, achievements")
+    pdf.bullet("/quests - onboarding steps and daily goals")
     pdf.bullet("Boss raids - damage share when Hannah falls")
     pdf.bullet("/trivia - guess a word from server history")
     pdf.bullet("/heist - steal from others (risky)")
     pdf.bullet("/bounty - reward when someone says a trigger word")
     pdf.ln(2)
-    pdf.body("Prestige and seasonal events can multiply your income (see section 9).")
+    pdf.body("Prestige and seasonal events can multiply your income (see section 10).")
 
     # 3 - Gear
     pdf.add_page()
@@ -148,9 +150,34 @@ def build() -> None:
     pdf.body("Loot: battle-worn gear (common), epic raid pieces (rare), mythic drops on celestial/mythic kills.")
     pdf.body("/craft - upgrade battle-worn drops into real shop items for a fee.")
 
-    # 5 - Heist & bounty
+    # 5 - Quests & hall of fame
     pdf.add_page()
-    pdf.chapter_title("5. Heists and bounties")
+    pdf.chapter_title("5. Quests and hall of fame")
+    pdf.body("Quests:")
+    pdf.bullet("/quests - view onboarding or daily goals (resets at UTC midnight)")
+    pdf.bullet("/quest-hint - nudge for your current objective")
+    pdf.bullet("New players get a short onboarding chain; veterans get 3 random dailies")
+    pdf.bullet("Rewards pay automatically when you complete a goal")
+    pdf.ln(2)
+    pdf.body("Hall of fame:")
+    pdf.bullet("/hall-of-fame - server legends in one embed")
+    pdf.bullet("Categories: richest, boss kills, heals given, achievement count")
+
+    # 6 - Casino & duels
+    pdf.chapter_title("6. Casino and PvP duels")
+    pdf.body("Casino (tax on winnings):")
+    pdf.bullet("/coinflip amount - 50/50 vs the house")
+    pdf.bullet("/coinflip-duel @user amount - PvP coinflip with Accept button")
+    pdf.bullet("/blackjack amount - hit or stand vs the dealer")
+    pdf.ln(2)
+    pdf.body("Duels:")
+    pdf.bullet("/duel @player - gear-based turn fight; battle log in channel")
+    pdf.bullet("Loser pays 10% of wallet to the winner (default)")
+    pdf.bullet("40-minute cooldown before attacking the same player again")
+    pdf.bullet("Max 3 duels started per hour")
+
+    # 7 - Heist & bounty
+    pdf.chapter_title("7. Heists and bounties")
     pdf.body("Heists:")
     pdf.bullet("/heist @target [@crew1] [@crew2] - steal 20% of wallet on success")
     pdf.bullet("Better weapon = higher success (intimidation bonus, up to +10%)")
@@ -162,24 +189,24 @@ def build() -> None:
     pdf.bullet("Whoever makes them say the word (alone in a message) wins the pot")
     pdf.bullet("/bounties - list active bounties")
 
-    # 6 - Virus
-    pdf.chapter_title("6. The virus (hot potato)")
+    # 8 - Virus
+    pdf.chapter_title("8. The virus (hot potato)")
     pdf.bullet("/hack @user - start the virus on someone (5 min cooldown per hacker)")
     pdf.bullet("Holder must /transfer @user before the timer runs out")
     pdf.bullet("Each pass increases the penalty if it detonates")
     pdf.bullet("Larger wallets take slightly less damage when it pops")
     pdf.body("Watch the embed timer bar - do not hold it when time is low!")
 
-    # 7 - Progression
-    pdf.chapter_title("7. Progression")
+    # 9 - Progression
+    pdf.chapter_title("9. Progression")
     pdf.bullet("/achievements - track 11 unlockable goals")
     pdf.bullet("/prestige confirm:true - reset wallet (need 100k+) for permanent +crit and +income")
     pdf.bullet("Max prestige 10 - stacks +1% crit and +2% income per level")
     pdf.ln(2)
     pdf.body("Achievement examples: first boss kill, 25 raids, mythic slayer, heist king, field medic, own Excalibur.")
 
-    # 8 - Events
-    pdf.chapter_title("8. Seasonal events (admin)")
+    # 10 - Events
+    pdf.chapter_title("10. Seasonal events (admin)")
     pdf.bullet("/event status - see active event")
     pdf.body("Admins can run:")
     pdf.bullet("double_drops - 2x boss loot chance")
@@ -187,16 +214,17 @@ def build() -> None:
     pdf.bullet("festival_boss - 1.25x boss HP")
     pdf.bullet("trivia_fiesta - 2x trivia rewards")
 
-    # 9 - Quick reference
+    # 11 - Quick reference
     pdf.add_page()
-    pdf.chapter_title("9. Command quick reference")
+    pdf.chapter_title("11. Command quick reference")
     cols = [
-        ("Economy", "/daily, /balance, /pay, /leaderboard"),
+        ("Economy", "/daily, /balance, /pay, /leaderboard, /hall-of-fame"),
         ("Shop", "/shop, /buy, /inventory, /equip, /sell, /stats"),
         ("Raid", "/boss, /attack, /raid-leaderboard, /heal"),
-        ("Progress", "/achievements, /prestige, /craft, /event"),
+        ("Progress", "/achievements, /prestige, /craft, /event, /quests"),
         ("Crime", "/heist, /arrest, /bounty, /bounties, /hack, /transfer"),
-        ("Fun", "/trivia"),
+        ("PvP", "/duel, /coinflip, /coinflip-duel, /blackjack"),
+        ("Fun", "/trivia, /quest-hint"),
     ]
     w = pdf.w - pdf.l_margin - pdf.r_margin
     pdf.set_font("Helvetica", "", 9)
@@ -213,6 +241,8 @@ def build() -> None:
     pdf.bullet("Heal downed teammates - you earn nuggets and achievements.")
     pdf.bullet("Craft battle-worn drops instead of selling them cheap.")
     pdf.bullet("Use /stats public:true to show off your build in channel.")
+    pdf.bullet("Check /quests daily for bonus nuggets.")
+    pdf.bullet("Duel prepared opponents - gear and HP matter.")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(OUTPUT))
