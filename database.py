@@ -317,7 +317,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS equipment (
                 guild_id BIGINT NOT NULL,
                 user_id BIGINT NOT NULL,
-                slot TEXT NOT NULL CHECK (slot IN ('weapon', 'armor')),
+                slot TEXT NOT NULL CHECK (slot IN ('weapon', 'off_hand', 'armor')),
                 item_id TEXT NOT NULL,
                 PRIMARY KEY (guild_id, user_id, slot)
             );
@@ -396,7 +396,44 @@ class Database:
         await self._migrate_guild_channel_split()
         await self._migrate_progression_tables()
         await self._migrate_quest_tables()
+        await self._migrate_equipment_off_hand()
         await self._migrate_duel_history()
+
+    async def _migrate_equipment_off_hand(self) -> None:
+        """Allow off_hand equipment slot on existing databases."""
+        if self.is_postgres:
+            return
+
+        cursor = await self.conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment'"
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return
+        ddl = str(row[0] if not hasattr(row, "keys") else row["sql"])
+        if "off_hand" in ddl:
+            return
+
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS equipment_dual (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                slot TEXT NOT NULL CHECK (slot IN ('weapon', 'off_hand', 'armor')),
+                item_id TEXT NOT NULL,
+                PRIMARY KEY (guild_id, user_id, slot)
+            )
+            """
+        )
+        await self.conn.execute(
+            """
+            INSERT INTO equipment_dual (guild_id, user_id, slot, item_id)
+            SELECT guild_id, user_id, slot, item_id FROM equipment
+            """
+        )
+        await self.conn.execute("DROP TABLE equipment")
+        await self.conn.execute("ALTER TABLE equipment_dual RENAME TO equipment")
+        await self.conn.commit()
 
     async def _migrate_duel_history(self) -> None:
         await self.conn.execute(
@@ -1314,6 +1351,72 @@ class Database:
                 raise
             await self.conn.commit()
             return True
+
+    async def equip_gear_item(self, user_id: int, guild_id: int, item_id: str) -> str | None:
+        """Equip with dual-wield rules. Returns slot name or None if not owned."""
+        from items import get_item
+        from utils.loadout import equip_target_slot
+
+        item = get_item(item_id)
+        if item is None:
+            return None
+
+        equipment = await self.get_equipment(user_id, guild_id)
+        slot = equip_target_slot(item, equipment)
+
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT quantity
+                    FROM inventory
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    """,
+                    (guild_id, user_id, item_id),
+                )
+                row = await cursor.fetchone()
+                if row is None or int(row["quantity"]) <= 0:
+                    await self.conn.rollback()
+                    return None
+
+                if item.category == "weapon" and slot == "weapon":
+                    current_weapon_id = equipment.get("weapon")
+                    current_weapon = get_item(current_weapon_id) if current_weapon_id else None
+                    if current_weapon is not None and current_weapon.category == "gun":
+                        await self.conn.execute(
+                            """
+                            INSERT INTO equipment (guild_id, user_id, slot, item_id)
+                            VALUES (?, ?, 'off_hand', ?)
+                            ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                                item_id = excluded.item_id
+                            """,
+                            (guild_id, user_id, current_weapon_id),
+                        )
+
+                if item.category == "gun" and slot == "weapon":
+                    await self.conn.execute(
+                        """
+                        DELETE FROM equipment
+                        WHERE guild_id = ? AND user_id = ? AND slot = 'off_hand'
+                        """,
+                        (guild_id, user_id),
+                    )
+
+                await self.conn.execute(
+                    """
+                    INSERT INTO equipment (guild_id, user_id, slot, item_id)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                        item_id = excluded.item_id
+                    """,
+                    (guild_id, user_id, slot, item_id),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return slot
 
     async def grant_item(
         self, user_id: int, guild_id: int, item_id: str, *, equip_slot: str | None = None

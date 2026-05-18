@@ -8,12 +8,13 @@ from discord.ext import commands
 
 import config
 from items import (
-    CATEGORIES,
+    SHOP_CATEGORIES,
     ITEMS,
     ShopItem,
     get_item,
     items_for_category,
 )
+from utils.loadout import parse_loadout
 from utils.gear_sets import detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message
 from utils.quests import record_quest_event
@@ -87,12 +88,13 @@ class Shop(commands.Cog):
                 break
         return choices
 
-    @app_commands.command(name="shop", description="Browse weapons and armor.")
+    @app_commands.command(name="shop", description="Browse weapons, guns, and armor.")
     @app_commands.describe(category="Item category to view")
     @app_commands.choices(
         category=[
             app_commands.Choice(name="All", value="all"),
             app_commands.Choice(name="Weapons", value="weapon"),
+            app_commands.Choice(name="Guns", value="gun"),
             app_commands.Choice(name="Armor", value="armor"),
         ]
     )
@@ -101,18 +103,32 @@ class Shop(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        if category not in CATEGORIES:
-            await interaction.response.send_message("Choose all, weapon, or armor.", ephemeral=True)
+        if category not in SHOP_CATEGORIES:
+            await interaction.response.send_message(
+                "Choose all, weapon, gun, or armor.", ephemeral=True
+            )
             return
 
         items = items_for_category(category)
-        title = "Nugget Shop" if category == "all" else f"Nugget Shop - {category.title()}"
+        category_labels = {
+            "all": "All",
+            "weapon": "Weapons",
+            "gun": "Guns",
+            "armor": "Armor",
+        }
+        title = (
+            "Nugget Shop"
+            if category == "all"
+            else f"Nugget Shop — {category_labels.get(category, category.title())}"
+        )
         embed = discord.Embed(
             title=title,
             description="\n".join(_item_line(item) for item in items),
             color=discord.Color.orange(),
         )
-        embed.set_footer(text="Use /buy item_id, then /equip item_id. /stats for your combat sheet.")
+        embed.set_footer(
+            text="Use /buy then /equip. Equip a sword + gun for dual-wield bonuses. /stats for your sheet."
+        )
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="buy", description="Buy a weapon or armor piece.")
@@ -184,20 +200,22 @@ class Shop(commands.Cog):
         target = user or interaction.user
         guild_id = interaction.guild_id
         equipment = await self.bot.db.get_equipment(target.id, guild_id)
-        weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
-        armor = get_item(equipment.get("armor")) if equipment.get("armor") else None
+        loadout = parse_loadout(equipment)
 
-        max_hp = float(config.PLAYER_BASE_HP + (armor.hp_bonus if armor is not None else 0))
+        max_hp = float(
+            config.PLAYER_BASE_HP + (loadout.armor.hp_bonus if loadout.armor is not None else 0)
+        )
         await self.bot.db.sync_combat_hp(target.id, guild_id, max_hp)
         combat = await self.bot.db.get_combat_state(target.id, guild_id)
         current_hp = combat[0] if combat is not None else max_hp
 
         progress = await self.bot.db.get_user_progress(target.id, guild_id)
         prestige = int(progress["prestige_level"])
-        set_bonus = detect_set_bonus(weapon, armor)
+        set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         combat_stats = compute_combat_stats(
-            weapon,
-            armor,
+            loadout.primary,
+            loadout.armor,
+            off_hand=loadout.off_hand,
             current_hp=current_hp,
             prestige_level=prestige,
             set_bonus=set_bonus,
@@ -213,6 +231,7 @@ class Shop(commands.Cog):
                 combat_stats,
                 set_bonus=set_bonus,
                 prestige_level=prestige,
+                off_hand=loadout.off_hand,
             ),
             color=discord.Color.gold(),
         )
@@ -228,8 +247,9 @@ class Shop(commands.Cog):
         embed.add_field(
             name="Gear",
             value=(
-                f"Weapon: **{weapon.name if weapon else 'None'}**\n"
-                f"Armor: **{armor.name if armor else 'None'}**"
+                f"Main: **{loadout.primary.name if loadout.primary else 'None'}**\n"
+                f"Off-hand: **{loadout.off_hand.name if loadout.off_hand else 'None'}**\n"
+                f"Armor: **{loadout.armor.name if loadout.armor else 'None'}**"
             ),
             inline=True,
         )
@@ -281,19 +301,20 @@ class Shop(commands.Cog):
                 for row in rows
             )
 
-        weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
-        armor = get_item(equipment.get("armor")) if equipment.get("armor") else None
+        loadout = parse_loadout(equipment)
         progress = await self.bot.db.get_user_progress(target.id, interaction.guild_id)
-        set_bonus = detect_set_bonus(weapon, armor)
+        set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         summary = format_combat_stats_block(
             compute_combat_stats(
-                weapon,
-                armor,
+                loadout.primary,
+                loadout.armor,
+                off_hand=loadout.off_hand,
                 prestige_level=int(progress["prestige_level"]),
                 set_bonus=set_bonus,
             ),
             set_bonus=set_bonus,
             prestige_level=int(progress["prestige_level"]),
+            off_hand=loadout.off_hand,
         )
 
         embed = discord.Embed(
@@ -305,7 +326,10 @@ class Shop(commands.Cog):
         embed.set_footer(text="/stats for wallet, raid damage, and HP bar · /equip to change gear")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="equip", description="Equip an owned weapon or armor piece.")
+    @app_commands.command(
+        name="equip",
+        description="Equip gear. Swords go main hand; guns fill off-hand when you have a blade.",
+    )
     @app_commands.describe(item="Owned item to equip")
     @app_commands.autocomplete(item=item_autocomplete)
     @app_commands.guild_only()
@@ -320,20 +344,24 @@ class Shop(commands.Cog):
             )
             return
 
-        equipped = await self.bot.db.equip_item(
+        slot = await self.bot.db.equip_gear_item(
             interaction.user.id,
             interaction.guild_id,
-            shop_item.category,
             shop_item.id,
         )
-        if not equipped:
+        if slot is None:
             await interaction.response.send_message(
                 "You need to buy that item first.", ephemeral=True
             )
             return
 
+        slot_labels = {
+            "weapon": "main hand",
+            "off_hand": "off-hand",
+            "armor": "armor",
+        }
         await interaction.response.send_message(
-            f"Equipped **{shop_item.name}** as your {shop_item.category}.",
+            f"Equipped **{shop_item.name}** ({slot_labels.get(slot, slot)}).",
             ephemeral=True,
         )
 
@@ -386,7 +414,14 @@ class Shop(commands.Cog):
         item = get_item(item_id)
         if item is None:
             return f"`{item_id}` x{quantity}"
-        equipped = " (equipped)" if equipment.get(item.category) == item.id else ""
+        if equipment.get("weapon") == item.id:
+            equipped = " (main hand)"
+        elif equipment.get("off_hand") == item.id:
+            equipped = " (off-hand)"
+        elif equipment.get("armor") == item.id:
+            equipped = " (armor)"
+        else:
+            equipped = ""
         return (
             f"**{item.name}** x{quantity}{equipped}\n"
             f"└ {format_item_stats(item)} · `{item.id}`"

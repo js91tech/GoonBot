@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import config
-from items import ShopItem, armor_mitigation_percent
+from items import ShopItem, armor_mitigation_percent, is_damage_dealer
 from utils.gear_sets import SetBonus
+from utils.loadout import off_hand_crit_bonus, off_hand_power_bonus
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ def hp_bar(current: float, maximum: float, *, length: int = 12) -> str:
 
 
 def format_item_stats(item: ShopItem) -> str:
-    if item.category == "weapon":
+    if is_damage_dealer(item):
         crit = f", {int(item.crit_chance * 100)}% crit" if item.crit_chance > 0 else ""
         lo = item.power + config.BOSS_ATTACK_BONUS_MIN
         hi = item.power + config.BOSS_ATTACK_BONUS_MAX
@@ -41,6 +42,7 @@ def compute_combat_stats(
     weapon: ShopItem | None,
     armor: ShopItem | None,
     *,
+    off_hand: ShopItem | None = None,
     current_hp: float | None = None,
     prestige_level: int = 0,
     set_bonus: SetBonus | None = None,
@@ -48,14 +50,20 @@ def compute_combat_stats(
     armor_bonus = armor.hp_bonus if armor is not None else 0
     max_hp = config.PLAYER_BASE_HP + armor_bonus
     damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
+    bonus_power = off_hand_power_bonus(off_hand)
     if weapon is None:
         damage_min = int(config.BOSS_UNARMED_MIN * damage_mult)
         damage_max = int(config.BOSS_UNARMED_MAX * damage_mult)
         crit_pct = int(round(config.PLAYER_BASE_CRIT_CHANCE * 100))
     else:
-        damage_min = int((weapon.power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
-        damage_max = int((weapon.power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
-        crit_rate = config.PLAYER_BASE_CRIT_CHANCE + weapon.crit_chance
+        attack_power = weapon.power + bonus_power
+        damage_min = int((attack_power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
+        damage_max = int((attack_power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
+        crit_rate = (
+            config.PLAYER_BASE_CRIT_CHANCE
+            + weapon.crit_chance
+            + off_hand_crit_bonus(off_hand)
+        )
         crit_rate += prestige_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
         crit_pct = int(round(crit_rate * 100))
     crit_damage_max = int(damage_max * config.PLAYER_ATTACK_CRIT_MULTIPLIER)
@@ -80,6 +88,7 @@ def format_combat_stats_block(
     *,
     set_bonus: SetBonus | None = None,
     prestige_level: int = 0,
+    off_hand: ShopItem | None = None,
 ) -> str:
     hp_line = f"**{stats.max_hp}** max HP"
     if stats.current_hp is not None:
@@ -99,5 +108,12 @@ def format_combat_stats_block(
         lines.append(
             f"Prestige **{prestige_level}** (+{int(prestige_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL * 100)}% crit, "
             f"+{int(prestige_level * config.PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)}% income)"
+        )
+    if off_hand is not None:
+        dmg_pct = int(config.OFF_HAND_DAMAGE_FACTOR * 100)
+        crit_pct = int(config.OFF_HAND_CRIT_FACTOR * 100)
+        lines.append(
+            f"Off-hand **{off_hand.name}** (+{dmg_pct}% of its power to damage, "
+            f"+{crit_pct}% of its crit)"
         )
     return "\n".join(lines)

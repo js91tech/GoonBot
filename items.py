@@ -77,6 +77,119 @@ WEAPONS: tuple[ShopItem, ...] = (
     ),
 )
 
+GUNS: tuple[ShopItem, ...] = (
+    ShopItem(
+        "cap_gun",
+        "Cap Gun",
+        "gun",
+        280,
+        12,
+        "Fires disappointment at point-blank range.",
+        ("pops", "pegs"),
+        crit_chance=0.03,
+    ),
+    ShopItem(
+        "rust_revolver",
+        "Rust Revolver",
+        "gun",
+        800,
+        43,
+        "Six chambers of tetanus.",
+        ("blasts", "tags"),
+        crit_chance=0.04,
+    ),
+    ShopItem(
+        "iron_pistol",
+        "Iron Pistol",
+        "gun",
+        1_900,
+        75,
+        "Reliable sidearm for raid night.",
+        ("shoots", "drills"),
+        crit_chance=0.05,
+    ),
+    ShopItem(
+        "flare_pistol",
+        "Flare Pistol",
+        "gun",
+        4_200,
+        106,
+        "Incendiary rounds with dramatic flair.",
+        ("ignites", "flares into"),
+        crit_chance=0.06,
+    ),
+    ShopItem(
+        "storm_rifle",
+        "Storm Rifle",
+        "gun",
+        9_000,
+        137,
+        "Full-auto thunder in a metal tube.",
+        ("strafes", "volleys"),
+        crit_chance=0.08,
+    ),
+    ShopItem(
+        "void_carbine",
+        "Void Carbine",
+        "gun",
+        17_000,
+        169,
+        "Bullets that forget where armor ends.",
+        ("void-shots", "hollows"),
+        crit_chance=0.10,
+    ),
+    ShopItem(
+        "sunshot_rifle",
+        "Sunshot Rifle",
+        "gun",
+        32_000,
+        200,
+        "Long-range solar punishment.",
+        ("snipes", "solar-bores through"),
+        crit_chance=0.12,
+    ),
+    ShopItem(
+        "dragon_shotgun",
+        "Dragon Shotgun",
+        "gun",
+        54_000,
+        232,
+        "Spread pattern: entire dragon.",
+        ("buckshots", "shreds"),
+        crit_chance=0.14,
+    ),
+    ShopItem(
+        "cosmic_railgun",
+        "Cosmic Railgun",
+        "gun",
+        85_000,
+        263,
+        "One shot, one constellation.",
+        ("rails", "star-pierces"),
+        crit_chance=0.15,
+    ),
+    ShopItem(
+        "nugget_minigun",
+        "Nugget Minigun",
+        "gun",
+        125_000,
+        295,
+        "BRRRRT currency.",
+        ("shreds", "minces"),
+        crit_chance=0.17,
+    ),
+    ShopItem(
+        "mythic_annihilator",
+        "Mythic Annihilator",
+        "gun",
+        180_000,
+        328,
+        "Deletes the concept of cover.",
+        ("annihilates", "unmakes"),
+        crit_chance=0.19,
+    ),
+)
+
 ARMOR: tuple[ShopItem, ...] = (
     ShopItem("paper_hat", "Paper Hat", "armor", 250, 8, "Technically protection.", hp_bonus=18),
     ShopItem("padded_hoodie", "Padded Hoodie", "armor", 750, 29, "Comfortable and mildly sturdy.", hp_bonus=54),
@@ -173,7 +286,7 @@ def _inferior_boss_drop(base: ShopItem) -> ShopItem:
 
 
 BOSS_WEAK_ITEMS: tuple[ShopItem, ...] = tuple(
-    _inferior_boss_drop(it) for it in (*WEAPONS, *ARMOR) if it.price > 0
+    _inferior_boss_drop(it) for it in (*WEAPONS, *GUNS, *ARMOR) if it.price > 0
 )
 
 GRANT_ITEMS: tuple[ShopItem, ...] = (STARTER_WEAPON, STARTER_ARMOR)
@@ -182,6 +295,7 @@ ITEMS: dict[str, ShopItem] = {
     for item in (
         *GRANT_ITEMS,
         *WEAPONS,
+        *GUNS,
         *ARMOR,
         BOSS_SLAYER_BLADE,
         BOSS_SLAYER_MAIL,
@@ -190,8 +304,13 @@ ITEMS: dict[str, ShopItem] = {
         *BOSS_WEAK_ITEMS,
     )
 }
-ITEM_ORDER: tuple[str, ...] = tuple(item.id for item in (*WEAPONS, *ARMOR))
-CATEGORIES = ("all", "weapon", "armor")
+ITEM_ORDER: tuple[str, ...] = tuple(item.id for item in (*WEAPONS, *GUNS, *ARMOR))
+CATEGORIES = ("all", "weapon", "gun", "armor")
+SHOP_CATEGORIES = ("all", "weapon", "gun", "armor")
+
+
+def is_damage_dealer(item: ShopItem) -> bool:
+    return item.category in ("weapon", "gun")
 
 
 def get_item(item_id: str) -> ShopItem | None:
@@ -205,8 +324,8 @@ def armor_mitigation_percent(power: int) -> int:
 def items_for_category(category: str) -> list[ShopItem]:
     normalized = category.lower()
     if normalized == "all":
-        return [ITEMS[item_id] for item_id in ITEM_ORDER]
-    if normalized not in CATEGORIES:
+        return [ITEMS[item_id] for item_id in ITEM_ORDER if ITEMS[item_id].shop_listed]
+    if normalized not in SHOP_CATEGORIES:
         return []
     return [
         item

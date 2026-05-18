@@ -45,15 +45,15 @@ def fighter_from_equipment(
     *,
     prestige_level: int,
 ) -> DuelFighter:
-    weapon = get_item(equipment["weapon"]) if equipment.get("weapon") else None
-    armor = get_item(equipment["armor"]) if equipment.get("armor") else None
-    set_bonus = detect_set_bonus(weapon, armor)
-    max_hp = config.PLAYER_BASE_HP + (armor.hp_bonus if armor is not None else 0)
+    loadout = parse_loadout(equipment)
+    set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
+    max_hp = config.PLAYER_BASE_HP + (loadout.armor.hp_bonus if loadout.armor is not None else 0)
     return DuelFighter(
         user_id=user_id,
         display_name=display_name,
-        weapon=weapon,
-        armor=armor,
+        weapon=loadout.primary,
+        off_hand=loadout.off_hand,
+        armor=loadout.armor,
         set_bonus=set_bonus,
         prestige_level=prestige_level,
         max_hp=max_hp,
