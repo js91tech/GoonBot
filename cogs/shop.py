@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -9,20 +11,15 @@ from items import (
     CATEGORIES,
     ITEMS,
     ShopItem,
-    armor_mitigation_percent,
     get_item,
     items_for_category,
 )
 from utils.helpers import fmt_amount, guild_only_message
+from utils.stats import compute_combat_stats, format_combat_stats_block, format_item_stats
 
 
 def _item_line(item: ShopItem) -> str:
-    if item.category == "weapon":
-        crit = f", {int(item.crit_chance * 100)}% crit" if item.crit_chance > 0 else ""
-        stat = f"{item.power} base damage (+1–5 roll){crit}"
-    else:
-        stat = f"{armor_mitigation_percent(item.power)}% mitigation, +{item.hp_bonus} HP"
-    return f"`{item.id}` - **{item.name}** ({fmt_amount(item.price)}): {stat}"
+    return f"`{item.id}` - **{item.name}** ({fmt_amount(item.price)}): {format_item_stats(item)}"
 
 
 class Shop(commands.Cog):
@@ -113,7 +110,7 @@ class Shop(commands.Cog):
             description="\n".join(_item_line(item) for item in items),
             color=discord.Color.orange(),
         )
-        embed.set_footer(text="Use /buy item_id, then /equip item_id.")
+        embed.set_footer(text="Use /buy item_id, then /equip item_id. /stats for your combat sheet.")
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="buy", description="Buy a weapon or armor piece.")
@@ -158,6 +155,78 @@ class Shop(commands.Cog):
             ephemeral=True,
         )
 
+    @app_commands.command(
+        name="stats",
+        description="View combat stats for yourself or another player.",
+    )
+    @app_commands.describe(user="Player to inspect. Defaults to you.")
+    @app_commands.guild_only()
+    async def stats(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member | None = None,
+    ) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        target = user or interaction.user
+        guild_id = interaction.guild_id
+        equipment = await self.bot.db.get_equipment(target.id, guild_id)
+        weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
+        armor = get_item(equipment.get("armor")) if equipment.get("armor") else None
+
+        max_hp = float(config.PLAYER_BASE_HP + (armor.hp_bonus if armor is not None else 0))
+        await self.bot.db.sync_combat_hp(target.id, guild_id, max_hp)
+        combat = await self.bot.db.get_combat_state(target.id, guild_id)
+        current_hp = combat[0] if combat is not None else max_hp
+
+        combat_stats = compute_combat_stats(weapon, armor, current_hp=current_hp)
+        user_row = await self.bot.db.get_user(target.id, guild_id)
+        wallet = float(user_row["wallet"])
+        total_earned = float(user_row["total_earned"])
+        raid_damage = await self.bot.db.get_boss_damage(target.id, guild_id)
+
+        embed = discord.Embed(
+            title=f"{target.display_name}'s Stats",
+            description=format_combat_stats_block(combat_stats),
+            color=discord.Color.gold(),
+        )
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.add_field(
+            name="Economy",
+            value=(
+                f"Wallet: **{fmt_amount(wallet)}**\n"
+                f"Lifetime earned: **{fmt_amount(total_earned)}**"
+            ),
+            inline=True,
+        )
+        embed.add_field(
+            name="Gear",
+            value=(
+                f"Weapon: **{weapon.name if weapon else 'None'}**\n"
+                f"Armor: **{armor.name if armor else 'None'}**"
+            ),
+            inline=True,
+        )
+        if raid_damage > 0:
+            embed.add_field(
+                name="Current raid",
+                value=f"**{fmt_amount(raid_damage)}** damage dealt this boss",
+                inline=False,
+            )
+
+        status_parts: list[str] = []
+        now = time.time()
+        if float(user_row["downed_until"]) > now:
+            status_parts.append("Downed (cannot attack)")
+        if float(user_row["arrested_until"]) > now:
+            status_parts.append("Arrested")
+        if status_parts:
+            embed.add_field(name="Status", value=" · ".join(status_parts), inline=False)
+
+        embed.set_footer(text="Use /inventory to see all owned items with per-item stats.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @app_commands.command(name="inventory", description="View your owned and equipped gear.")
     @app_commands.describe(user="User to inspect. Defaults to you.")
     @app_commands.guild_only()
@@ -180,19 +249,17 @@ class Shop(commands.Cog):
                 for row in rows
             )
 
+        weapon = get_item(equipment.get("weapon")) if equipment.get("weapon") else None
+        armor = get_item(equipment.get("armor")) if equipment.get("armor") else None
+        summary = format_combat_stats_block(compute_combat_stats(weapon, armor))
+
         embed = discord.Embed(
             title=f"{target.display_name}'s Gear",
             description=owned,
             color=discord.Color.blue(),
         )
-        embed.add_field(
-            name="Equipped",
-            value=(
-                f"Weapon: {self._equipped_name(equipment.get('weapon'))}\n"
-                f"Armor: {self._equipped_name(equipment.get('armor'))}"
-            ),
-            inline=False,
-        )
+        embed.add_field(name="Equipped loadout", value=summary, inline=False)
+        embed.set_footer(text="/stats for wallet, raid damage, and HP bar · /equip to change gear")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="equip", description="Equip an owned weapon or armor piece.")
@@ -277,7 +344,10 @@ class Shop(commands.Cog):
         if item is None:
             return f"`{item_id}` x{quantity}"
         equipped = " (equipped)" if equipment.get(item.category) == item.id else ""
-        return f"**{item.name}** x{quantity}{equipped} - `{item.id}`"
+        return (
+            f"**{item.name}** x{quantity}{equipped}\n"
+            f"└ {format_item_stats(item)} · `{item.id}`"
+        )
 
     @staticmethod
     def _equipped_name(item_id: str | None) -> str:

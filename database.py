@@ -1296,6 +1296,34 @@ class Database:
             )
             await self.conn.commit()
 
+    async def get_combat_state(self, user_id: int, guild_id: int) -> tuple[float, float] | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT hp, max_hp
+            FROM combat_state
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return float(row["hp"]), float(row["max_hp"])
+
+    async def get_boss_damage(self, user_id: int, guild_id: int) -> float:
+        cursor = await self.conn.execute(
+            """
+            SELECT damage
+            FROM boss_damage
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return 0.0
+        return float(row["damage"])
+
     async def debit_wallet(self, user_id: int, guild_id: int, amount: float) -> bool:
         if amount <= 0:
             return True

@@ -9,6 +9,7 @@ from discord.ext import commands
 
 import config
 from utils.helpers import fmt_amount, guild_only_message
+from utils.stats import hp_bar
 
 
 class Hacker(commands.Cog):
@@ -44,6 +45,34 @@ class Hacker(commands.Cog):
             if self.timers.get(guild_id) is asyncio.current_task():
                 self.timers.pop(guild_id, None)
 
+    @staticmethod
+    def _virus_embed(
+        *,
+        title: str,
+        holder: discord.Member | None,
+        holder_id: int,
+        seconds_left: float,
+        timer_seconds: float,
+        penalty: float,
+        pass_count: int,
+        color: discord.Color,
+    ) -> discord.Embed:
+        elapsed = max(0.0, timer_seconds - seconds_left)
+        bar = hp_bar(elapsed, timer_seconds) if timer_seconds > 0 else "░" * 12
+        holder_text = holder.mention if holder is not None else f"<@{holder_id}>"
+        embed = discord.Embed(title=title, color=color)
+        embed.add_field(name="Holder", value=holder_text, inline=True)
+        embed.add_field(name="Timer", value=f"`{bar}` **{int(seconds_left)}s** left", inline=True)
+        embed.add_field(
+            name="Penalty if it pops",
+            value=fmt_amount(penalty),
+            inline=True,
+        )
+        if pass_count > 0:
+            embed.add_field(name="Passes", value=str(pass_count), inline=True)
+        embed.set_footer(text=f"Use /transfer before time runs out · {config.HACK_VIRUS_NAME}")
+        return embed
+
     async def _detonate(self, guild_id: int, channel_id: int) -> None:
         pot = await self.bot.db.get_hacker_pot(guild_id)
         if pot is None:
@@ -54,9 +83,16 @@ class Hacker(commands.Cog):
 
         channel = self.bot.get_channel(channel_id)
         if isinstance(channel, discord.abc.Messageable):
+            embed = discord.Embed(
+                title="Virus detonated",
+                description=(
+                    f"<@{int(pot['holder_id'])}> took the hit for **{fmt_amount(removed)}**."
+                ),
+                color=discord.Color.dark_red(),
+            )
+            embed.add_field(name="Passes before pop", value=str(int(pot["pass_count"])), inline=True)
             await channel.send(
-                f"The {config.HACK_VIRUS_NAME} flatlined <@{int(pot['holder_id'])}> "
-                f"for {fmt_amount(removed)}.",
+                embed=embed,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
 
@@ -103,10 +139,18 @@ class Hacker(commands.Cog):
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
         penalty = await self._penalty(interaction.guild_id, 0)
+        embed = self._virus_embed(
+            title="Virus deployed",
+            holder=target,
+            holder_id=target.id,
+            seconds_left=float(timer_seconds),
+            timer_seconds=float(timer_seconds),
+            penalty=penalty,
+            pass_count=0,
+            color=discord.Color.red(),
+        )
         await interaction.response.send_message(
-            f"{target.mention} has the **{config.HACK_VIRUS_NAME}**! "
-            f"They have {int(timer_seconds)} seconds to `/transfer` it to someone else before "
-            f"the {fmt_amount(penalty)} penalty hits.",
+            embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -143,10 +187,21 @@ class Hacker(commands.Cog):
         )
         self._replace_timer(interaction.guild_id, interaction.channel_id)
         penalty = await self._penalty(interaction.guild_id, next_pass_count)
+        seconds_left = float(pot["expires_at"]) - current
+        seconds_left = min(float(timer_seconds), max(0.0, seconds_left))
+        embed = self._virus_embed(
+            title="Virus transferred",
+            holder=target,
+            holder_id=target.id,
+            seconds_left=float(timer_seconds),
+            timer_seconds=float(timer_seconds),
+            penalty=penalty,
+            pass_count=next_pass_count,
+            color=discord.Color.orange(),
+        )
+        embed.description = f"{interaction.user.mention} passed the hot potato to {target.mention}."
         await interaction.response.send_message(
-            f"{interaction.user.mention} passed the **{config.HACK_VIRUS_NAME}** to {target.mention}. "
-            f"They have {int(timer_seconds)} seconds to `/transfer` it before "
-            f"the {fmt_amount(penalty)} penalty hits.",
+            embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
