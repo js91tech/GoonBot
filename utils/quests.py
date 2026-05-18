@@ -22,20 +22,20 @@ class QuestDef:
 
 
 ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
-    QuestDef("claim_daily", "First Rations", "Claim `/daily` once.", 1, 50.0, "daily_claim"),
-    QuestDef("buy_gear", "Arm Up", "Buy any item from `/shop`.", 1, 75.0, "shop_buy"),
-    QuestDef("raid_once", "Join the Raid", "Deal damage to a boss with `/attack`.", 1, 100.0, "boss_attack"),
-    QuestDef("heal_once", "Field Medic", "Heal a raider with `/heal`.", 1, 75.0, "boss_heal"),
-    QuestDef("pay_friend", "Spread the Wealth", "Send nuggets with `/pay`.", 1, 50.0, "wallet_pay"),
+    QuestDef("claim_daily", "First Rations", "Claim `/daily` once.", 1, 500.0, "daily_claim"),
+    QuestDef("buy_gear", "Arm Up", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
+    QuestDef("raid_once", "Join the Raid", "Deal damage to a boss with `/attack`.", 1, 1000.0, "boss_attack"),
+    QuestDef("heal_once", "Field Medic", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
+    QuestDef("pay_friend", "Spread the Wealth", "Send nuggets with `/pay`.", 1, 500.0, "wallet_pay"),
 )
 
 DAILY_QUEST_POOL: tuple[QuestDef, ...] = (
-    QuestDef("daily_claim", "Daily Check-in", "Claim `/daily`.", 1, 40.0, "daily_claim"),
-    QuestDef("boss_hits", "Raid Pressure", "Land 5 boss attacks.", 5, 80.0, "boss_attack"),
-    QuestDef("heal_allies", "Triage Run", "Heal raiders 3 times.", 3, 70.0, "boss_heal"),
-    QuestDef("craft_item", "Workshop Shift", "Craft an upgrade with `/craft`.", 1, 90.0, "craft_done"),
-    QuestDef("gamble_once", "Lucky Break", "Play `/coinflip` or `/blackjack`.", 1, 60.0, "gamble_play"),
-    QuestDef("messages", "Stay Active", "Earn from 20 chat messages.", 20, 55.0, "chat_message"),
+    QuestDef("daily_claim", "Daily Check-in", "Claim `/daily`.", 1, 400.0, "daily_claim"),
+    QuestDef("boss_hits", "Raid Pressure", "Land 5 boss attacks.", 5, 800.0, "boss_attack"),
+    QuestDef("heal_allies", "Triage Run", "Heal raiders 3 times.", 3, 700.0, "boss_heal"),
+    QuestDef("craft_item", "Workshop Shift", "Craft an upgrade with `/craft`.", 1, 900.0, "craft_done"),
+    QuestDef("gamble_once", "Lucky Break", "Play `/coinflip` or `/blackjack`.", 1, 600.0, "gamble_play"),
+    QuestDef("messages", "Stay Active", "Earn from 20 chat messages.", 20, 550.0, "chat_message"),
 )
 
 DAILY_QUEST_COUNT = 3

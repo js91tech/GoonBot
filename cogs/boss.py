@@ -738,10 +738,12 @@ class Boss(commands.Cog):
             interaction.guild_id,
             heals_given=1,
         )
+        self_heal = target.id == interaction.user.id
+        heal_reward = config.HEALER_SELF_REWARD if self_heal else config.HEALER_ALLY_REWARD
         await self.bot.db.credit_wallet(
             interaction.user.id,
             interaction.guild_id,
-            config.HEALER_RAID_REWARD,
+            heal_reward,
         )
         await record_quest_event(
             self.bot.db,
@@ -749,14 +751,20 @@ class Boss(commands.Cog):
             interaction.user.id,
             "boss_heal",
         )
+        if self_heal:
+            description = f"{interaction.user.mention} got back up."
+            title = "Self revive"
+        else:
+            description = f"{interaction.user.mention} revived {target.mention}."
+            title = "Field medic"
         embed = discord.Embed(
-            title="Field medic",
-            description=f"{interaction.user.mention} revived {target.mention}.",
+            title=title,
+            description=description,
             color=discord.Color.green(),
         )
         embed.add_field(
             name="Reward",
-            value=f"+{fmt_amount(config.HEALER_RAID_REWARD)}",
+            value=f"+{fmt_amount(heal_reward)}",
             inline=True,
         )
         await interaction.response.send_message(
