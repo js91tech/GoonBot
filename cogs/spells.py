@@ -53,8 +53,21 @@ class Spells(commands.Cog):
             ),
             color=discord.Color.blue(),
         )
-        if snap.seconds_until_tick > 0:
-            embed.set_footer(text=f"+{snap.regen_per_tick} mana in ~{snap.seconds_until_tick}s")
+        footer = (
+            f"+{snap.regen_per_tick} mana in ~{snap.seconds_until_tick}s"
+            if snap.seconds_until_tick > 0
+            else None
+        )
+        mana_mult = await self.bot.db.summoner_mana_regen_multiplier(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        if mana_mult < 1.0:
+            pct = int(round(mana_mult * 100))
+            curse = f"Summoner curse: mana regen at **{pct}%** while your boss is up."
+            footer = f"{curse} · {footer}" if footer else curse
+        if footer:
+            embed.set_footer(text=footer)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="skills", description="List skills for your class.")

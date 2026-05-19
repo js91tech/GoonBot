@@ -37,6 +37,7 @@ class DashboardServer:
                 web.post("/api/guild/{guild_id}/channels", self.api_update_channels),
                 web.get("/api/guild/{guild_id}/config", self.api_get_config),
                 web.post("/api/guild/{guild_id}/config", self.api_update_config),
+                web.post("/api/guild/{guild_id}/boss/summon", self.api_summon_boss),
             ]
         )
         self._runner = web.AppRunner(app)
@@ -192,6 +193,53 @@ class DashboardServer:
             {
                 "economy_settings": await self._economy_settings_payload(guild_id),
                 "duel_settings": await self._duel_settings_payload(guild_id),
+            }
+        )
+
+    async def api_summon_boss(self, request: web.Request) -> web.Response:
+        if not config.DASHBOARD_TOKEN:
+            return web.json_response({"error": "dashboard token is not configured"}, status=503)
+        if not self._authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        try:
+            guild_id = int(request.match_info["guild_id"])
+        except (KeyError, TypeError, ValueError):
+            return web.json_response({"error": "invalid guild id"}, status=400)
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return web.json_response({"error": "guild not found"}, status=404)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid json body"}, status=400)
+        if not isinstance(payload, dict):
+            return web.json_response({"error": "body must be a json object"}, status=400)
+
+        variant = str(payload.get("variant", "normal")).lower().strip()
+        if variant not in config.BOSS_VARIANTS:
+            return web.json_response(
+                {"error": f"variant must be one of: {', '.join(config.BOSS_VARIANTS)}"},
+                status=400,
+            )
+
+        boss_cog = self.bot.get_cog("Boss")
+        if boss_cog is None:
+            return web.json_response({"error": "boss cog not loaded"}, status=503)
+
+        result = await boss_cog.dashboard_spawn_boss(guild, variant)
+        if result is None:
+            return web.json_response({"error": "spawn failed"}, status=400)
+
+        hp, spawned_variant = result
+        boss = await self.bot.db.get_active_boss(guild_id)
+        return web.json_response(
+            {
+                "ok": True,
+                "boss": self._boss_snapshot(boss),
+                "variant": spawned_variant,
+                "hp": hp,
             }
         )
 
@@ -526,6 +574,37 @@ class DashboardServer:
                 }}
               }});
             }});
+            document.querySelectorAll(".boss-summon-form").forEach((form) => {{
+              form.addEventListener("submit", async (event) => {{
+                event.preventDefault();
+                const status = form.querySelector(".boss-summon-status");
+                const guildId = form.dataset.guildId;
+                const variant = form.elements.variant.value;
+                status.textContent = "Summoning...";
+                status.className = "boss-summon-status";
+                try {{
+                  const response = await fetch(`/api/guild/${{guildId}}/boss/summon`, {{
+                    method: "POST",
+                    headers: {{ "Content-Type": "application/json" }},
+                    body: JSON.stringify({{ variant }}),
+                  }});
+                  const data = await response.json();
+                  if (!response.ok) {{
+                    status.textContent = data.error || "Summon failed";
+                    status.className = "boss-summon-status error";
+                    return;
+                  }}
+                  const b = data.boss;
+                  status.textContent = b
+                    ? `Spawned ${{b.variant}} ${{b.name}} (${{b.hp}} / ${{b.max_hp}} HP).`
+                    : "Boss spawned.";
+                  status.className = "boss-summon-status ok";
+                }} catch (err) {{
+                  status.textContent = "Network error";
+                  status.className = "boss-summon-status error";
+                }}
+              }});
+            }});
             document.querySelectorAll(".tuning-form").forEach((form) => {{
               form.addEventListener("submit", async (event) => {{
                 event.preventDefault();
@@ -644,6 +723,20 @@ class DashboardServer:
             <p class="duel-status tuning-status" aria-live="polite"></p>
           </form>
         """
+        boss_variants = "".join(
+            f'<option value="{html.escape(v)}">{html.escape(v.title())}</option>'
+            for v in config.BOSS_VARIANTS
+        )
+        boss_summon_form = f"""
+          <form class="boss-summon-form" data-guild-id="{item['id']}">
+            <label>
+              <span>Spawn boss (free, no summoner penalty)</span>
+              <select name="variant">{boss_variants}</select>
+            </label>
+            <button type="submit">Summon on server</button>
+            <p class="boss-summon-status" aria-live="polite"></p>
+          </form>
+        """
         seasonal = item.get("seasonal_event")
         if seasonal is None:
             event_text = "None"
@@ -677,6 +770,8 @@ class DashboardServer:
           {economy_form}
           <h3>Duel tuning</h3>
           {duel_form}
+          <h3>Boss spawn</h3>
+          {boss_summon_form}
           <h3>Hall of fame</h3>
           <div class="hof-grid">
               <div><p class="hof-title">Richest</p><ol class="leaderboard">{hof_richest}</ol></div>
@@ -1002,13 +1097,13 @@ class DashboardServer:
               width: 100%;
               accent-color: var(--gold);
             }}
-            .economy-status, .duel-status, .tuning-status {{
+            .economy-status, .duel-status, .boss-summon-status, .tuning-status {{
               margin: 0;
               font-size: 0.85rem;
               color: var(--muted);
             }}
-            .economy-status.ok, .duel-status.ok, .tuning-status.ok {{ color: #9dffb8; }}
-            .economy-status.error, .duel-status.error, .tuning-status.error {{ color: #ff9a9a; }}
+            .economy-status.ok, .duel-status.ok, .boss-summon-status.ok, .tuning-status.ok {{ color: #9dffb8; }}
+            .economy-status.error, .duel-status.error, .boss-summon-status.error, .tuning-status.error {{ color: #ff9a9a; }}
             .hof-grid {{
               display: grid;
               grid-template-columns: repeat(2, 1fr);

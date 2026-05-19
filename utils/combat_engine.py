@@ -46,6 +46,7 @@ def roll_player_damage(
     off_hand: ShopItem | None = None,
     ctx: AttackContext | None = None,
     set_bonus: SetBonus | None = None,
+    crit_chance_multiplier: float = 1.0,
 ) -> tuple[int, bool, str]:
     ctx = ctx or AttackContext()
     damage_mult = _combined_damage_mult(ctx, set_bonus)
@@ -71,6 +72,7 @@ def roll_player_damage(
             + extra_crit
         )
         verb = random.choice(weapon.verbs or ("strikes",))
+    crit_chance = max(0.0, crit_chance * crit_chance_multiplier)
     critical = random.random() < crit_chance
     if critical:
         damage = int(damage * config.PLAYER_ATTACK_CRIT_MULTIPLIER)

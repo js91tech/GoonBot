@@ -36,13 +36,20 @@ from utils.combat_engine import (
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
 from utils.stats import hp_bar
+from utils.summoner_penalty import (
+    apply_summoner_attack_debuff,
+    apply_summoner_counter_damage,
+    boss_summoner_id,
+    is_summoner_debuffed,
+    summoner_defense_retention,
+    summoner_penalty_summary,
+)
 
 BOSS_NAME = "Hannah"
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
 COUNTER_HP_BONUS = 0.30
 COUNTER_MULTI_SECOND = 0.65
 COUNTER_MULTI_THIRD = 0.55
-SUMMONER_DEBUFF_PCT = int(round((1.0 - config.SUMMONER_DEBUFF_STAT_RETENTION) * 100))
 
 
 class Boss(commands.Cog):
@@ -109,28 +116,26 @@ class Boss(commands.Cog):
             )
         return hp
 
-    @staticmethod
-    def _boss_summoner_id(boss_row: Any) -> int | None:
-        try:
-            raw = boss_row["summoner_id"]
-        except (KeyError, IndexError, TypeError):
+    async def dashboard_spawn_boss(
+        self,
+        guild: discord.Guild,
+        variant: str,
+    ) -> tuple[float, str] | None:
+        """Free dashboard spawn — any variant, no summoner penalty."""
+        normalized = variant.lower().strip()
+        if normalized not in config.BOSS_VARIANTS:
             return None
-        if raw is None:
-            return None
-        try:
-            uid = int(raw)
-        except (TypeError, ValueError):
-            return None
-        return uid if uid > 0 else None
-
-    @classmethod
-    def _summoner_debuffed(cls, boss_row: Any, user_id: int) -> bool:
-        summoner_id = cls._boss_summoner_id(boss_row)
-        return summoner_id is not None and summoner_id == user_id
-
-    @staticmethod
-    def _apply_summoner_attack_debuff(damage: int) -> int:
-        return max(1, int(damage * config.SUMMONER_DEBUFF_STAT_RETENTION))
+        hp = await self._spawn_boss(guild.id, normalized, summoner_id=None)
+        boss_row = await self.bot.db.get_active_boss(guild.id)
+        elem = str(boss_row["element"]) if boss_row else None
+        await self._send_boss_spawn_embed(
+            guild,
+            variant=normalized,
+            hp=hp,
+            summoner_id=None,
+            element=elem,
+        )
+        return hp, normalized
 
     @staticmethod
     def _weighted_random_damage_user(rows: list[Any]) -> int | None:
@@ -222,10 +227,7 @@ class Boss(commands.Cog):
         if summoner_id is not None:
             embed.add_field(
                 name="Summoner penalty",
-                value=(
-                    f"<@{summoner_id}> called this raid and fights at "
-                    f"**-{SUMMONER_DEBUFF_PCT}%** attack and defense."
-                ),
+                value=f"<@{summoner_id}> — {summoner_penalty_summary()}",
                 inline=False,
             )
         embed.add_field(
@@ -443,6 +445,7 @@ class Boss(commands.Cog):
         off_hand: ShopItem | None = None,
         damage_mult: float = 1.0,
         extra_crit: float = 0.0,
+        crit_chance_multiplier: float = 1.0,
     ) -> tuple[int, bool, str]:
         if weapon is None:
             low = int(config.BOSS_UNARMED_MIN * damage_mult)
@@ -462,6 +465,7 @@ class Boss(commands.Cog):
                 + off_hand_crit_bonus(off_hand)
                 + extra_crit
             )
+        crit_chance = max(0.0, crit_chance * crit_chance_multiplier)
         critical = random.random() < crit_chance
         if critical:
             damage = int(damage * config.PLAYER_ATTACK_CRIT_MULTIPLIER)
@@ -593,11 +597,12 @@ class Boss(commands.Cog):
 
     @app_commands.command(
         name="summon",
-        description="Admin only: spawn a boss (you take a combat penalty).",
+        description=(
+            f"Admin only: spawn a boss for {int(config.SUMMON_COST):,} coins "
+            "(summoner penalties apply)."
+        ),
     )
-    @app_commands.describe(
-        boss="Boss to summon",
-    )
+    @app_commands.describe(boss="Boss to summon")
     @app_commands.choices(
         boss=[
             app_commands.Choice(name="Hannah (enraged)", value="hannah_enraged"),
@@ -613,6 +618,18 @@ class Boss(commands.Cog):
     ) -> None:
         if interaction.guild_id is None or interaction.guild is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        if not await self.bot.db.debit_wallet(
+            interaction.user.id,
+            interaction.guild_id,
+            config.SUMMON_COST,
+        ):
+            await interaction.response.send_message(
+                f"Summoning costs **{fmt_amount(config.SUMMON_COST)}**. "
+                "You do not have enough nuggets.",
+                ephemeral=True,
+            )
             return
 
         if boss == "tomass":
@@ -634,8 +651,8 @@ class Boss(commands.Cog):
             )
             label = BOSS_NAME
         await interaction.response.send_message(
-            f"Summoned **{spawn_variant}** {label} with {fmt_amount(hp)} HP. "
-            f"You take **-{SUMMONER_DEBUFF_PCT}%** attack and defense for calling it."
+            f"Summoned **{spawn_variant}** {label} with {fmt_amount(hp)} HP "
+            f"(-{fmt_amount(config.SUMMON_COST)}). Penalties: {summoner_penalty_summary()}"
         )
         boss_row = await self.bot.db.get_active_boss(interaction.guild_id)
         elem = str(boss_row["element"]) if boss_row else None
@@ -680,12 +697,12 @@ class Boss(commands.Cog):
         embed.add_field(name="HP", value=f"{fmt_amount(hp)} / {fmt_amount(max_hp)}", inline=True)
         threat = config.BOSS_VARIANTS[variant]["threat"]
         embed.add_field(name="Threat", value=str(threat), inline=True)
-        summoner_id = self._boss_summoner_id(boss_row)
+        summoner_id = boss_summoner_id(boss_row)
         if summoner_id is not None:
             embed.add_field(
                 name="Summoner penalty",
-                value=f"<@{summoner_id}> **-{SUMMONER_DEBUFF_PCT}%** atk/def",
-                inline=True,
+                value=f"<@{summoner_id}> — {summoner_penalty_summary()}",
+                inline=False,
             )
         embed.set_footer(text="Use /attack to fight · /heal for downed allies")
         await interaction.response.send_message(embed=embed)
@@ -709,6 +726,8 @@ class Boss(commands.Cog):
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         progress = await self.bot.db.get_user_progress(interaction.user.id, interaction.guild_id)
         prestige = int(progress["prestige_level"])
+        summoner_debuff = is_summoner_debuffed(boss, interaction.user.id)
+        crit_mult = config.SUMMONER_DEBUFF_CRIT_RETENTION if summoner_debuff else 1.0
         await self.bot.db.ensure_jester_class(interaction.user.id, interaction.guild_id)
         class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
         boss_element = None
@@ -743,10 +762,10 @@ class Boss(commands.Cog):
             off_hand=loadout.off_hand,
             ctx=ctx,
             set_bonus=set_bonus,
+            crit_chance_multiplier=crit_mult,
         )
-        summoner_debuff = self._summoner_debuffed(boss, interaction.user.id)
         if summoner_debuff:
-            damage = self._apply_summoner_attack_debuff(damage)
+            damage = apply_summoner_attack_debuff(damage)
         mana_gain = await self.bot.db.restore_mana_from_damage(
             interaction.user.id,
             interaction.guild_id,
@@ -811,8 +830,8 @@ class Boss(commands.Cog):
         if summoner_debuff:
             embed.add_field(
                 name="Summoner penalty",
-                value=f"**-{SUMMONER_DEBUFF_PCT}%** attack",
-                inline=True,
+                value=summoner_penalty_summary(),
+                inline=False,
             )
         embed.add_field(
             name=f"{active_name} HP",
@@ -893,17 +912,16 @@ class Boss(commands.Cog):
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         max_hp = await self._max_hp(victim_id, guild_id)
         await self.bot.db.sync_combat_hp(victim_id, guild_id, max_hp)
-        defense_retention = (
-            config.SUMMONER_DEBUFF_STAT_RETENTION
-            if self._summoner_debuffed(boss_row, victim_id)
-            else 1.0
-        )
+        summoner_victim = is_summoner_debuffed(boss_row, victim_id)
+        defense_retention = summoner_defense_retention() if summoner_victim else 1.0
         damage, mitigated, critical, move = self._counter_roll(
             variant,
             loadout.armor,
             set_bonus=set_bonus,
             defense_retention=defense_retention,
         )
+        if summoner_victim:
+            damage = apply_summoner_counter_damage(damage)
         hp, max_hp = await self.bot.db.damage_player(victim_id, guild_id, damage, max_hp)
         armor_text = ""
         if loadout.armor is not None and mitigated > 0:

@@ -2572,6 +2572,19 @@ class Database:
             raise RuntimeError(msg)
         return updated
 
+    async def summoner_mana_regen_multiplier(self, user_id: int, guild_id: int) -> float:
+        """While the active boss was summoned by this user, spell mana regen is reduced."""
+        import config
+        from utils.summoner_penalty import boss_summoner_id
+
+        boss = await self.get_active_boss(guild_id)
+        if boss is None:
+            return 1.0
+        summoner_id = boss_summoner_id(boss)
+        if summoner_id is not None and summoner_id == user_id:
+            return config.SUMMONER_DEBUFF_MANA_RETENTION
+        return 1.0
+
     async def get_user_character(self, user_id: int, guild_id: int) -> aiosqlite.Row:
         async with self._write_lock:
             row = await self._refresh_character_energy_unlocked(user_id, guild_id)
@@ -2586,7 +2599,7 @@ class Database:
         row: aiosqlite.Row,
     ) -> aiosqlite.Row:
         from utils.classes import is_healer_class
-        from utils.mana import apply_mana_time_regen, mana_cap_for_class
+        from utils.mana import _regen_params, mana_cap_for_class
 
         try:
             raw_mana = row["mana"]
@@ -2607,12 +2620,19 @@ class Database:
         if last_at <= 0:
             last_at = time.time()
             current = cap
-        refreshed, advanced = apply_mana_time_regen(
-            current,
-            cap,
-            last_at,
-            is_healer=healer,
-        )
+        mana_mult = await self.summoner_mana_regen_multiplier(user_id, guild_id)
+        per_tick, interval = _regen_params(healer)
+        per_tick = max(0, int(per_tick * mana_mult))
+        from utils.mana import apply_mana_time_regen
+
+        ts = time.time()
+        elapsed = max(0.0, ts - last_at)
+        ticks = int(elapsed // interval) if interval > 0 else 0
+        if ticks <= 0 or per_tick <= 0:
+            refreshed, advanced = min(current, cap), last_at
+        else:
+            refreshed = min(cap, current + ticks * per_tick)
+            advanced = last_at + ticks * interval
         if (
             refreshed != current
             or advanced != last_at
