@@ -31,12 +31,14 @@ class Jobs(commands.Cog):
         tick_seconds = int(
             await self.bot.db.get_config_value(guild_id, "energy_regen_interval_seconds")
         )
+        mana_mult = await self.bot.db.summoner_mana_regen_multiplier(user_id, guild_id)
+        effective_regen = max(0, int(regen_per_tick * mana_mult))
         snap = energy_snapshot(
             int(row["energy"]),
             int(row["energy_cap"]),
             int(row["cap_upgrades"]),
             float(row["energy_updated_at"]),
-            regen_per_tick=regen_per_tick,
+            regen_per_tick=effective_regen,
             tick_seconds=tick_seconds,
         )
         mins = snap.seconds_until_tick // 60
@@ -50,6 +52,11 @@ class Jobs(commands.Cog):
             f"`{_energy_bar(snap.current, snap.cap)}` **{snap.current}/{snap.cap}** energy\n"
             f"+{snap.regen_per_tick} every {snap.tick_seconds // 60} min · {regen_note}"
         )
+        if mana_mult < 1.0:
+            mana_pct = int(round(mana_mult * 100))
+            text += (
+                f"\n**Summoner curse:** mana regen at **{mana_pct}%** while your boss is up."
+            )
         return text, snap.current, snap.cap
 
     @app_commands.command(name="jobs", description="Browse jobs and your energy.")

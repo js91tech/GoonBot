@@ -2357,6 +2357,8 @@ class Database:
         regen_per_tick = int(
             await self.get_config_value(guild_id, "energy_regen_per_tick")
         )
+        mana_mult = await self.summoner_mana_regen_multiplier(user_id, guild_id)
+        regen_per_tick = max(0, int(regen_per_tick * mana_mult))
         tick_seconds = float(
             await self.get_config_value(guild_id, "energy_regen_interval_seconds")
         )
@@ -2390,6 +2392,19 @@ class Database:
             msg = "Expected user_character row after refresh"
             raise RuntimeError(msg)
         return updated
+
+    async def summoner_mana_regen_multiplier(self, user_id: int, guild_id: int) -> float:
+        """While the active boss was summoned by this user, mana (energy regen) is reduced."""
+        import config
+        from utils.summoner_penalty import boss_summoner_id
+
+        boss = await self.get_active_boss(guild_id)
+        if boss is None:
+            return 1.0
+        summoner_id = boss_summoner_id(boss)
+        if summoner_id is not None and summoner_id == user_id:
+            return config.SUMMONER_DEBUFF_MANA_RETENTION
+        return 1.0
 
     async def get_user_character(self, user_id: int, guild_id: int) -> aiosqlite.Row:
         async with self._write_lock:
