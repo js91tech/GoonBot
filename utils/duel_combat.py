@@ -12,7 +12,7 @@ from utils.combat_engine import (
     roll_jester_reflect,
     roll_player_damage,
 )
-from utils.aspects import AspectCombatBonuses, AspectInstance, combat_bonuses_from_instance
+from utils.aspects import AspectBonuses, AspectInstance, bonuses_from_instance
 from utils.spell_effects import CombatSpellState
 from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.loadout import parse_loadout
@@ -34,7 +34,7 @@ class DuelFighter:
     spell_state: CombatSpellState | None = None
     spell_offense_used: bool = False
     spell_defense_used: bool = False
-    aspect_bonuses: AspectCombatBonuses | None = None
+    aspect_bonuses: AspectBonuses | None = None
     trap_bomb_count: int = 0
 
 
@@ -50,6 +50,7 @@ class DuelStrike:
     jester_reflect: bool = False
     trap_proc: TrapBombProc | None = None
     trap_attacker_hp_after: int | None = None
+    second_wind: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ def fighter_from_equipment(
     loadout = parse_loadout(equipment)
     set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
     mods = class_modifiers if class_modifiers is not None else get_modifiers(class_id)
-    aspect_bonuses = combat_bonuses_from_instance(aspect_instance)
+    aspect_bonuses = bonuses_from_instance(aspect_instance)
     max_hp = max_hp_from_armor(loadout.armor, class_modifiers=mods) + aspect_bonuses.hp_bonus
     return DuelFighter(
         user_id=user_id,
@@ -171,6 +172,15 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         mitigated += damage - reduced
         damage = reduced
     defender.hp = max(0, defender.hp - damage)
+    second_wind = False
+    if (
+        defender.hp <= 0
+        and defender.aspect_bonuses is not None
+        and defender.aspect_bonuses.second_wind_chance > 0
+        and random.random() < defender.aspect_bonuses.second_wind_chance
+    ):
+        defender.hp = 1
+        second_wind = True
 
     trap_proc = None
     trap_attacker_hp: int | None = None
@@ -194,6 +204,7 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         defender_hp_after=defender.hp,
         trap_proc=trap_proc,
         trap_attacker_hp_after=trap_attacker_hp,
+        second_wind=second_wind,
     )
 
 
@@ -242,13 +253,16 @@ def format_strike_line(strike: DuelStrike, fighters: dict[int, DuelFighter]) -> 
         f"**{attacker.display_name}** {strike.verb} **{defender.display_name}** "
         f"for **{strike.damage}**{mit}{crit} → {strike.defender_hp_after}/{defender.max_hp} HP"
     )
+    if strike.second_wind:
+        line += f"\n🌬️ **Second Wind!** **{defender.display_name}** clings to **1 HP**!"
     if strike.trap_proc is not None:
         hp_note = ""
         if strike.trap_attacker_hp_after is not None:
             atk = fighters[strike.attacker_id]
             hp_note = f" → {strike.trap_attacker_hp_after}/{atk.max_hp} HP"
+        td = " **true damage**" if strike.trap_proc.true_damage else ""
         line += (
             f"\n💣 **Trap Bomb!** **{defender.display_name}** detonates a bomb on "
-            f"**{attacker.display_name}** for **{strike.trap_proc.damage}**{hp_note}"
+            f"**{attacker.display_name}** for **{strike.trap_proc.damage}**{td}{hp_note}"
         )
     return line

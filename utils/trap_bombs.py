@@ -14,6 +14,7 @@ TRAP_BOMB_GIF_PATH = Path(__file__).resolve().parent.parent / "assets" / "trap_b
 class TrapBombProc:
     damage: int
     bombs_remaining: int
+    true_damage: bool = True
 
 
 def trap_proc_chance(bomb_count: int) -> float:

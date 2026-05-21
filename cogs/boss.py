@@ -784,10 +784,10 @@ class Boss(commands.Cog):
         )
         aspect_note = ""
         if aspect_row is not None:
-            from utils.aspects import combat_bonuses_from_instance
+            from utils.aspects import bonuses_from_instance
 
             inst = instance_from_row(aspect_row)
-            bonuses = combat_bonuses_from_instance(inst)
+            bonuses = bonuses_from_instance(inst)
             ctx = replace(
                 ctx,
                 damage_mult=ctx.damage_mult * bonuses.damage_mult * bonuses.boss_damage_mult,

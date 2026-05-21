@@ -18,7 +18,9 @@ class TrapBombTests(unittest.TestCase):
     def test_proc_returns_damage(self) -> None:
         proc = try_trap_proc(10)
         if proc is not None:
-            self.assertGreater(proc.damage, 0)
+            self.assertGreaterEqual(proc.damage, 75)
+            self.assertLessEqual(proc.damage, 125)
+            self.assertTrue(proc.true_damage)
             self.assertEqual(proc.bombs_remaining, 9)
 
 

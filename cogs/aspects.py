@@ -112,7 +112,9 @@ class Aspects(commands.Cog):
             description=(
                 f"Buy a random rolled aspect for **{fmt_amount(config.ASPECT_SHOP_PRICE)}** with `/buy-aspect`.\n"
                 "Shop rolls land between **4%** and **14%**. Boss drops scale with threat tier "
-                "(harder bosses = higher rolls, up to **40%** on mythic-tier raids).\n\n"
+                "(harder bosses = higher rolls, up to **40%** on mythic-tier raids).\n"
+                "Utility aspects affect duels/hr, work income (up to **3×**), energy regen, "
+                "duel loot, daily/passive gold, and more.\n\n"
                 f"{catalog}"
             ),
             color=discord.Color.dark_purple(),

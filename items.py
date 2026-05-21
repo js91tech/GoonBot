@@ -326,7 +326,7 @@ TRAP_BOMB = ShopItem(
     "consumable",
     500,
     0,
-    "Stacks in inventory. Each bomb raises the chance it detonates when a duelist hits you.",
+    "Stacks in inventory. Detonates for 75–125 true damage (ignores mitigation) when a duelist hits you.",
     shop_listed=True,
 )
 

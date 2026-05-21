@@ -2567,6 +2567,16 @@ class Database:
         tick_seconds = float(
             await self.get_config_value(guild_id, "energy_regen_interval_seconds")
         )
+        from utils.aspects import bonuses_from_instance, effective_energy_regen_per_tick
+
+        aspect_row = await self.get_equipped_aspect_row(user_id, guild_id)
+        if aspect_row is not None:
+            from utils.aspects import instance_from_row
+
+            regen_per_tick = effective_energy_regen_per_tick(
+                regen_per_tick,
+                bonuses_from_instance(instance_from_row(aspect_row)),
+            )
         expected_cap = energy_cap_for_upgrades(int(row["cap_upgrades"]))
         current_cap = int(row["energy_cap"])
         if current_cap != expected_cap:
@@ -3295,6 +3305,14 @@ class Database:
         if instance_id is None:
             return None
         return await self.get_aspect_instance(user_id, guild_id, instance_id)
+
+    async def get_equipped_aspect_bonuses(self, user_id: int, guild_id: int):
+        from utils.aspects import AspectBonuses, bonuses_from_instance, instance_from_row
+
+        row = await self.get_equipped_aspect_row(user_id, guild_id)
+        if row is None:
+            return AspectBonuses()
+        return bonuses_from_instance(instance_from_row(row))
 
     async def equip_aspect_instance(
         self, user_id: int, guild_id: int, instance_id: int
