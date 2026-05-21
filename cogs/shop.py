@@ -15,6 +15,7 @@ from items import (
     items_for_category,
     sell_refund_for_item,
 )
+from utils.aspects import format_aspect_effect, instance_from_row
 from utils.loadout import parse_loadout
 from utils.gear_sets import detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message
@@ -106,6 +107,7 @@ class Shop(commands.Cog):
             app_commands.Choice(name="Weapons", value="weapon"),
             app_commands.Choice(name="Guns", value="gun"),
             app_commands.Choice(name="Armor", value="armor"),
+            app_commands.Choice(name="Consumables", value="consumable"),
         ]
     )
     @app_commands.guild_only()
@@ -115,7 +117,7 @@ class Shop(commands.Cog):
             return
         if category not in SHOP_CATEGORIES:
             await interaction.response.send_message(
-                "Choose all, weapon, gun, or armor.", ephemeral=True
+                "Choose all, weapon, gun, armor, or consumable.", ephemeral=True
             )
             return
 
@@ -125,6 +127,7 @@ class Shop(commands.Cog):
             "weapon": "Weapons",
             "gun": "Guns",
             "armor": "Armor",
+            "consumable": "Consumables",
         }
         title = (
             "Nugget Shop"
@@ -237,6 +240,11 @@ class Shop(commands.Cog):
         class_blurb = ""
         if cls is not None:
             class_blurb = f"\n**{cls.emoji} {cls.name}** — {format_modifiers_summary(cls.modifiers)}"
+        aspect_row = await self.bot.db.get_equipped_aspect_row(target.id, guild_id)
+        aspect_blurb = ""
+        if aspect_row is not None:
+            inst = instance_from_row(aspect_row)
+            aspect_blurb = f"\n**Aspect** — {inst.name}: {format_aspect_effect(inst)}"
         user_row = await self.bot.db.get_user(target.id, guild_id)
         wallet = float(user_row["wallet"])
         total_earned = float(user_row["total_earned"])
@@ -250,7 +258,8 @@ class Shop(commands.Cog):
                 prestige_level=prestige,
                 off_hand=loadout.off_hand,
             )
-            + class_blurb,
+            + class_blurb
+            + aspect_blurb,
             color=discord.Color.gold(),
         )
         embed.set_thumbnail(url=target.display_avatar.url)
@@ -370,6 +379,13 @@ class Shop(commands.Cog):
         if slot is None:
             await interaction.response.send_message(
                 "You need to buy that item first.", ephemeral=True
+            )
+            return
+        if shop_item.category == "consumable":
+            await interaction.response.send_message(
+                f"**{shop_item.name}** stays in your inventory — no equip slot. "
+                "Trap bombs auto-trigger when duelists attack you.",
+                ephemeral=True,
             )
             return
 

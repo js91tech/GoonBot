@@ -21,6 +21,7 @@ COGS = (
     "cogs.hacker",
     "cogs.boss",
     "cogs.shop",
+    "cogs.aspects",
     "cogs.progression",
     "cogs.imposter",
     "cogs.trivia",

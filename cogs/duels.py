@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from utils.aspects import instance_from_row
 from utils.duel_combat import (
     DuelFighter,
     fighter_from_equipment,
@@ -14,6 +15,7 @@ from utils.duel_combat import (
 from utils.helpers import fmt_amount, guild_only_message
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
+from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
 
 
 class Duels(commands.Cog):
@@ -95,12 +97,29 @@ class Duels(commands.Cog):
         attacker_class = await self.bot.db.get_class_id(attacker.id, guild_id)
         defender_class = await self.bot.db.get_class_id(opponent.id, guild_id)
 
+        async def _aspect_for(uid: int):
+            row = await self.bot.db.get_equipped_aspect_row(uid, guild_id)
+            return instance_from_row(row) if row is not None else None
+
+        attacker_aspect = await _aspect_for(attacker.id)
+        defender_aspect = await _aspect_for(opponent.id)
+        attacker_bombs = await self.bot.db.get_inventory_quantity(
+            attacker.id, guild_id, TRAP_BOMB_ITEM_ID
+        )
+        defender_bombs = await self.bot.db.get_inventory_quantity(
+            opponent.id, guild_id, TRAP_BOMB_ITEM_ID
+        )
+        initial_attacker_bombs = attacker_bombs
+        initial_defender_bombs = defender_bombs
+
         attacker_fighter = fighter_from_equipment(
             attacker.id,
             attacker.display_name,
             attacker_equipment,
             prestige_level=int(attacker_progress["prestige_level"]),
             class_id=attacker_class,
+            aspect_instance=attacker_aspect,
+            trap_bomb_count=attacker_bombs,
         )
         defender_fighter = fighter_from_equipment(
             opponent.id,
@@ -108,6 +127,8 @@ class Duels(commands.Cog):
             defender_equipment,
             prestige_level=int(defender_progress["prestige_level"]),
             class_id=defender_class,
+            aspect_instance=defender_aspect,
+            trap_bomb_count=defender_bombs,
         )
         for fighter, uid in (
             (attacker_fighter, attacker.id),
@@ -124,6 +145,20 @@ class Duels(commands.Cog):
             attacker_fighter.user_id: attacker_fighter,
             defender_fighter.user_id: defender_fighter,
         }
+
+        trap_procs = sum(1 for s in result.strikes if s.trap_proc is not None)
+        for _ in range(
+            max(0, initial_attacker_bombs - attacker_fighter.trap_bomb_count)
+        ):
+            await self.bot.db.consume_inventory_item(
+                attacker.id, guild_id, TRAP_BOMB_ITEM_ID
+            )
+        for _ in range(
+            max(0, initial_defender_bombs - defender_fighter.trap_bomb_count)
+        ):
+            await self.bot.db.consume_inventory_item(
+                opponent.id, guild_id, TRAP_BOMB_ITEM_ID
+            )
 
         settlement = await self.bot.db.execute_duel(
             guild_id,
@@ -189,15 +224,22 @@ class Duels(commands.Cog):
             value="\n".join(log_lines) if log_lines else "No strikes recorded.",
             inline=False,
         )
-        embed.set_footer(
-            text=(
-                f"Limits: {max_per_hour}/hr · {int(cooldown_seconds // 60)}m cooldown vs same player"
-            )
-        )
+        footer_bits = [
+            f"Limits: {max_per_hour}/hr · {int(cooldown_seconds // 60)}m cooldown vs same player",
+        ]
+        if trap_procs > 0:
+            footer_bits.append(f"{trap_procs} trap bomb(s) detonated")
+        embed.set_footer(text=" · ".join(footer_bits))
+
+        files: list[discord.File] = []
+        if trap_procs > 0 and TRAP_BOMB_GIF_PATH.is_file():
+            files.append(discord.File(str(TRAP_BOMB_GIF_PATH), filename="trap_bomb.gif"))
+            embed.set_image(url="attachment://trap_bomb.gif")
 
         await interaction.response.send_message(
             content=f"{attacker.mention} vs {opponent.mention}",
             embed=embed,
+            files=files or None,
             allowed_mentions=discord.AllowedMentions(users=[attacker, opponent]),
         )
         for line in jester_lines:

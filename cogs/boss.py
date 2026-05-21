@@ -36,6 +36,11 @@ from utils.combat_engine import (
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
 from utils.stats import hp_bar
+from utils.aspects import (
+    instance_from_row,
+    random_aspect_definition,
+    roll_pct_for_threat,
+)
 from utils.summoner_penalty import (
     apply_summoner_attack_debuff,
     apply_summoner_counter_damage,
@@ -191,6 +196,33 @@ class Boss(commands.Cog):
         mythic = random.choice((MYTHIC_RAID_BLADE, MYTHIC_RAID_MAIL))
         await self.bot.db.grant_item(uid, guild_id, mythic.id)
         return [(uid, mythic)]
+
+    async def _roll_aspect_loot(
+        self,
+        guild_id: int,
+        rows: list[Any],
+        variant: str,
+    ) -> list[tuple[int, str]]:
+        if not rows:
+            return []
+        drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
+        aspect_chance = await self.bot.db.get_config_value(guild_id, "boss_aspect_drop_chance")
+        if random.random() >= aspect_chance * drop_mult:
+            return []
+        uid = Boss._weighted_random_damage_user(rows)
+        if uid is None:
+            return []
+        threat = config.BOSS_VARIANTS.get(variant, {}).get("threat", 1)
+        defn = random_aspect_definition()
+        roll_pct = roll_pct_for_threat(int(threat))
+        instance_id = await self.bot.db.create_aspect_instance(
+            uid,
+            guild_id,
+            defn.id,
+            roll_pct,
+        )
+        label = f"**{defn.name}** ({roll_pct:g}%)"
+        return [(uid, label)]
 
     async def _send_boss_spawn_embed(
         self,
@@ -367,10 +399,15 @@ class Boss(commands.Cog):
 
         loot_rows = await self._roll_boss_loot(guild_id, rows)
         loot_rows.extend(await self._roll_mythic_loot(guild_id, rows, variant))
+        aspect_rows = await self._roll_aspect_loot(guild_id, rows, variant)
         gear_lines = [
             f"**{self._display_name(guild, uid)}** · **{item.name}** (`{item.id}`)"
             for uid, item in loot_rows
         ]
+        gear_lines.extend(
+            f"**{self._display_name(guild, uid)}** · Aspect {label}"
+            for uid, label in aspect_rows
+        )
 
         await self.bot.db.clear_boss(guild_id)
 
@@ -741,6 +778,22 @@ class Boss(commands.Cog):
             boss_element=boss_element,
             for_boss=True,
         )
+        aspect_row = await self.bot.db.get_equipped_aspect_row(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        aspect_note = ""
+        if aspect_row is not None:
+            from utils.aspects import combat_bonuses_from_instance
+
+            inst = instance_from_row(aspect_row)
+            bonuses = combat_bonuses_from_instance(inst)
+            ctx = replace(
+                ctx,
+                damage_mult=ctx.damage_mult * bonuses.damage_mult * bonuses.boss_damage_mult,
+                extra_crit=ctx.extra_crit + bonuses.extra_crit,
+            )
+            aspect_note = f" · **{inst.name}** ({inst.roll_pct:g}%)"
         spell_note = ""
         skill_id = await self.bot.db.consume_pending_spell(
             interaction.user.id,
@@ -821,7 +874,7 @@ class Boss(commands.Cog):
             weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
         embed.add_field(
             name="Hit",
-            value=f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}",
+            value=f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}",
             inline=True,
         )
         embed.add_field(name="Mana", value=f"+{mana_gain} from damage", inline=True)

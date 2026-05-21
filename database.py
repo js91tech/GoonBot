@@ -404,6 +404,32 @@ class Database:
         await self._migrate_class_system()
         await self._migrate_boss_class_fields()
         await self._migrate_mana_system()
+        await self._migrate_aspect_system()
+
+    async def _migrate_aspect_system(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS aspect_instances (
+                instance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                aspect_id TEXT NOT NULL,
+                roll_pct REAL NOT NULL CHECK (roll_pct > 0),
+                created_at REAL NOT NULL
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS equipped_aspect (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                instance_id INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_class_system(self) -> None:
         cols = [
@@ -3195,6 +3221,137 @@ class Database:
                 raise
             await self.conn.commit()
             return True
+
+    async def get_inventory_quantity(
+        self, user_id: int, guild_id: int, item_id: str
+    ) -> int:
+        cursor = await self.conn.execute(
+            """
+            SELECT quantity FROM inventory
+            WHERE guild_id = ? AND user_id = ? AND item_id = ?
+            """,
+            (guild_id, user_id, item_id),
+        )
+        row = await cursor.fetchone()
+        return int(row["quantity"]) if row is not None else 0
+
+    async def create_aspect_instance(
+        self,
+        user_id: int,
+        guild_id: int,
+        aspect_id: str,
+        roll_pct: float,
+    ) -> int:
+        now = time.time()
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO aspect_instances (guild_id, user_id, aspect_id, roll_pct, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (guild_id, user_id, aspect_id, roll_pct, now),
+            )
+            await self.conn.commit()
+            return int(cursor.lastrowid)
+
+    async def list_aspect_instances(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT instance_id, aspect_id, roll_pct, created_at
+            FROM aspect_instances
+            WHERE guild_id = ? AND user_id = ?
+            ORDER BY roll_pct DESC, instance_id DESC
+            """,
+            (guild_id, user_id),
+        )
+        return await cursor.fetchall()
+
+    async def get_aspect_instance(
+        self, user_id: int, guild_id: int, instance_id: int
+    ) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT instance_id, aspect_id, roll_pct
+            FROM aspect_instances
+            WHERE guild_id = ? AND user_id = ? AND instance_id = ?
+            """,
+            (guild_id, user_id, instance_id),
+        )
+        return await cursor.fetchone()
+
+    async def get_equipped_aspect_instance_id(self, user_id: int, guild_id: int) -> int | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT instance_id FROM equipped_aspect
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return int(row["instance_id"]) if row is not None else None
+
+    async def get_equipped_aspect_row(self, user_id: int, guild_id: int) -> aiosqlite.Row | None:
+        instance_id = await self.get_equipped_aspect_instance_id(user_id, guild_id)
+        if instance_id is None:
+            return None
+        return await self.get_aspect_instance(user_id, guild_id, instance_id)
+
+    async def equip_aspect_instance(
+        self, user_id: int, guild_id: int, instance_id: int
+    ) -> bool:
+        row = await self.get_aspect_instance(user_id, guild_id, instance_id)
+        if row is None:
+            return False
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO equipped_aspect (guild_id, user_id, instance_id)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET instance_id = excluded.instance_id
+                """,
+                (guild_id, user_id, instance_id),
+            )
+            await self.conn.commit()
+        return True
+
+    async def buy_aspect_from_shop(self, user_id: int, guild_id: int, price: float) -> int | None:
+        """Debit wallet and grant a shop-rolled aspect. Returns instance_id or None."""
+        from utils.aspects import random_aspect_definition, roll_pct_shop
+
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (user_id, guild_id),
+                )
+                row = await cursor.fetchone()
+                if row is None or float(row["wallet"]) < price:
+                    await self.conn.rollback()
+                    return None
+                await self.conn.execute(
+                    """
+                    UPDATE users SET wallet = wallet - ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (price, user_id, guild_id),
+                )
+                defn = random_aspect_definition()
+                roll_pct = roll_pct_shop()
+                now = time.time()
+                cursor = await self.conn.execute(
+                    """
+                    INSERT INTO aspect_instances (guild_id, user_id, aspect_id, roll_pct, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (guild_id, user_id, defn.id, roll_pct, now),
+                )
+                instance_id = int(cursor.lastrowid)
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return instance_id
 
     async def try_mark_boss_phase(self, guild_id: int, hp_ratio: float) -> int | None:
         """Return newly crossed phase threshold (75, 50, or 25) or None."""

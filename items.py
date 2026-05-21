@@ -320,6 +320,18 @@ MYTHIC_RAID_MAIL = ShopItem(
     shop_listed=False,
 )
 
+TRAP_BOMB = ShopItem(
+    "trap_bomb",
+    "Trap Bomb",
+    "consumable",
+    500,
+    0,
+    "Stacks in inventory. Each bomb raises the chance it detonates when a duelist hits you.",
+    shop_listed=True,
+)
+
+CONSUMABLES: tuple[ShopItem, ...] = (TRAP_BOMB,)
+
 
 def _inferior_boss_drop(base: ShopItem) -> ShopItem:
     """Weaker, sellable variant of shop gear for boss loot."""
@@ -359,11 +371,14 @@ ITEMS: dict[str, ShopItem] = {
         MYTHIC_RAID_BLADE,
         MYTHIC_RAID_MAIL,
         *BOSS_WEAK_ITEMS,
+        *CONSUMABLES,
     )
 }
-ITEM_ORDER: tuple[str, ...] = tuple(item.id for item in (*WEAPONS, *GUNS, *ARMOR))
-CATEGORIES = ("all", "weapon", "gun", "armor")
-SHOP_CATEGORIES = ("all", "weapon", "gun", "armor")
+ITEM_ORDER: tuple[str, ...] = tuple(
+    item.id for item in (*WEAPONS, *GUNS, *ARMOR, *CONSUMABLES)
+)
+CATEGORIES = ("all", "weapon", "gun", "armor", "consumable")
+SHOP_CATEGORIES = ("all", "weapon", "gun", "armor", "consumable")
 
 
 def is_damage_dealer(item: ShopItem) -> bool:
