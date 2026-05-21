@@ -14,6 +14,7 @@ from utils.duel_combat import (
 from utils.helpers import fmt_amount, guild_only_message
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
+from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
 
 
 class Duels(commands.Cog):
@@ -62,6 +63,11 @@ class Duels(commands.Cog):
             return
 
         loss_fraction, cooldown_seconds, max_per_hour = await self._duel_settings(guild_id)
+        attacker_util = await self.bot.db.get_equipped_aspect_bonuses(attacker.id, guild_id)
+        max_per_hour += attacker_util.extra_duels_per_hour
+        cooldown_seconds = int(
+            round(cooldown_seconds * attacker_util.duel_cooldown_mult)
+        )
         remaining_target = await self.bot.db.duel_same_target_cooldown_remaining(
             guild_id,
             attacker.id,
@@ -95,12 +101,25 @@ class Duels(commands.Cog):
         attacker_class = await self.bot.db.get_class_id(attacker.id, guild_id)
         defender_class = await self.bot.db.get_class_id(opponent.id, guild_id)
 
+        attacker_bonuses = await self.bot.db.get_equipped_aspect_bonuses(attacker.id, guild_id)
+        defender_bonuses = await self.bot.db.get_equipped_aspect_bonuses(opponent.id, guild_id)
+        attacker_bombs = await self.bot.db.get_inventory_quantity(
+            attacker.id, guild_id, TRAP_BOMB_ITEM_ID
+        )
+        defender_bombs = await self.bot.db.get_inventory_quantity(
+            opponent.id, guild_id, TRAP_BOMB_ITEM_ID
+        )
+        initial_attacker_bombs = attacker_bombs
+        initial_defender_bombs = defender_bombs
+
         attacker_fighter = fighter_from_equipment(
             attacker.id,
             attacker.display_name,
             attacker_equipment,
             prestige_level=int(attacker_progress["prestige_level"]),
             class_id=attacker_class,
+            aspect_bonuses=attacker_bonuses,
+            trap_bomb_count=attacker_bombs,
         )
         defender_fighter = fighter_from_equipment(
             opponent.id,
@@ -108,6 +127,8 @@ class Duels(commands.Cog):
             defender_equipment,
             prestige_level=int(defender_progress["prestige_level"]),
             class_id=defender_class,
+            aspect_bonuses=defender_bonuses,
+            trap_bomb_count=defender_bombs,
         )
         for fighter, uid in (
             (attacker_fighter, attacker.id),
@@ -124,6 +145,20 @@ class Duels(commands.Cog):
             attacker_fighter.user_id: attacker_fighter,
             defender_fighter.user_id: defender_fighter,
         }
+
+        trap_procs = sum(1 for s in result.strikes if s.trap_proc is not None)
+        for _ in range(
+            max(0, initial_attacker_bombs - attacker_fighter.trap_bomb_count)
+        ):
+            await self.bot.db.consume_inventory_item(
+                attacker.id, guild_id, TRAP_BOMB_ITEM_ID
+            )
+        for _ in range(
+            max(0, initial_defender_bombs - defender_fighter.trap_bomb_count)
+        ):
+            await self.bot.db.consume_inventory_item(
+                opponent.id, guild_id, TRAP_BOMB_ITEM_ID
+            )
 
         settlement = await self.bot.db.execute_duel(
             guild_id,
@@ -161,6 +196,25 @@ class Duels(commands.Cog):
         loot, _ = settlement
         winner = attacker if result.winner_id == attacker.id else opponent
         loser = opponent if result.winner_id == attacker.id else attacker
+        plunder_note = ""
+        if result.winner_id == attacker.id and attacker_util.duel_loot_mult > 1.0:
+            extra = loot * (attacker_util.duel_loot_mult - 1.0)
+            if extra > 0:
+                await self.bot.db.credit_wallet(attacker.id, guild_id, extra)
+                loot += extra
+                plunder_note = (
+                    f"\n**Plunderer's Seal** — **+{fmt_amount(extra)}** bonus loot!"
+                )
+        elif result.winner_id == opponent.id:
+            def_util = await self.bot.db.get_equipped_aspect_bonuses(opponent.id, guild_id)
+            if def_util.duel_loot_mult > 1.0:
+                extra = loot * (def_util.duel_loot_mult - 1.0)
+                if extra > 0:
+                    await self.bot.db.credit_wallet(opponent.id, guild_id, extra)
+                    loot += extra
+                    plunder_note = (
+                        f"\n**Plunderer's Seal** — **+{fmt_amount(extra)}** bonus loot!"
+                    )
         loss_pct = int(round(loss_fraction * 100))
 
         log_lines = [format_strike_line(s, fighters) for s in result.strikes[:12]]
@@ -172,7 +226,7 @@ class Duels(commands.Cog):
             description=(
                 f"**{winner.display_name}** defeats **{loser.display_name}**!\n"
                 f"**{fmt_amount(loot)}** ({loss_pct}% of {loser.display_name}'s wallet) "
-                f"transferred to the winner."
+                f"transferred to the winner.{plunder_note}"
             ),
             color=discord.Color.red() if result.winner_id == attacker.id else discord.Color.blue(),
         )
@@ -189,15 +243,28 @@ class Duels(commands.Cog):
             value="\n".join(log_lines) if log_lines else "No strikes recorded.",
             inline=False,
         )
-        embed.set_footer(
-            text=(
-                f"Limits: {max_per_hour}/hr · {int(cooldown_seconds // 60)}m cooldown vs same player"
-            )
+        base_max = int(
+            await self.bot.db.get_config_value(guild_id, "duel_max_attacks_per_hour")
         )
+        limit_note = f"{max_per_hour}/hr"
+        if max_per_hour > base_max:
+            limit_note = f"{max_per_hour}/hr (+{max_per_hour - base_max} from aspect)"
+        footer_bits = [
+            f"Limits: {limit_note} · {int(cooldown_seconds // 60)}m cooldown vs same player",
+        ]
+        if trap_procs > 0:
+            footer_bits.append(f"{trap_procs} trap bomb(s) detonated")
+        embed.set_footer(text=" · ".join(footer_bits))
+
+        files: list[discord.File] = []
+        if trap_procs > 0 and TRAP_BOMB_GIF_PATH.is_file():
+            files.append(discord.File(str(TRAP_BOMB_GIF_PATH), filename="trap_bomb.gif"))
+            embed.set_image(url="attachment://trap_bomb.gif")
 
         await interaction.response.send_message(
             content=f"{attacker.mention} vs {opponent.mention}",
             embed=embed,
+            files=files or None,
             allowed_mentions=discord.AllowedMentions(users=[attacker, opponent]),
         )
         for line in jester_lines:

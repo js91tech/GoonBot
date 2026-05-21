@@ -109,6 +109,11 @@ class Economy(commands.Cog):
             return
 
         reward = await self.bot.db.get_config_value(message.guild.id, "passive_chat_reward")
+        aspect = await self.bot.db.get_equipped_aspect_bonuses(
+            message.author.id,
+            message.guild.id,
+        )
+        reward *= aspect.passive_income_mult
         await self.bot.db.record_message_reward(
             message.author.id,
             message.guild.id,
@@ -185,7 +190,15 @@ class Economy(commands.Cog):
             return
 
         current = time.time()
-        reward = await self.bot.db.get_config_value(interaction.guild_id, "daily_reward")
+        base_reward = await self.bot.db.get_config_value(
+            interaction.guild_id,
+            "daily_reward",
+        )
+        aspect = await self.bot.db.get_equipped_aspect_bonuses(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        reward = base_reward * aspect.daily_reward_mult
         remaining = await self.bot.db.claim_daily(
             interaction.user.id,
             interaction.guild_id,
@@ -202,8 +215,11 @@ class Economy(commands.Cog):
             )
             return
 
+        bonus_note = ""
+        if aspect.daily_reward_mult > 1.0:
+            bonus_note = f" (×{aspect.daily_reward_mult:.2f} **Windfall** aspect)"
         await interaction.response.send_message(
-            f"You claimed {fmt_amount(reward)}.",
+            f"You claimed {fmt_amount(reward)}.{bonus_note}",
             ephemeral=True,
         )
         await record_quest_event(

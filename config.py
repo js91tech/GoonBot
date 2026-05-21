@@ -97,6 +97,13 @@ BOSS_PASSIVE_DECAY_TICK_SECONDS = 120
 BOSS_INFERIOR_DROP_CHANCE = 0.38
 BOSS_EPIC_DROP_CHANCE = 0.03
 BOSS_MYTHIC_DROP_CHANCE = 0.015
+BOSS_ASPECT_DROP_CHANCE = 0.12
+ASPECT_SHOP_PRICE = 25_000.0
+ASPECT_MAX_EQUIP_SLOTS = 3
+TRAP_BOMB_BASE_CHANCE = 0.08
+TRAP_BOMB_PER_ITEM_CHANCE = 0.05
+TRAP_BOMB_MAX_CHANCE = 0.75
+TRAP_BOMB_DAMAGE = (75, 125)
 # Minimum spacing between automated channel posts (coin drops, boss embeds, etc.).
 DISCORD_OUTBOUND_MIN_INTERVAL_SEC = 1.25
 # Pause between guilds in background loops that may post to Discord.
@@ -319,6 +326,11 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
         "Mythic boss drop chance",
         maximum=1.0,
     ),
+    "boss_aspect_drop_chance": LiveSetting(
+        BOSS_ASPECT_DROP_CHANCE,
+        "Aspect drop chance on boss defeat",
+        maximum=1.0,
+    ),
     "craft_upgrade_cost_factor": LiveSetting(
         CRAFT_UPGRADE_COST_FACTOR,
         "Craft upgrade cost multiplier",
@@ -378,6 +390,7 @@ ECONOMY_TUNING_SETTINGS: tuple[str, ...] = (
     "boss_inferior_drop_chance",
     "boss_epic_drop_chance",
     "boss_mythic_drop_chance",
+    "boss_aspect_drop_chance",
     "craft_upgrade_cost_factor",
     "prestige_min_wallet",
     "gambling_house_tax",

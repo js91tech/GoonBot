@@ -133,7 +133,13 @@ class Jobs(commands.Cog):
 
         class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
         job_mult = get_modifiers(class_id).job_payout_mult
-        payout = roll_job_payout(job_def, payout_mult=job_mult)
+        aspect_mult = (
+            await self.bot.db.get_equipped_aspect_bonuses(
+                interaction.user.id,
+                interaction.guild_id,
+            )
+        ).work_income_mult
+        payout = roll_job_payout(job_def, payout_mult=job_mult * aspect_mult)
         await self.bot.db.credit_wallet(
             interaction.user.id,
             interaction.guild_id,
@@ -155,7 +161,10 @@ class Jobs(commands.Cog):
             description=job_def.description,
             color=discord.Color.green(),
         )
-        embed.add_field(name="Pay", value=f"**+{fmt_amount(payout)}**", inline=True)
+        pay_note = f"**+{fmt_amount(payout)}**"
+        if aspect_mult > 1.0:
+            pay_note += f" (×{aspect_mult:.2f} aspect)"
+        embed.add_field(name="Pay", value=pay_note, inline=True)
         embed.add_field(
             name="Energy spent",
             value=f"**-{job_def.energy_cost}** ({current}/{cap} left)",

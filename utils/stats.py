@@ -29,6 +29,8 @@ def hp_bar(current: float, maximum: float, *, length: int = 12) -> str:
 
 
 def format_item_stats(item: ShopItem) -> str:
+    if item.category == "consumable":
+        return item.description
     if is_damage_dealer(item):
         crit = f", {int(item.crit_chance * 100)}% crit" if item.crit_chance > 0 else ""
         lo = item.power + config.BOSS_ATTACK_BONUS_MIN
