@@ -140,15 +140,23 @@ class Shop(commands.Cog):
             color=discord.Color.orange(),
         )
         embed.set_footer(
-            text="Use /buy then /equip. Equip a sword + gun for dual-wield bonuses. /stats for your sheet."
+            text="Use /buy [item] [quantity] then /equip. Trap bombs: /buy trap_bomb. Aspects: /buy-aspect."
         )
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="buy", description="Buy a weapon or armor piece.")
-    @app_commands.describe(item="Item to buy")
+    @app_commands.command(name="buy", description="Buy shop gear or consumables (e.g. trap bombs).")
+    @app_commands.describe(
+        item="Item to buy",
+        quantity="How many to buy (1–99)",
+    )
     @app_commands.autocomplete(item=buy_item_autocomplete)
     @app_commands.guild_only()
-    async def buy(self, interaction: discord.Interaction, item: str) -> None:
+    async def buy(
+        self,
+        interaction: discord.Interaction,
+        item: str,
+        quantity: app_commands.Range[int, 1, 99] = 1,
+    ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
@@ -171,26 +179,39 @@ class Shop(commands.Cog):
             )
             return
 
+        qty = int(quantity)
+        total = shop_item.price * qty
         bought = await self.bot.db.buy_item(
-            interaction.user.id, interaction.guild_id, shop_item.id, shop_item.price
+            interaction.user.id,
+            interaction.guild_id,
+            shop_item.id,
+            shop_item.price,
+            quantity=qty,
         )
         if not bought:
             await interaction.response.send_message(
-                f"You need {fmt_amount(shop_item.price)} to buy {shop_item.name}.",
+                f"You need **{fmt_amount(total)}** to buy **{qty}×** {shop_item.name} "
+                f"({fmt_amount(shop_item.price)} each).",
                 ephemeral=True,
             )
             return
 
+        if shop_item.category == "consumable":
+            equip_hint = "They stack in your inventory automatically."
+        else:
+            equip_hint = f"Use `/equip {shop_item.id}` for each piece you want to wear."
         await interaction.response.send_message(
-            f"You bought **{shop_item.name}** for {fmt_amount(shop_item.price)}. Use `/equip {shop_item.id}`.",
+            f"You bought **{qty}×** **{shop_item.name}** for **{fmt_amount(total)}** "
+            f"({fmt_amount(shop_item.price)} each). {equip_hint}",
             ephemeral=True,
         )
-        await record_quest_event(
-            self.bot.db,
-            interaction.guild_id,
-            interaction.user.id,
-            "shop_buy",
-        )
+        for _ in range(qty):
+            await record_quest_event(
+                self.bot.db,
+                interaction.guild_id,
+                interaction.user.id,
+                "shop_buy",
+            )
 
     @app_commands.command(
         name="stats",
@@ -413,10 +434,18 @@ class Shop(commands.Cog):
     @app_commands.command(
         name="sell", description="Sell shop gear from your inventory for half its shop price."
     )
-    @app_commands.describe(item="Owned item to sell (one copy)")
+    @app_commands.describe(
+        item="Owned item to sell",
+        quantity="How many to sell (1–99, or all you own if less)",
+    )
     @app_commands.autocomplete(item=sell_item_autocomplete)
     @app_commands.guild_only()
-    async def sell(self, interaction: discord.Interaction, item: str) -> None:
+    async def sell(
+        self,
+        interaction: discord.Interaction,
+        item: str,
+        quantity: app_commands.Range[int, 1, 99] = 1,
+    ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
@@ -443,11 +472,15 @@ class Shop(commands.Cog):
             )
             return
 
-        total_if_all = refund_amount * owned_qty
+        qty = int(quantity)
         sold = await self.bot.db.sell_one_item(
-            interaction.user.id, interaction.guild_id,             shop_item.id, refund_amount
+            interaction.user.id,
+            interaction.guild_id,
+            shop_item.id,
+            refund_amount,
+            quantity=qty,
         )
-        if not sold:
+        if sold <= 0:
             await interaction.response.send_message(
                 "You do not have that item to sell.", ephemeral=True
             )
@@ -462,14 +495,17 @@ class Shop(commands.Cog):
                 max_hp += float(armor_item.hp_bonus)
         await self.bot.db.sync_combat_hp(interaction.user.id, interaction.guild_id, max_hp)
 
+        payout = refund_amount * sold
+        remaining = owned_qty - sold
         extra = ""
-        if owned_qty > 1:
+        if remaining > 0:
             extra = (
-                f"\nYou still have **{owned_qty - 1}** left "
-                f"({fmt_amount(refund_amount)} each, {fmt_amount(total_if_all - refund_amount)} if you sold all)."
+                f"\n**{remaining}** left in inventory "
+                f"({fmt_amount(refund_amount)} each)."
             )
         await interaction.response.send_message(
-            f"Sold **{shop_item.name}** for **{fmt_amount(refund_amount)}**.{extra}",
+            f"Sold **{sold}×** **{shop_item.name}** for **{fmt_amount(payout)}** "
+            f"({fmt_amount(refund_amount)} each).{extra}",
             ephemeral=True,
         )
 

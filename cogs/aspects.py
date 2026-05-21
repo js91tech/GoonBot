@@ -138,40 +138,53 @@ class Aspects(commands.Cog):
 
     @app_commands.command(
         name="buy-aspect",
-        description=f"Buy a random aspect roll for {config.ASPECT_SHOP_PRICE:,.0f} nuggets.",
+        description=f"Buy random aspect roll(s) for {config.ASPECT_SHOP_PRICE:,.0f} nuggets each.",
     )
+    @app_commands.describe(quantity="How many aspects to buy (1–99)")
     @app_commands.guild_only()
-    async def buy_aspect(self, interaction: discord.Interaction) -> None:
+    async def buy_aspect(
+        self,
+        interaction: discord.Interaction,
+        quantity: app_commands.Range[int, 1, 99] = 1,
+    ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        price = config.ASPECT_SHOP_PRICE
-        instance_id = await self.bot.db.buy_aspect_from_shop(
+        unit_price = config.ASPECT_SHOP_PRICE
+        qty = int(quantity)
+        total = unit_price * qty
+        instance_ids = await self.bot.db.buy_aspect_from_shop(
             interaction.user.id,
             interaction.guild_id,
-            price,
+            unit_price,
+            quantity=qty,
         )
-        if instance_id is None:
+        if instance_ids is None:
             await interaction.response.send_message(
-                f"You need **{fmt_amount(price)}** to buy an aspect.",
+                f"You need **{fmt_amount(total)}** to buy **{qty}×** aspect(s) "
+                f"({fmt_amount(unit_price)} each).",
                 ephemeral=True,
             )
             return
-        row = await self.bot.db.get_aspect_instance(
-            interaction.user.id,
-            interaction.guild_id,
-            instance_id,
-        )
-        if row is None:
-            await interaction.response.send_message(
-                "Purchase succeeded but aspect could not be loaded.",
-                ephemeral=True,
+        lines: list[str] = []
+        for iid in instance_ids[:8]:
+            row = await self.bot.db.get_aspect_instance(
+                interaction.user.id,
+                interaction.guild_id,
+                iid,
             )
-            return
-        inst = instance_from_row(row)
+            if row is None:
+                continue
+            inst = instance_from_row(row)
+            lines.append(
+                f"**{inst.name}** — {format_aspect_effect(inst)} (`aspect#{inst.instance_id}`)",
+            )
+        if len(instance_ids) > 8:
+            lines.append(f"_…and {len(instance_ids) - 8} more_")
+        body = "\n".join(lines) if lines else "_Rolls saved — check `/aspects`_"
         await interaction.response.send_message(
-            f"You bought **{inst.name}** — {format_aspect_effect(inst)} (`aspect#{inst.instance_id}`). "
-            f"Use `/equip-aspect {inst.instance_id}` (fills next free slot).",
+            f"Bought **{qty}×** aspect(s) for **{fmt_amount(total)}**.\n{body}\n"
+            f"Equip with `/equip-aspect` (up to **{config.ASPECT_MAX_EQUIP_SLOTS}** slots).",
             ephemeral=True,
         )
 
