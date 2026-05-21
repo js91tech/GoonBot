@@ -5,9 +5,11 @@ from __future__ import annotations
 import unittest
 
 from utils.aspects import (
+    AspectBonuses,
     bonuses_from_instance,
     effective_energy_regen_per_tick,
     instance_from_row,
+    merge_aspect_bonuses,
     roll_pct_for_threat,
     roll_pct_shop,
 )
@@ -56,6 +58,12 @@ class AspectTests(unittest.TestCase):
         bonuses = bonuses_from_instance(inst)
         effective = effective_energy_regen_per_tick(5, bonuses)
         self.assertGreater(effective, 5)
+
+    def test_merge_three_damage_aspects(self) -> None:
+        b1 = AspectBonuses(damage_mult=1.1)
+        b2 = AspectBonuses(damage_mult=1.2)
+        merged = merge_aspect_bonuses([b1, b2, AspectBonuses(damage_mult=1.1)])
+        self.assertAlmostEqual(merged.damage_mult, 1.4)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,10 @@ class Aspects(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    async def _equipped_slot_map(self, user_id: int, guild_id: int) -> dict[int, int]:
+        rows = await self.bot.db.list_equipped_aspect_slots(user_id, guild_id)
+        return {int(row["instance_id"]): int(row["slot"]) for row in rows}
+
     async def aspect_instance_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -29,7 +33,7 @@ class Aspects(commands.Cog):
             interaction.user.id,
             interaction.guild_id,
         )
-        equipped_id = await self.bot.db.get_equipped_aspect_instance_id(
+        slot_map = await self._equipped_slot_map(
             interaction.user.id,
             interaction.guild_id,
         )
@@ -41,8 +45,8 @@ class Aspects(commands.Cog):
             if current_lower and current_lower not in label.lower():
                 if current_lower not in str(inst.instance_id):
                     continue
-            if equipped_id == inst.instance_id:
-                label += " [equipped]"
+            if inst.instance_id in slot_map:
+                label += f" [slot {slot_map[inst.instance_id]}]"
             choices.append(
                 app_commands.Choice(name=label[:100], value=str(inst.instance_id)),
             )
@@ -66,10 +70,7 @@ class Aspects(commands.Cog):
             return
         target = user or interaction.user
         rows = await self.bot.db.list_aspect_instances(target.id, interaction.guild_id)
-        equipped_id = await self.bot.db.get_equipped_aspect_instance_id(
-            target.id,
-            interaction.guild_id,
-        )
+        slot_map = await self._equipped_slot_map(target.id, interaction.guild_id)
         if not rows:
             await interaction.response.send_message(
                 f"{target.display_name} has no aspects yet. "
@@ -80,19 +81,30 @@ class Aspects(commands.Cog):
         lines = [
             format_aspect_line(
                 instance_from_row(row),
-                equipped=equipped_id == int(row["instance_id"]),
+                equip_slot=slot_map.get(int(row["instance_id"])),
             )
             for row in rows
         ]
+        equipped_summary = ""
+        if slot_map:
+            equipped_summary = (
+                f"\n\n**Equipped ({len(slot_map)}/{config.ASPECT_MAX_EQUIP_SLOTS}):** "
+                + ", ".join(f"slot {s}" for s in sorted(slot_map.values()))
+            )
         embed = discord.Embed(
             title=f"{target.display_name}'s Aspects",
-            description="\n".join(lines[:15]),
+            description="\n".join(lines[:15]) + equipped_summary,
             color=discord.Color.purple(),
         )
         if len(lines) > 15:
-            embed.set_footer(text=f"+{len(lines) - 15} more aspects")
+            embed.set_footer(text=f"+{len(lines) - 15} more · /equip-aspect · /unequip-aspect")
         else:
-            embed.set_footer(text="Use /equip-aspect with the instance id · /aspect-shop for catalog")
+            embed.set_footer(
+                text=(
+                    f"Equip up to {config.ASPECT_MAX_EQUIP_SLOTS} at once: "
+                    "/equip-aspect [id] [slot 1-3]"
+                ),
+            )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
@@ -119,7 +131,9 @@ class Aspects(commands.Cog):
             ),
             color=discord.Color.dark_purple(),
         )
-        embed.set_footer(text="Equip one aspect at a time with /equip-aspect")
+        embed.set_footer(
+            text=f"Equip up to {config.ASPECT_MAX_EQUIP_SLOTS} aspects — bonuses stack",
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
@@ -157,21 +171,32 @@ class Aspects(commands.Cog):
         inst = instance_from_row(row)
         await interaction.response.send_message(
             f"You bought **{inst.name}** — {format_aspect_effect(inst)} (`aspect#{inst.instance_id}`). "
-            f"Use `/equip-aspect {inst.instance_id}`.",
+            f"Use `/equip-aspect {inst.instance_id}` (fills next free slot).",
             ephemeral=True,
         )
 
     @app_commands.command(
         name="equip-aspect",
-        description="Equip one aspect to boost combat (boss raids and duels).",
+        description=f"Equip an aspect (up to {config.ASPECT_MAX_EQUIP_SLOTS} slots).",
     )
-    @app_commands.describe(instance_id="Aspect instance id from /aspects")
+    @app_commands.describe(
+        instance_id="Aspect instance id from /aspects",
+        slot="Slot 1–3 (optional — uses first empty slot)",
+    )
     @app_commands.autocomplete(instance_id=aspect_instance_autocomplete)
+    @app_commands.choices(
+        slot=[
+            app_commands.Choice(name="Slot 1", value=1),
+            app_commands.Choice(name="Slot 2", value=2),
+            app_commands.Choice(name="Slot 3", value=3),
+        ],
+    )
     @app_commands.guild_only()
     async def equip_aspect(
         self,
         interaction: discord.Interaction,
         instance_id: str,
+        slot: int | None = None,
     ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
@@ -185,12 +210,26 @@ class Aspects(commands.Cog):
                 ephemeral=True,
             )
             return
-        ok = await self.bot.db.equip_aspect_instance(
+        ok, result = await self.bot.db.equip_aspect_instance(
             interaction.user.id,
             interaction.guild_id,
             iid,
+            slot=slot,
         )
         if not ok:
+            if result == "full":
+                await interaction.response.send_message(
+                    f"All **{config.ASPECT_MAX_EQUIP_SLOTS}** aspect slots are full. "
+                    "Use `/unequip-aspect` or pass a **slot** to replace one.",
+                    ephemeral=True,
+                )
+                return
+            if result == "invalid_slot":
+                await interaction.response.send_message(
+                    f"Slot must be **1**–**{config.ASPECT_MAX_EQUIP_SLOTS}**.",
+                    ephemeral=True,
+                )
+                return
             await interaction.response.send_message(
                 "You do not own that aspect instance.",
                 ephemeral=True,
@@ -203,7 +242,40 @@ class Aspects(commands.Cog):
         )
         inst = instance_from_row(row)
         await interaction.response.send_message(
-            f"Equipped **{inst.name}** — {format_aspect_effect(inst)}.",
+            f"Equipped **{inst.name}** in **slot {result}** — {format_aspect_effect(inst)}.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(
+        name="unequip-aspect",
+        description="Remove an aspect from an equip slot.",
+    )
+    @app_commands.describe(slot="Slot 1–3 to clear")
+    @app_commands.choices(
+        slot=[
+            app_commands.Choice(name="Slot 1", value=1),
+            app_commands.Choice(name="Slot 2", value=2),
+            app_commands.Choice(name="Slot 3", value=3),
+        ],
+    )
+    @app_commands.guild_only()
+    async def unequip_aspect(self, interaction: discord.Interaction, slot: int) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        removed = await self.bot.db.unequip_aspect_slot(
+            interaction.user.id,
+            interaction.guild_id,
+            slot,
+        )
+        if not removed:
+            await interaction.response.send_message(
+                f"Slot **{slot}** is already empty.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            f"Cleared aspect **slot {slot}**.",
             ephemeral=True,
         )
 

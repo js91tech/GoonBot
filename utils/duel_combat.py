@@ -70,6 +70,7 @@ def fighter_from_equipment(
     class_id: str | None = None,
     class_modifiers=None,
     aspect_instance: AspectInstance | None = None,
+    aspect_bonuses: AspectBonuses | None = None,
     trap_bomb_count: int = 0,
 ) -> DuelFighter:
     from utils.classes import get_modifiers
@@ -77,8 +78,13 @@ def fighter_from_equipment(
     loadout = parse_loadout(equipment)
     set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
     mods = class_modifiers if class_modifiers is not None else get_modifiers(class_id)
-    aspect_bonuses = bonuses_from_instance(aspect_instance)
-    max_hp = max_hp_from_armor(loadout.armor, class_modifiers=mods) + aspect_bonuses.hp_bonus
+    ab = aspect_bonuses
+    if ab is None and aspect_instance is not None:
+        ab = bonuses_from_instance(aspect_instance)
+    if ab is None:
+        ab = AspectBonuses()
+    max_hp = max_hp_from_armor(loadout.armor, class_modifiers=mods) + ab.hp_bonus
+    has_aspect = ab != AspectBonuses()
     return DuelFighter(
         user_id=user_id,
         display_name=display_name,
@@ -90,7 +96,7 @@ def fighter_from_equipment(
         class_id=class_id,
         max_hp=max_hp,
         hp=max_hp,
-        aspect_bonuses=aspect_bonuses if aspect_instance else None,
+        aspect_bonuses=ab if has_aspect else None,
         trap_bomb_count=trap_bomb_count,
     )
 

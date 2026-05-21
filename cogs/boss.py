@@ -778,22 +778,23 @@ class Boss(commands.Cog):
             boss_element=boss_element,
             for_boss=True,
         )
-        aspect_row = await self.bot.db.get_equipped_aspect_row(
+        bonuses = await self.bot.db.get_equipped_aspect_bonuses(
             interaction.user.id,
             interaction.guild_id,
         )
         aspect_note = ""
-        if aspect_row is not None:
-            from utils.aspects import bonuses_from_instance
-
-            inst = instance_from_row(aspect_row)
-            bonuses = bonuses_from_instance(inst)
+        rows = await self.bot.db.list_equipped_aspect_rows(
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        if rows:
             ctx = replace(
                 ctx,
                 damage_mult=ctx.damage_mult * bonuses.damage_mult * bonuses.boss_damage_mult,
                 extra_crit=ctx.extra_crit + bonuses.extra_crit,
             )
-            aspect_note = f" · **{inst.name}** ({inst.roll_pct:g}%)"
+            names = ", ".join(instance_from_row(r).name for r in rows[:3])
+            aspect_note = f" · Aspects: **{names}**"
         spell_note = ""
         skill_id = await self.bot.db.consume_pending_spell(
             interaction.user.id,

@@ -165,6 +165,43 @@ def instance_from_row(row) -> AspectInstance:
     )
 
 
+def _stack_mult(*values: float) -> float:
+    """Combine bonus multipliers without explosive compounding (1.1 × 1.2 → 1.3)."""
+    extra = 0.0
+    for v in values:
+        if v > 1.0:
+            extra += v - 1.0
+    return 1.0 + extra
+
+
+def merge_aspect_bonuses(bonuses_list: list[AspectBonuses]) -> AspectBonuses:
+    if not bonuses_list:
+        return AspectBonuses()
+    duel_cooldown = 1.0
+    for b in bonuses_list:
+        duel_cooldown *= b.duel_cooldown_mult
+    return AspectBonuses(
+        damage_mult=_stack_mult(*(b.damage_mult for b in bonuses_list)),
+        extra_crit=sum(b.extra_crit for b in bonuses_list),
+        mitigation_bonus=min(0.75, sum(b.mitigation_bonus for b in bonuses_list)),
+        hp_bonus=sum(b.hp_bonus for b in bonuses_list),
+        boss_damage_mult=_stack_mult(*(b.boss_damage_mult for b in bonuses_list)),
+        second_wind_chance=min(0.65, sum(b.second_wind_chance for b in bonuses_list)),
+        extra_duels_per_hour=min(6, sum(b.extra_duels_per_hour for b in bonuses_list)),
+        duel_cooldown_mult=max(0.25, duel_cooldown),
+        work_income_mult=_stack_mult(*(b.work_income_mult for b in bonuses_list)),
+        energy_regen_mult=_stack_mult(*(b.energy_regen_mult for b in bonuses_list)),
+        energy_regen_flat=sum(b.energy_regen_flat for b in bonuses_list),
+        duel_loot_mult=_stack_mult(*(b.duel_loot_mult for b in bonuses_list)),
+        daily_reward_mult=_stack_mult(*(b.daily_reward_mult for b in bonuses_list)),
+        passive_income_mult=_stack_mult(*(b.passive_income_mult for b in bonuses_list)),
+    )
+
+
+def bonuses_from_instances(instances: list[AspectInstance]) -> AspectBonuses:
+    return merge_aspect_bonuses([bonuses_from_instance(i) for i in instances])
+
+
 def bonuses_from_instance(instance: AspectInstance | None) -> AspectBonuses:
     if instance is None:
         return AspectBonuses()
@@ -238,8 +275,18 @@ EFFECT_LABELS: dict[str, str] = {
 }
 
 
-def format_aspect_line(instance: AspectInstance, *, equipped: bool = False) -> str:
-    tag = " *(equipped)*" if equipped else ""
+def format_aspect_line(
+    instance: AspectInstance,
+    *,
+    equipped: bool = False,
+    equip_slot: int | None = None,
+) -> str:
+    if equip_slot is not None:
+        tag = f" *(slot {equip_slot})*"
+    elif equipped:
+        tag = " *(equipped)*"
+    else:
+        tag = ""
     return (
         f"**{instance.name}** — **{instance.roll_pct:g}%** "
         f"{EFFECT_LABELS.get(instance.effect, instance.effect)}{tag}\n"

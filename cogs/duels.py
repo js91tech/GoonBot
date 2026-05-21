@@ -5,7 +5,6 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from utils.aspects import instance_from_row
 from utils.duel_combat import (
     DuelFighter,
     fighter_from_equipment,
@@ -102,12 +101,8 @@ class Duels(commands.Cog):
         attacker_class = await self.bot.db.get_class_id(attacker.id, guild_id)
         defender_class = await self.bot.db.get_class_id(opponent.id, guild_id)
 
-        async def _aspect_for(uid: int):
-            row = await self.bot.db.get_equipped_aspect_row(uid, guild_id)
-            return instance_from_row(row) if row is not None else None
-
-        attacker_aspect = await _aspect_for(attacker.id)
-        defender_aspect = await _aspect_for(opponent.id)
+        attacker_bonuses = await self.bot.db.get_equipped_aspect_bonuses(attacker.id, guild_id)
+        defender_bonuses = await self.bot.db.get_equipped_aspect_bonuses(opponent.id, guild_id)
         attacker_bombs = await self.bot.db.get_inventory_quantity(
             attacker.id, guild_id, TRAP_BOMB_ITEM_ID
         )
@@ -123,7 +118,7 @@ class Duels(commands.Cog):
             attacker_equipment,
             prestige_level=int(attacker_progress["prestige_level"]),
             class_id=attacker_class,
-            aspect_instance=attacker_aspect,
+            aspect_bonuses=attacker_bonuses,
             trap_bomb_count=attacker_bombs,
         )
         defender_fighter = fighter_from_equipment(
@@ -132,7 +127,7 @@ class Duels(commands.Cog):
             defender_equipment,
             prestige_level=int(defender_progress["prestige_level"]),
             class_id=defender_class,
-            aspect_instance=defender_aspect,
+            aspect_bonuses=defender_bonuses,
             trap_bomb_count=defender_bombs,
         )
         for fighter, uid in (

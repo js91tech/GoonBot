@@ -405,6 +405,7 @@ class Database:
         await self._migrate_boss_class_fields()
         await self._migrate_mana_system()
         await self._migrate_aspect_system()
+        await self._migrate_aspect_equip_slots()
 
     async def _migrate_aspect_system(self) -> None:
         await self.conn.execute(
@@ -424,10 +425,62 @@ class Database:
             CREATE TABLE IF NOT EXISTS equipped_aspect (
                 guild_id BIGINT NOT NULL,
                 user_id BIGINT NOT NULL,
+                slot INTEGER NOT NULL CHECK (slot >= 1 AND slot <= 3),
                 instance_id INTEGER NOT NULL,
-                PRIMARY KEY (guild_id, user_id)
+                PRIMARY KEY (guild_id, user_id, slot)
             )
             """,
+        )
+        await self.conn.commit()
+
+    async def _migrate_aspect_equip_slots(self) -> None:
+        """Allow up to 3 equipped aspects (slot 1–3)."""
+        has_slot = False
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'equipped_aspect' AND column_name = 'slot'
+                """,
+            )
+            has_slot = await cursor.fetchone() is not None
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(equipped_aspect)")
+            has_slot = any(row[1] == "slot" for row in await cursor.fetchall())
+
+        if has_slot:
+            return
+
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS equipped_aspect_slots (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                slot INTEGER NOT NULL CHECK (slot >= 1 AND slot <= 3),
+                instance_id INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, user_id, slot)
+            )
+            """,
+        )
+        try:
+            cursor = await self.conn.execute(
+                "SELECT guild_id, user_id, instance_id FROM equipped_aspect",
+            )
+            for row in await cursor.fetchall():
+                await self.conn.execute(
+                    """
+                    INSERT OR IGNORE INTO equipped_aspect_slots
+                        (guild_id, user_id, slot, instance_id)
+                    VALUES (?, ?, 1, ?)
+                    """,
+                    (int(row["guild_id"]), int(row["user_id"]), int(row["instance_id"])),
+                )
+        except Exception:
+            pass
+        await self.conn.execute("DROP TABLE IF EXISTS equipped_aspect")
+        await self.conn.execute(
+            "ALTER TABLE equipped_aspect_slots RENAME TO equipped_aspect",
         )
         await self.conn.commit()
 
@@ -2567,16 +2620,10 @@ class Database:
         tick_seconds = float(
             await self.get_config_value(guild_id, "energy_regen_interval_seconds")
         )
-        from utils.aspects import bonuses_from_instance, effective_energy_regen_per_tick
+        from utils.aspects import effective_energy_regen_per_tick
 
-        aspect_row = await self.get_equipped_aspect_row(user_id, guild_id)
-        if aspect_row is not None:
-            from utils.aspects import instance_from_row
-
-            regen_per_tick = effective_energy_regen_per_tick(
-                regen_per_tick,
-                bonuses_from_instance(instance_from_row(aspect_row)),
-            )
+        aspect_bonuses = await self.get_equipped_aspect_bonuses(user_id, guild_id)
+        regen_per_tick = effective_energy_regen_per_tick(regen_per_tick, aspect_bonuses)
         expected_cap = energy_cap_for_upgrades(int(row["cap_upgrades"]))
         current_cap = int(row["energy_cap"])
         if current_cap != expected_cap:
@@ -3289,48 +3336,127 @@ class Database:
         )
         return await cursor.fetchone()
 
-    async def get_equipped_aspect_instance_id(self, user_id: int, guild_id: int) -> int | None:
+    async def list_equipped_aspect_slots(
+        self, user_id: int, guild_id: int
+    ) -> list[aiosqlite.Row]:
         cursor = await self.conn.execute(
             """
-            SELECT instance_id FROM equipped_aspect
+            SELECT slot, instance_id FROM equipped_aspect
             WHERE guild_id = ? AND user_id = ?
+            ORDER BY slot ASC
             """,
             (guild_id, user_id),
         )
-        row = await cursor.fetchone()
-        return int(row["instance_id"]) if row is not None else None
+        return await cursor.fetchall()
+
+    async def get_equipped_aspect_instance_ids(self, user_id: int, guild_id: int) -> set[int]:
+        rows = await self.list_equipped_aspect_slots(user_id, guild_id)
+        return {int(row["instance_id"]) for row in rows}
+
+    async def get_equipped_aspect_instance_id(self, user_id: int, guild_id: int) -> int | None:
+        """First equipped slot (legacy helper)."""
+        rows = await self.list_equipped_aspect_slots(user_id, guild_id)
+        return int(rows[0]["instance_id"]) if rows else None
+
+    async def list_equipped_aspect_rows(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
+        slots = await self.list_equipped_aspect_slots(user_id, guild_id)
+        rows: list[aiosqlite.Row] = []
+        for slot_row in slots:
+            inst = await self.get_aspect_instance(
+                user_id,
+                guild_id,
+                int(slot_row["instance_id"]),
+            )
+            if inst is not None:
+                rows.append(inst)
+        return rows
 
     async def get_equipped_aspect_row(self, user_id: int, guild_id: int) -> aiosqlite.Row | None:
-        instance_id = await self.get_equipped_aspect_instance_id(user_id, guild_id)
-        if instance_id is None:
-            return None
-        return await self.get_aspect_instance(user_id, guild_id, instance_id)
+        rows = await self.list_equipped_aspect_rows(user_id, guild_id)
+        return rows[0] if rows else None
 
     async def get_equipped_aspect_bonuses(self, user_id: int, guild_id: int):
-        from utils.aspects import AspectBonuses, bonuses_from_instance, instance_from_row
+        from utils.aspects import AspectBonuses, bonuses_from_instance, instance_from_row, merge_aspect_bonuses
 
-        row = await self.get_equipped_aspect_row(user_id, guild_id)
-        if row is None:
+        rows = await self.list_equipped_aspect_rows(user_id, guild_id)
+        if not rows:
             return AspectBonuses()
-        return bonuses_from_instance(instance_from_row(row))
+        return merge_aspect_bonuses(
+            [bonuses_from_instance(instance_from_row(row)) for row in rows],
+        )
 
     async def equip_aspect_instance(
-        self, user_id: int, guild_id: int, instance_id: int
-    ) -> bool:
+        self,
+        user_id: int,
+        guild_id: int,
+        instance_id: int,
+        slot: int | None = None,
+    ) -> tuple[bool, str | None]:
+        """Equip to slot 1–3. Returns (ok, equipped_slot or error)."""
+        import config
+
         row = await self.get_aspect_instance(user_id, guild_id, instance_id)
         if row is None:
-            return False
+            return False, None
+
+        max_slots = config.ASPECT_MAX_EQUIP_SLOTS
+        equipped = await self.list_equipped_aspect_slots(user_id, guild_id)
+        by_slot = {int(r["slot"]): int(r["instance_id"]) for r in equipped}
+        by_instance = {int(r["instance_id"]): int(r["slot"]) for r in equipped}
+
+        if instance_id in by_instance:
+            target_slot = by_instance[instance_id]
+        elif slot is not None:
+            if slot < 1 or slot > max_slots:
+                return False, "invalid_slot"
+            if slot in by_slot and by_slot[slot] != instance_id:
+                pass
+            target_slot = slot
+        else:
+            free = [s for s in range(1, max_slots + 1) if s not in by_slot]
+            if not free:
+                return False, "full"
+            target_slot = free[0]
+
+        if len(by_slot) >= max_slots and target_slot not in by_slot and instance_id not in by_instance:
+            return False, "full"
+
         async with self._write_lock:
+            if instance_id in by_instance and by_instance[instance_id] != target_slot:
+                await self.conn.execute(
+                    """
+                    DELETE FROM equipped_aspect
+                    WHERE guild_id = ? AND user_id = ? AND instance_id = ?
+                    """,
+                    (guild_id, user_id, instance_id),
+                )
             await self.conn.execute(
                 """
-                INSERT INTO equipped_aspect (guild_id, user_id, instance_id)
-                VALUES (?, ?, ?)
-                ON CONFLICT(guild_id, user_id) DO UPDATE SET instance_id = excluded.instance_id
+                INSERT INTO equipped_aspect (guild_id, user_id, slot, instance_id)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                    instance_id = excluded.instance_id
                 """,
-                (guild_id, user_id, instance_id),
+                (guild_id, user_id, target_slot, instance_id),
             )
             await self.conn.commit()
-        return True
+        return True, str(target_slot)
+
+    async def unequip_aspect_slot(self, user_id: int, guild_id: int, slot: int) -> bool:
+        import config
+
+        if slot < 1 or slot > config.ASPECT_MAX_EQUIP_SLOTS:
+            return False
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                DELETE FROM equipped_aspect
+                WHERE guild_id = ? AND user_id = ? AND slot = ?
+                """,
+                (guild_id, user_id, slot),
+            )
+            await self.conn.commit()
+            return cursor.rowcount > 0
 
     async def buy_aspect_from_shop(self, user_id: int, guild_id: int, price: float) -> int | None:
         """Debit wallet and grant a shop-rolled aspect. Returns instance_id or None."""

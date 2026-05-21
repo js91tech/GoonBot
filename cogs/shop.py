@@ -240,11 +240,17 @@ class Shop(commands.Cog):
         class_blurb = ""
         if cls is not None:
             class_blurb = f"\n**{cls.emoji} {cls.name}** — {format_modifiers_summary(cls.modifiers)}"
-        aspect_row = await self.bot.db.get_equipped_aspect_row(target.id, guild_id)
+        aspect_rows = await self.bot.db.list_equipped_aspect_rows(target.id, guild_id)
+        slot_rows = await self.bot.db.list_equipped_aspect_slots(target.id, guild_id)
+        slot_by_inst = {int(r["instance_id"]): int(r["slot"]) for r in slot_rows}
         aspect_blurb = ""
-        if aspect_row is not None:
-            inst = instance_from_row(aspect_row)
-            aspect_blurb = f"\n**Aspect** — {inst.name}: {format_aspect_effect(inst)}"
+        if aspect_rows:
+            parts = []
+            for row in aspect_rows:
+                inst = instance_from_row(row)
+                s = slot_by_inst.get(inst.instance_id, "?")
+                parts.append(f"**{inst.name}** (slot {s}): {format_aspect_effect(inst)}")
+            aspect_blurb = "\n**Aspects** — " + " · ".join(parts)
         user_row = await self.bot.db.get_user(target.id, guild_id)
         wallet = float(user_row["wallet"])
         total_earned = float(user_row["total_earned"])
