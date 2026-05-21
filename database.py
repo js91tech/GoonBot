@@ -31,10 +31,15 @@ def _spendable_cents(value: object) -> int:
 
 class PostgresCursor:
     def __init__(
-        self, rows: list[asyncpg.Record] | None = None, *, lastrowid: int | None = None
+        self,
+        rows: list[asyncpg.Record] | None = None,
+        *,
+        lastrowid: int | None = None,
+        rowcount: int = 0,
     ) -> None:
         self._rows = rows or []
         self.lastrowid = lastrowid
+        self.rowcount = rowcount
 
     async def fetchone(self) -> asyncpg.Record | None:
         return self._rows[0] if self._rows else None
@@ -110,17 +115,25 @@ class PostgresConnection:
         if normalized is None:
             return PostgresCursor()
         sql = self._convert_placeholders(normalized)
-        if (
-            sql.lstrip().upper().startswith(("SELECT", "INSERT INTO BOUNTIES"))
-            and "RETURNING" in sql.upper()
-        ):
+        if "RETURNING" in sql.upper():
             rows = await self.conn.fetch(sql, *params)
-            lastrowid = int(rows[0]["id"]) if rows and "id" in rows[0] else None
-            return PostgresCursor(list(rows), lastrowid=lastrowid)
+            lastrowid = None
+            if rows:
+                row = rows[0]
+                for col in ("instance_id", "id"):
+                    if col in row:
+                        lastrowid = int(row[col])
+                        break
+            return PostgresCursor(list(rows), lastrowid=lastrowid, rowcount=len(rows))
         if sql.lstrip().upper().startswith(("SELECT", "WITH")):
             return PostgresCursor(list(await self.conn.fetch(sql, *params)))
-        await self.conn.execute(sql, *params)
-        return PostgresCursor()
+        status = await self.conn.execute(sql, *params)
+        rowcount = 0
+        if status:
+            parts = str(status).split()
+            if parts and parts[-1].isdigit():
+                rowcount = int(parts[-1])
+        return PostgresCursor(rowcount=rowcount)
 
     @staticmethod
     def _convert_placeholders(query: str) -> str:
@@ -1491,9 +1504,18 @@ class Database:
             )
             await self.conn.commit()
 
-    async def buy_item(self, user_id: int, guild_id: int, item_id: str, price: float) -> bool:
-        if price <= 0:
+    async def buy_item(
+        self,
+        user_id: int,
+        guild_id: int,
+        item_id: str,
+        unit_price: float,
+        quantity: int = 1,
+    ) -> bool:
+        if unit_price <= 0:
             return False
+        qty = max(1, min(int(quantity), config.SHOP_MAX_BUY_QUANTITY))
+        total_cents = _spendable_cents(unit_price) * qty
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -1503,25 +1525,26 @@ class Database:
                     (user_id, guild_id),
                 )
                 row = await cursor.fetchone()
-                if row is None or _spendable_cents(row["wallet"]) < _spendable_cents(price):
+                if row is None or _spendable_cents(row["wallet"]) < total_cents:
                     await self.conn.rollback()
                     return False
+                total_price = total_cents / 100.0
                 await self.conn.execute(
                     """
                     UPDATE users
                     SET wallet = wallet - ?
                     WHERE user_id = ? AND guild_id = ?
                     """,
-                    (price, user_id, guild_id),
+                    (total_price, user_id, guild_id),
                 )
                 await self.conn.execute(
                     """
                     INSERT INTO inventory (guild_id, user_id, item_id, quantity)
-                    VALUES (?, ?, ?, 1)
+                    VALUES (?, ?, ?, ?)
                     ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
-                        quantity = inventory.quantity + 1
+                        quantity = inventory.quantity + excluded.quantity
                     """,
-                    (guild_id, user_id, item_id),
+                    (guild_id, user_id, item_id, qty),
                 )
             except Exception:
                 await self.conn.rollback()
@@ -1529,9 +1552,18 @@ class Database:
             await self.conn.commit()
             return True
 
-    async def sell_one_item(self, user_id: int, guild_id: int, item_id: str, refund: float) -> bool:
-        if refund <= 0:
-            return False
+    async def sell_one_item(
+        self,
+        user_id: int,
+        guild_id: int,
+        item_id: str,
+        unit_refund: float,
+        quantity: int = 1,
+    ) -> int:
+        """Sell up to quantity copies. Returns how many were sold (0 on failure)."""
+        if unit_refund <= 0:
+            return 0
+        want = max(1, min(int(quantity), config.SHOP_MAX_SELL_QUANTITY))
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -1547,8 +1579,10 @@ class Database:
                 row = await cursor.fetchone()
                 if row is None or int(row["quantity"]) <= 0:
                     await self.conn.rollback()
-                    return False
-                new_qty = int(row["quantity"]) - 1
+                    return 0
+                owned = int(row["quantity"])
+                sold = min(want, owned)
+                new_qty = owned - sold
                 if new_qty <= 0:
                     await self.conn.execute(
                         """
@@ -1573,19 +1607,21 @@ class Database:
                         """,
                         (new_qty, guild_id, user_id, item_id),
                     )
+                total_refund = unit_refund * sold
                 await self.conn.execute(
                     """
                     UPDATE users
-                    SET wallet = wallet + ?
+                    SET wallet = wallet + ?,
+                        total_earned = total_earned + ?
                     WHERE user_id = ? AND guild_id = ?
                     """,
-                    (refund, user_id, guild_id),
+                    (total_refund, total_refund, user_id, guild_id),
                 )
             except Exception:
                 await self.conn.rollback()
                 raise
             await self.conn.commit()
-            return True
+            return sold
 
     async def get_inventory(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
         cursor = await self.conn.execute(
@@ -3305,11 +3341,16 @@ class Database:
                 """
                 INSERT INTO aspect_instances (guild_id, user_id, aspect_id, roll_pct, created_at)
                 VALUES (?, ?, ?, ?, ?)
+                RETURNING instance_id
                 """,
                 (guild_id, user_id, aspect_id, roll_pct, now),
             )
+            row = await cursor.fetchone()
             await self.conn.commit()
-            return int(cursor.lastrowid)
+            if row is None:
+                msg = "aspect_instances insert did not return instance_id"
+                raise RuntimeError(msg)
+            return int(row["instance_id"])
 
     async def list_aspect_instances(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
         cursor = await self.conn.execute(
@@ -3458,10 +3499,18 @@ class Database:
             await self.conn.commit()
             return cursor.rowcount > 0
 
-    async def buy_aspect_from_shop(self, user_id: int, guild_id: int, price: float) -> int | None:
-        """Debit wallet and grant a shop-rolled aspect. Returns instance_id or None."""
+    async def buy_aspect_from_shop(
+        self,
+        user_id: int,
+        guild_id: int,
+        unit_price: float,
+        quantity: int = 1,
+    ) -> list[int] | None:
+        """Debit wallet and grant shop-rolled aspects. Returns instance ids or None."""
         from utils.aspects import random_aspect_definition, roll_pct_shop
 
+        qty = max(1, min(int(quantity), config.SHOP_MAX_BUY_QUANTITY))
+        total_cents = _spendable_cents(unit_price) * qty
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -3470,32 +3519,41 @@ class Database:
                     (user_id, guild_id),
                 )
                 row = await cursor.fetchone()
-                if row is None or float(row["wallet"]) < price:
+                if row is None or _spendable_cents(row["wallet"]) < total_cents:
                     await self.conn.rollback()
                     return None
+                total_price = total_cents / 100.0
                 await self.conn.execute(
                     """
                     UPDATE users SET wallet = wallet - ?
                     WHERE user_id = ? AND guild_id = ?
                     """,
-                    (price, user_id, guild_id),
+                    (total_price, user_id, guild_id),
                 )
-                defn = random_aspect_definition()
-                roll_pct = roll_pct_shop()
+                instance_ids: list[int] = []
                 now = time.time()
-                cursor = await self.conn.execute(
-                    """
-                    INSERT INTO aspect_instances (guild_id, user_id, aspect_id, roll_pct, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (guild_id, user_id, defn.id, roll_pct, now),
-                )
-                instance_id = int(cursor.lastrowid)
+                for _ in range(qty):
+                    defn = random_aspect_definition()
+                    roll_pct = roll_pct_shop()
+                    cursor = await self.conn.execute(
+                        """
+                        INSERT INTO aspect_instances
+                            (guild_id, user_id, aspect_id, roll_pct, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        RETURNING instance_id
+                        """,
+                        (guild_id, user_id, defn.id, roll_pct, now),
+                    )
+                    ins_row = await cursor.fetchone()
+                    if ins_row is None:
+                        await self.conn.rollback()
+                        return None
+                    instance_ids.append(int(ins_row["instance_id"]))
             except Exception:
                 await self.conn.rollback()
                 raise
             await self.conn.commit()
-            return instance_id
+            return instance_ids
 
     async def try_mark_boss_phase(self, guild_id: int, hp_ratio: float) -> int | None:
         """Return newly crossed phase threshold (75, 50, or 25) or None."""
