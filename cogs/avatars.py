@@ -8,12 +8,15 @@ import config
 from utils.avatars import (
     AVATARS,
     AVATAR_MAP,
+    attachment_image_ext,
     build_portrait_attachment,
     build_victory_attachment,
     custom_avatar_dir,
     custom_avatar_id,
     get_avatar,
     is_custom_avatar_id,
+    is_valid_image_attachment,
+    load_custom_attachment_bytes,
 )
 from utils.helpers import fmt_amount, guild_only_message
 
@@ -50,6 +53,93 @@ class Avatars(commands.Cog):
                 break
         return choices
 
+    async def _save_custom_upload(
+        self,
+        interaction: discord.Interaction,
+        image: discord.Attachment,
+    ) -> None:
+        guild_id = interaction.guild_id
+        if guild_id is None:
+            return
+        user_id = interaction.user.id
+
+        if not is_valid_image_attachment(image):
+            await interaction.followup.send(
+                "Attach a **PNG, GIF, or WebP** image (max ~600 KB).",
+                ephemeral=True,
+            )
+            return
+        if image.size and image.size > config.CUSTOM_AVATAR_MAX_BYTES:
+            await interaction.followup.send(
+                "Image too large (max 600 KB).", ephemeral=True,
+            )
+            return
+
+        cost = config.CUSTOM_AVATAR_UPLOAD_COST
+        if cost > 0 and not await self.bot.db.debit_wallet(user_id, guild_id, cost):
+            await interaction.followup.send(
+                f"Upload costs **{fmt_amount(cost)}**.", ephemeral=True,
+            )
+            return
+
+        data = await image.read()
+        if len(data) > config.CUSTOM_AVATAR_MAX_BYTES:
+            await interaction.followup.send(
+                "Image too large (max 600 KB).", ephemeral=True,
+            )
+            return
+
+        ext = attachment_image_ext(image) or ".png"
+        await self.bot.db.save_custom_avatar_assets(guild_id, user_id, data, ext)
+
+        folder = custom_avatar_dir(guild_id, user_id)
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"victory{ext}").write_bytes(data)
+            (folder / f"portrait{ext}").write_bytes(data)
+        except OSError:
+            pass
+
+        aid = custom_avatar_id(user_id)
+        await self.bot.db.unlock_custom_avatar(user_id, guild_id, aid)
+        await self.bot.db.set_equipped_avatar(user_id, guild_id, aid)
+
+        files, thumb_name = build_victory_attachment(
+            aid, custom_victory=(data, ext),
+        )
+        embed = discord.Embed(
+            title="Custom avatar saved",
+            description=(
+                f"Equipped as `{aid}`. Victory art shows on duel wins "
+                "and boss killing blows."
+            ),
+            color=discord.Color.green(),
+        )
+        if thumb_name:
+            embed.set_image(url=f"attachment://{thumb_name}")
+        await interaction.followup.send(
+            embed=embed,
+            files=files or None,
+            ephemeral=True,
+        )
+
+    @app_commands.command(
+        name="avatar-upload",
+        description="Upload PNG/GIF/WebP for your custom victory pose (saved permanently).",
+    )
+    @app_commands.describe(image="Your victory pose image")
+    @app_commands.guild_only()
+    async def avatar_upload(
+        self,
+        interaction: discord.Interaction,
+        image: discord.Attachment,
+    ) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        await self._save_custom_upload(interaction, image)
+
     @app_commands.command(
         name="avatar",
         description="Choose your raid avatar and victory pose art.",
@@ -57,6 +147,7 @@ class Avatars(commands.Cog):
     @app_commands.describe(
         action="What to do",
         avatar="Avatar to equip or buy (autocomplete)",
+        image="Image file (required for Upload custom art)",
     )
     @app_commands.choices(
         action=[
@@ -86,40 +177,15 @@ class Avatars(commands.Cog):
         equipped = await self.bot.db.get_equipped_avatar_id(user_id, guild_id)
 
         if action == "upload":
-            if image is None or not image.content_type or not image.content_type.startswith(
-                "image/"
-            ):
+            if image is None:
                 await interaction.response.send_message(
-                    "Attach a **PNG or GIF** image (max ~600 KB).", ephemeral=True,
+                    "Attach an image to this command, or use **`/avatar-upload`** "
+                    "with a required image attachment.",
+                    ephemeral=True,
                 )
                 return
-            if image.size and image.size > config.CUSTOM_AVATAR_MAX_BYTES:
-                await interaction.response.send_message(
-                    "Image too large (max 600 KB).", ephemeral=True,
-                )
-                return
-            cost = config.CUSTOM_AVATAR_UPLOAD_COST
-            if cost > 0 and not await self.bot.db.debit_wallet(
-                user_id, guild_id, cost,
-            ):
-                await interaction.response.send_message(
-                    f"Upload costs **{fmt_amount(cost)}**.", ephemeral=True,
-                )
-                return
-            data = await image.read()
-            folder = custom_avatar_dir(guild_id, user_id)
-            folder.mkdir(parents=True, exist_ok=True)
-            ext = ".gif" if image.content_type == "image/gif" else ".png"
-            (folder / f"victory{ext}").write_bytes(data)
-            (folder / f"portrait{ext}").write_bytes(data)
-            aid = custom_avatar_id(user_id)
-            await self.bot.db.unlock_custom_avatar(user_id, guild_id, aid)
-            await self.bot.db.set_equipped_avatar(user_id, guild_id, aid)
-            await interaction.response.send_message(
-                f"Custom avatar saved! Equipped as `{aid}`. "
-                f"Victory art shows on duel wins and boss killing blows.",
-                ephemeral=True,
-            )
+            await interaction.response.defer(ephemeral=True)
+            await self._save_custom_upload(interaction, image)
             return
 
         if action == "list":
@@ -146,7 +212,7 @@ class Avatars(commands.Cog):
                 color=discord.Color.gold(),
             )
             embed.set_footer(
-                text="Use /avatar action:Equip · Buy unlock · Preview victory pose"
+                text="Use /avatar-upload for custom art · /avatar for equip/buy/preview"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -165,8 +231,14 @@ class Avatars(commands.Cog):
                 )
                 return
             defn = get_avatar(avatar)
+            _, custom_victory = await load_custom_attachment_bytes(
+                self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
+            )
             files, filename = build_victory_attachment(
-                avatar, guild_id=guild_id, user_id=user_id,
+                avatar,
+                guild_id=guild_id,
+                user_id=user_id,
+                custom_victory=custom_victory,
             )
             embed = discord.Embed(
                 title=f"{defn.name if defn else avatar} — victory pose",
@@ -239,8 +311,14 @@ class Avatars(commands.Cog):
                 )
                 return
             defn = get_avatar(avatar)
+            custom_portrait, _ = await load_custom_attachment_bytes(
+                self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
+            )
             files, thumb_name = build_portrait_attachment(
-                avatar, guild_id=guild_id, user_id=user_id,
+                avatar,
+                guild_id=guild_id,
+                user_id=user_id,
+                custom_portrait=custom_portrait,
             )
             label = f"{defn.emoji} {defn.name}" if defn else avatar
             embed = discord.Embed(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,6 +12,7 @@ ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "avatars"
 CUSTOM_ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "custom"
 DEFAULT_AVATAR_ID = "nugget_raider"
 CUSTOM_AVATAR_PREFIX = "custom_"
+ALLOWED_IMAGE_EXTS = frozenset({".png", ".gif", ".jpg", ".jpeg", ".webp"})
 
 
 @dataclass(frozen=True)
@@ -83,10 +85,33 @@ def get_avatar(avatar_id: str | None) -> AvatarDef | None:
     return AVATAR_MAP.get(avatar_id.strip().lower())
 
 
+def attachment_image_ext(attachment: discord.Attachment) -> str | None:
+    """Infer file extension from MIME type or filename (Discord may omit content_type)."""
+    content_type = (attachment.content_type or "").lower()
+    if content_type.startswith("image/"):
+        if "gif" in content_type:
+            return ".gif"
+        if "webp" in content_type:
+            return ".webp"
+        if "jpeg" in content_type or "jpg" in content_type:
+            return ".jpg"
+        return ".png"
+    suffix = Path(attachment.filename or "").suffix.lower()
+    if suffix == ".jpeg":
+        return ".jpg"
+    if suffix in ALLOWED_IMAGE_EXTS:
+        return suffix
+    return None
+
+
+def is_valid_image_attachment(attachment: discord.Attachment) -> bool:
+    return attachment_image_ext(attachment) is not None
+
+
 def portrait_path(avatar_id: str, *, guild_id: int | None = None, user_id: int | None = None) -> Path:
     if is_custom_avatar_id(avatar_id) and guild_id is not None and user_id is not None:
         folder = custom_avatar_dir(guild_id, user_id)
-        for name in ("portrait.png", "portrait.gif", "portrait.jpg"):
+        for name in ("portrait.png", "portrait.gif", "portrait.jpg", "portrait.webp"):
             path = folder / name
             if path.is_file():
                 return path
@@ -101,7 +126,7 @@ def victory_path(
 ) -> Path:
     if is_custom_avatar_id(avatar_id) and guild_id is not None and user_id is not None:
         folder = custom_avatar_dir(guild_id, user_id)
-        for name in ("victory.gif", "victory.png", "victory.jpg"):
+        for name in ("victory.gif", "victory.png", "victory.jpg", "victory.webp"):
             path = folder / name
             if path.is_file():
                 return path
@@ -122,22 +147,37 @@ def resolve_equipped_avatar_id(stored: str | None) -> str:
     return DEFAULT_AVATAR_ID
 
 
+def _custom_user_id_from_avatar(avatar_id: str, user_id: int | None) -> int | None:
+    if not is_custom_avatar_id(avatar_id):
+        return user_id
+    try:
+        return int(avatar_id.removeprefix(CUSTOM_AVATAR_PREFIX))
+    except ValueError:
+        return user_id
+
+
+def _file_from_bytes(data: bytes, filename: str) -> discord.File:
+    import discord
+
+    return discord.File(io.BytesIO(data), filename=filename)
+
+
 def build_victory_attachment(
     avatar_id: str | None,
     *,
     guild_id: int | None = None,
     user_id: int | None = None,
+    custom_victory: tuple[bytes, str] | None = None,
 ) -> tuple[list[discord.File], str | None]:
     """Return Discord files and attachment:// filename for embed.set_image."""
     import discord
 
     aid = resolve_equipped_avatar_id(avatar_id)
-    uid = user_id
-    if is_custom_avatar_id(aid):
-        try:
-            uid = int(aid.removeprefix(CUSTOM_AVATAR_PREFIX))
-        except ValueError:
-            uid = user_id
+    uid = _custom_user_id_from_avatar(aid, user_id)
+    if custom_victory is not None:
+        data, ext = custom_victory
+        filename = f"victory_{aid}{ext}"
+        return [_file_from_bytes(data, filename)], filename
     path = victory_path(aid, guild_id=guild_id, user_id=uid)
     if not path.is_file():
         return [], None
@@ -150,18 +190,39 @@ def build_portrait_attachment(
     *,
     guild_id: int | None = None,
     user_id: int | None = None,
+    custom_portrait: tuple[bytes, str] | None = None,
 ) -> tuple[list[discord.File], str | None]:
     import discord
 
     aid = resolve_equipped_avatar_id(avatar_id)
-    uid = user_id
-    if is_custom_avatar_id(aid):
-        try:
-            uid = int(aid.removeprefix(CUSTOM_AVATAR_PREFIX))
-        except ValueError:
-            uid = user_id
+    uid = _custom_user_id_from_avatar(aid, user_id)
+    if custom_portrait is not None:
+        data, ext = custom_portrait
+        filename = f"portrait_{aid}{ext}"
+        return [_file_from_bytes(data, filename)], filename
     path = portrait_path(aid, guild_id=guild_id, user_id=uid)
     if not path.is_file():
         return [], None
     filename = f"portrait_{aid}{path.suffix}"
     return [discord.File(str(path), filename=filename)], filename
+
+
+async def load_custom_attachment_bytes(
+    db: object,
+    avatar_id: str | None,
+    *,
+    guild_id: int | None,
+    user_id: int | None,
+) -> tuple[tuple[bytes, str] | None, tuple[bytes, str] | None]:
+    """Load portrait/victory bytes from DB when a custom avatar is equipped."""
+    aid = resolve_equipped_avatar_id(avatar_id)
+    if not is_custom_avatar_id(aid) or guild_id is None:
+        return None, None
+    uid = _custom_user_id_from_avatar(aid, user_id)
+    if uid is None:
+        return None, None
+    assets = await db.get_custom_avatar_assets(guild_id, uid)
+    if assets is None:
+        return None, None
+    portrait_data, victory_data, ext = assets
+    return (portrait_data, ext), (victory_data, ext)
