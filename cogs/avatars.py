@@ -6,8 +6,8 @@ from discord.ext import commands
 
 import config
 from utils.avatars import (
-    AVATARS,
     AVATAR_MAP,
+    AVATARS,
     attachment_image_ext,
     build_portrait_attachment,
     build_victory_attachment,

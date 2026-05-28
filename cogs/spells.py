@@ -161,8 +161,8 @@ class Spells(commands.Cog):
         extra_lines: list[str] = []
 
         if state.heal_self_fraction > 0:
-            from utils.combat_engine import max_hp_from_armor
             from utils.classes import get_modifiers
+            from utils.combat_engine import max_hp_from_armor
             from utils.loadout import parse_loadout
 
             equipment = await self.bot.db.get_equipment(interaction.user.id, interaction.guild_id)

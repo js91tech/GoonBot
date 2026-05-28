@@ -4,7 +4,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 from items import CONSUMABLE_USE_IDS, get_item
 from utils.helpers import guild_only_message
 

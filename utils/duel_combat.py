@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import config
 from items import ShopItem
+from utils.aspects import AspectBonuses, AspectInstance, bonuses_from_instance
 from utils.combat_engine import (
     AttackContext,
     apply_armor_mitigation,
@@ -12,10 +13,9 @@ from utils.combat_engine import (
     roll_jester_reflect,
     roll_player_damage,
 )
-from utils.aspects import AspectBonuses, AspectInstance, bonuses_from_instance
-from utils.spell_effects import CombatSpellState
 from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.loadout import parse_loadout
+from utils.spell_effects import CombatSpellState
 from utils.trap_bombs import TrapBombProc
 
 
@@ -166,10 +166,13 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
     from utils.classes import get_modifiers
 
     fortify_mult = 1.0
-    if defender.spell_state is not None and not defender.spell_defense_used:
-        if defender.spell_state.fortify_mult < 1.0:
-            fortify_mult = defender.spell_state.fortify_mult
-            defender.spell_defense_used = True
+    if (
+        defender.spell_state is not None
+        and not defender.spell_defense_used
+        and defender.spell_state.fortify_mult < 1.0
+    ):
+        fortify_mult = defender.spell_state.fortify_mult
+        defender.spell_defense_used = True
     mitigated_raw = max(1, int(raw * fortify_mult)) if fortify_mult < 1.0 else raw
     extra_mit = defender.aspect_bonuses.mitigation_bonus if defender.aspect_bonuses else 0.0
     damage, mitigated = apply_armor_mitigation(

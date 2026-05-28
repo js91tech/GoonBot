@@ -146,8 +146,36 @@ class PostgresConnection:
             rebuilt.append(part)
         return "".join(rebuilt)
 
-    @staticmethod
-    def _normalize_query(query: str) -> str | None:
+    _INSERT_OR_IGNORE_CONFLICTS: dict[str, str] = {
+        "users": "(user_id, guild_id)",
+        "duel_elo": "(guild_id, user_id)",
+        "player_avatar_unlocks": "(guild_id, user_id, avatar_id)",
+        "equipped_aspect_slots": "(guild_id, user_id, slot)",
+    }
+
+    @classmethod
+    def _convert_insert_or_ignore(cls, sql: str) -> str:
+        import re
+
+        if "INSERT OR IGNORE" not in sql.upper():
+            return sql
+        for table, conflict_cols in cls._INSERT_OR_IGNORE_CONFLICTS.items():
+            pattern = rf"INSERT\s+OR\s+IGNORE\s+INTO\s+{re.escape(table)}\b"
+            if re.search(pattern, sql, flags=re.IGNORECASE):
+                sql = re.sub(
+                    pattern,
+                    f"INSERT INTO {table}",
+                    sql,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+                if "ON CONFLICT" not in sql.upper():
+                    sql = f"{sql.rstrip()} ON CONFLICT {conflict_cols} DO NOTHING"
+                return sql
+        return sql.replace("INSERT OR IGNORE", "INSERT")
+
+    @classmethod
+    def _normalize_query(cls, query: str) -> str | None:
         stripped = query.strip()
         upper = stripped.upper()
         if upper.startswith("PRAGMA"):
@@ -156,9 +184,7 @@ class PostgresConnection:
             return "BEGIN"
         sql = query
         sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-        sql = sql.replace("INSERT OR IGNORE INTO users", "INSERT INTO users")
-        if "INSERT INTO users" in sql and "ON CONFLICT" not in sql:
-            sql = f"{sql} ON CONFLICT DO NOTHING"
+        sql = cls._convert_insert_or_ignore(sql)
         sql = sql.replace("SET hp = MAX(hp - ?, 0)", "SET hp = GREATEST(hp - ?, 0)")
         return sql
 
@@ -2979,7 +3005,6 @@ class Database:
         mana_mult = await self.summoner_mana_regen_multiplier(user_id, guild_id)
         per_tick, interval = _regen_params(healer)
         per_tick = max(0, int(per_tick * mana_mult))
-        from utils.mana import apply_mana_time_regen
 
         ts = time.time()
         elapsed = max(0.0, ts - last_at)
@@ -3443,7 +3468,7 @@ class Database:
         return {part for part in raw.split(",") if part}
 
     async def set_class_id(self, user_id: int, guild_id: int, class_id: str) -> tuple[bool, str]:
-        from utils.classes import CLASS_MAP, get_class, is_jester_user
+        from utils.classes import CLASS_MAP, is_jester_user
 
         if class_id == config.JESTER_CLASS_ID and not is_jester_user(user_id):
             return False, "forbidden"
@@ -3814,7 +3839,12 @@ class Database:
         return rows[0] if rows else None
 
     async def get_equipped_aspect_bonuses(self, user_id: int, guild_id: int):
-        from utils.aspects import AspectBonuses, bonuses_from_instance, instance_from_row, merge_aspect_bonuses
+        from utils.aspects import (
+            AspectBonuses,
+            bonuses_from_instance,
+            instance_from_row,
+            merge_aspect_bonuses,
+        )
 
         rows = await self.list_equipped_aspect_rows(user_id, guild_id)
         if not rows:

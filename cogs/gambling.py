@@ -121,7 +121,6 @@ class CoinflipAcceptView(discord.ui.View):
             await self.cog.bot.db.credit_wallet(winner_id, guild_id, payout)
             burned = pot - payout
             winner = interaction.guild.get_member(winner_id) if interaction.guild else None
-            loser = interaction.guild.get_member(loser_id) if interaction.guild else None
             wname = winner.display_name if winner else f"User {winner_id}"
             tax_note = f" (tax {fmt_amount(burned)})" if burned > 0.01 else ""
             await interaction.response.edit_message(

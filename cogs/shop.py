@@ -8,17 +8,17 @@ from discord.ext import commands
 
 import config
 from items import (
-    SHOP_CATEGORIES,
     ITEMS,
+    SHOP_CATEGORIES,
     ShopItem,
     get_item,
     items_for_category,
     sell_refund_for_item,
 )
 from utils.aspects import format_aspect_effect, instance_from_row
-from utils.loadout import parse_loadout
 from utils.gear_sets import detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message
+from utils.loadout import parse_loadout
 from utils.quests import record_quest_event
 from utils.stats import compute_combat_stats, format_combat_stats_block, format_item_stats
 

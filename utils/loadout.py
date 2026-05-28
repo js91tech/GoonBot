@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import config
-from items import ShopItem, get_item, is_damage_dealer
+from items import ShopItem, get_item
 
 
 @dataclass(frozen=True)

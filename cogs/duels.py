@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 import discord
@@ -7,15 +8,6 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from utils.duel_combat import (
-    DuelFighter,
-    fighter_from_equipment,
-    format_strike_line,
-    simulate_duel,
-)
-from utils.helpers import fmt_amount, guild_only_message
-from utils.skills import get_skill, spell_buff_from_skill
-from utils.spell_effects import combat_state_from_spell
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.avatars import (
     build_portrait_attachment,
@@ -23,8 +15,19 @@ from utils.avatars import (
     get_avatar,
     load_custom_attachment_bytes,
 )
+from utils.duel_combat import (
+    DuelFighter,
+    fighter_from_equipment,
+    format_strike_line,
+    simulate_duel,
+)
+from utils.helpers import fmt_amount, guild_only_message
 from utils.quests import record_quest_event
+from utils.skills import get_skill, spell_buff_from_skill
+from utils.spell_effects import combat_state_from_spell
 from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
+
+logger = logging.getLogger(__name__)
 
 
 class RematchView(discord.ui.View):
@@ -344,30 +347,35 @@ class Duels(commands.Cog):
             )
 
         files: list[discord.File] = []
-        custom_portrait, custom_victory = await load_custom_attachment_bytes(
-            self.bot.db,
-            winner_avatar_id,
-            guild_id=guild_id,
-            user_id=result.winner_id,
-        )
-        victory_files, victory_name = build_victory_attachment(
-            winner_avatar_id,
-            guild_id=guild_id,
-            user_id=result.winner_id,
-            custom_victory=custom_victory,
-        )
-        portrait_files, portrait_name = build_portrait_attachment(
-            winner_avatar_id,
-            guild_id=guild_id,
-            user_id=result.winner_id,
-            custom_portrait=custom_portrait,
-        )
-        if victory_name:
-            files.extend(victory_files)
-            embed.set_image(url=f"attachment://{victory_name}")
-        if portrait_name:
-            files.extend(portrait_files)
-            embed.set_thumbnail(url=f"attachment://{portrait_name}")
+        victory_name: str | None = None
+        portrait_name: str | None = None
+        try:
+            custom_portrait, custom_victory = await load_custom_attachment_bytes(
+                self.bot.db,
+                winner_avatar_id,
+                guild_id=guild_id,
+                user_id=result.winner_id,
+            )
+            victory_files, victory_name = build_victory_attachment(
+                winner_avatar_id,
+                guild_id=guild_id,
+                user_id=result.winner_id,
+                custom_victory=custom_victory,
+            )
+            portrait_files, portrait_name = build_portrait_attachment(
+                winner_avatar_id,
+                guild_id=guild_id,
+                user_id=result.winner_id,
+                custom_portrait=custom_portrait,
+            )
+            if victory_name:
+                files.extend(victory_files)
+                embed.set_image(url=f"attachment://{victory_name}")
+            if portrait_name:
+                files.extend(portrait_files)
+                embed.set_thumbnail(url=f"attachment://{portrait_name}")
+        except Exception:
+            logger.exception("Failed to attach winner avatar art for duel embed")
         if trap_procs > 0 and TRAP_BOMB_GIF_PATH.is_file() and not victory_name:
             files.append(discord.File(str(TRAP_BOMB_GIF_PATH), filename="trap_bomb.gif"))
             embed.set_image(url="attachment://trap_bomb.gif")

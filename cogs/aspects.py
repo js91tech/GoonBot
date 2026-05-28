@@ -42,9 +42,12 @@ class Aspects(commands.Cog):
         for row in rows:
             inst = instance_from_row(row)
             label = f"{inst.name} {inst.roll_pct:g}% (#{inst.instance_id})"
-            if current_lower and current_lower not in label.lower():
-                if current_lower not in str(inst.instance_id):
-                    continue
+            if (
+                current_lower
+                and current_lower not in label.lower()
+                and current_lower not in str(inst.instance_id)
+            ):
+                continue
             if inst.instance_id in slot_map:
                 label += f" [slot {slot_map[inst.instance_id]}]"
             choices.append(

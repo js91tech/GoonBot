@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from items import ITEMS, ShopItem, get_item, is_damage_dealer
+from items import ShopItem, get_item, is_damage_dealer
 from utils.helpers import fmt_amount, guild_only_message
 from utils.loadout import parse_loadout
 
@@ -141,16 +141,14 @@ class Loadout(commands.Cog):
             )
             return
         equipped: list[str] = []
-        if weapon:
-            if await self.bot.db.equip_gear_item(
-                interaction.user.id, interaction.guild_id, weapon.id,
-            ):
-                equipped.append(weapon.name)
-        if armor:
-            if await self.bot.db.equip_gear_item(
-                interaction.user.id, interaction.guild_id, armor.id,
-            ):
-                equipped.append(armor.name)
+        if weapon and await self.bot.db.equip_gear_item(
+            interaction.user.id, interaction.guild_id, weapon.id,
+        ):
+            equipped.append(weapon.name)
+        if armor and await self.bot.db.equip_gear_item(
+            interaction.user.id, interaction.guild_id, armor.id,
+        ):
+            equipped.append(armor.name)
         await interaction.response.send_message(
             f"Equipped: **{', '.join(equipped)}**.", ephemeral=True,
         )

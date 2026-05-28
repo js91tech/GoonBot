@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from items import get_item
-from utils.loadout import equip_target_slot, parse_loadout, resolve_primary_off_hand
+from utils.loadout import equip_target_slot, parse_loadout
 
 
 class EquipTargetSlotTests(unittest.TestCase):

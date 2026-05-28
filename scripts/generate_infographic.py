@@ -78,7 +78,7 @@ def _card(
     fonts: tuple,
 ) -> None:
     title_font, _, body_font, _ = fonts
-    border = tuple(int((a + b) / 2) for a, b in zip(accent, (40, 50, 70)))
+    border = tuple(int((a + b) / 2) for a, b in zip(accent, (40, 50, 70), strict=True))
     _rounded_rect(draw, box, 20, CARD_BG, outline=border)
     x0, y0, x1, _ = box
     draw.text((x0 + 20, y0 + 16), title, fill=accent, font=title_font)
@@ -112,7 +112,7 @@ def build() -> None:
 
     margin = 40
     gap = 20
-    cols, rows = 4, 2
+    cols = 4
     card_w = (W - 2 * margin - (cols - 1) * gap) // cols
     card_h = 380
     y0 = 120

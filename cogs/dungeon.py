@@ -8,7 +8,7 @@ from discord.ext import commands
 
 import config
 from utils.combat_engine import AttackContext, roll_player_damage
-from utils.helpers import fmt_amount, guild_only_message, valid_amount
+from utils.helpers import fmt_amount, guild_only_message
 from utils.loadout import parse_loadout
 from utils.quests import record_quest_event
 

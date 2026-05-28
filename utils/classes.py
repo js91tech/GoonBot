@@ -310,9 +310,7 @@ def is_healer_class(class_id: str | None) -> bool:
     if not class_id:
         return False
     parts = class_id.split("_")
-    if len(parts) >= 2 and parts[1] == "warden":
-        return True
-    return False
+    return bool(len(parts) >= 2 and parts[1] == "warden")
 
 
 def element_multiplier(attacker_element: Element | None, boss_element: str | None) -> float:

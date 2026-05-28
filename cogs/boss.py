@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import random
 import time
@@ -20,27 +21,32 @@ from items import (
     MYTHIC_RAID_MAIL,
     ShopItem,
     armor_mitigation_percent,
-    get_item,
 )
 from utils.achievements import evaluate_unlocks, format_unlock_message
-from utils.loadout import PlayerLoadout, off_hand_crit_bonus, off_hand_power_bonus, parse_loadout
-from utils.quests import record_quest_event
-from utils.discord_api import safe_channel_send, safe_interaction_send
-from utils.gear_sets import SetBonus, detect_set_bonus
-from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
-from utils.combat_engine import (
-    attack_context_for_class,
-    roll_jester_reflect,
-    roll_player_damage,
-)
-from utils.skills import get_skill, spell_buff_from_skill
-from utils.spell_effects import combat_state_from_spell
-from utils.stats import hp_bar
 from utils.aspects import (
     instance_from_row,
     random_aspect_definition,
     roll_pct_for_threat,
 )
+from utils.avatars import (
+    build_portrait_attachment,
+    build_victory_attachment,
+    get_avatar,
+    load_custom_attachment_bytes,
+)
+from utils.combat_engine import (
+    attack_context_for_class,
+    roll_jester_reflect,
+    roll_player_damage,
+)
+from utils.discord_api import safe_channel_send, safe_interaction_send
+from utils.gear_sets import SetBonus, detect_set_bonus
+from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
+from utils.loadout import PlayerLoadout, off_hand_crit_bonus, off_hand_power_bonus, parse_loadout
+from utils.quests import record_quest_event
+from utils.skills import get_skill, spell_buff_from_skill
+from utils.spell_effects import combat_state_from_spell
+from utils.stats import hp_bar
 from utils.summoner_penalty import (
     apply_summoner_attack_debuff,
     apply_summoner_counter_damage,
@@ -48,12 +54,6 @@ from utils.summoner_penalty import (
     is_summoner_debuffed,
     summoner_defense_retention,
     summoner_penalty_summary,
-)
-from utils.avatars import (
-    build_portrait_attachment,
-    build_victory_attachment,
-    get_avatar,
-    load_custom_attachment_bytes,
 )
 
 BOSS_NAME = "Hannah"
@@ -221,7 +221,7 @@ class Boss(commands.Cog):
         threat = config.BOSS_VARIANTS.get(variant, {}).get("threat", 1)
         defn = random_aspect_definition()
         roll_pct = roll_pct_for_threat(int(threat))
-        instance_id = await self.bot.db.create_aspect_instance(
+        await self.bot.db.create_aspect_instance(
             uid,
             guild_id,
             defn.id,
@@ -813,10 +813,8 @@ class Boss(commands.Cog):
         await self.bot.db.ensure_jester_class(interaction.user.id, interaction.guild_id)
         class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
         boss_element = None
-        try:
+        with contextlib.suppress(KeyError, TypeError):
             boss_element = str(boss["element"])
-        except (KeyError, TypeError):
-            pass
         ctx = attack_context_for_class(
             class_id,
             prestige_level=prestige,

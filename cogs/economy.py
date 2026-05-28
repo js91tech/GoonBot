@@ -10,7 +10,6 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import config
-from utils.discord_api import safe_channel_send
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel, valid_amount
 from utils.quests import record_quest_event
 

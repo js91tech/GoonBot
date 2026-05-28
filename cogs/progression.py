@@ -333,10 +333,11 @@ class Progression(commands.Cog):
                 member = interaction.guild.get_member(int(row["user_id"]))
                 name = member.display_name if member is not None else f"User {row['user_id']}"
                 value = float(row[value_key])
-                if value_key == "wallet":
-                    text = fmt_amount(value)
-                else:
-                    text = f"{int(value)} {value_label}"
+                text = (
+                    fmt_amount(value)
+                    if value_key == "wallet"
+                    else f"{int(value)} {value_label}"
+                )
                 lines.append(f"**{index}.** {name} — {text}")
             return "\n".join(lines)
 

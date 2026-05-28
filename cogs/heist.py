@@ -8,7 +8,6 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from items import get_item
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.gear_sets import heist_intimidation_bonus
 from utils.helpers import fmt_amount, guild_only_message

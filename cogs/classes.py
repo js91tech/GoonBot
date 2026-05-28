@@ -13,7 +13,7 @@ from utils.classes import (
     format_modifiers_summary,
     get_class,
 )
-from utils.helpers import fmt_amount, guild_only_message
+from utils.helpers import guild_only_message
 
 
 class Classes(commands.Cog):
@@ -59,8 +59,8 @@ class Classes(commands.Cog):
             )
             embed.add_field(name="Modifiers", value=format_modifiers_summary(cls.modifiers), inline=False)
             snap = await self.bot.db.get_mana_snapshot(target.id, interaction.guild_id)
-            from utils.mana import mana_bar
             from utils.classes import is_healer_class
+            from utils.mana import mana_bar
 
             regen_hint = (
                 "healer time regen"
@@ -86,7 +86,7 @@ class Classes(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        if config.JESTER_EXCLUSIVE_USER_ID == interaction.user.id:
+        if interaction.user.id == config.JESTER_EXCLUSIVE_USER_ID:
             await interaction.response.send_message(
                 "You are bound to the **Jester** class.",
                 ephemeral=True,
@@ -115,7 +115,7 @@ class Classes(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        if config.JESTER_EXCLUSIVE_USER_ID == interaction.user.id:
+        if interaction.user.id == config.JESTER_EXCLUSIVE_USER_ID:
             await interaction.response.send_message("The Jester does not evolve.", ephemeral=True)
             return
         class_id, xp, roots = await self._profile(interaction.user.id, interaction.guild_id)
