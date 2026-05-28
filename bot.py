@@ -38,6 +38,8 @@ COGS = (
     "cogs.consumables",
     "cogs.crews",
     "cogs.dungeon",
+    "cogs.season",
+    "cogs.alchemy",
     "cogs.admin",
 )
 

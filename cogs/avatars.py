@@ -4,12 +4,16 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 from utils.avatars import (
     AVATARS,
     AVATAR_MAP,
     build_portrait_attachment,
     build_victory_attachment,
+    custom_avatar_dir,
+    custom_avatar_id,
     get_avatar,
+    is_custom_avatar_id,
 )
 from utils.helpers import fmt_amount, guild_only_message
 
@@ -31,12 +35,17 @@ class Avatars(commands.Cog):
         )
         needle = current.lower()
         choices: list[app_commands.Choice[str]] = []
-        for avatar in AVATARS:
-            if avatar.id not in unlocked:
+        for aid in unlocked:
+            if is_custom_avatar_id(aid):
+                label = "Custom Avatar"
+            else:
+                defn = AVATAR_MAP.get(aid)
+                if defn is None:
+                    continue
+                label = defn.name
+            if needle and needle not in aid and needle not in label.lower():
                 continue
-            if needle and needle not in avatar.id and needle not in avatar.name.lower():
-                continue
-            choices.append(app_commands.Choice(name=avatar.name, value=avatar.id))
+            choices.append(app_commands.Choice(name=label, value=aid))
             if len(choices) >= 25:
                 break
         return choices
@@ -55,6 +64,7 @@ class Avatars(commands.Cog):
             app_commands.Choice(name="Equip", value="equip"),
             app_commands.Choice(name="Buy unlock", value="buy"),
             app_commands.Choice(name="Preview victory pose", value="preview"),
+            app_commands.Choice(name="Upload custom art", value="upload"),
         ],
     )
     @app_commands.autocomplete(avatar=avatar_autocomplete)
@@ -64,6 +74,7 @@ class Avatars(commands.Cog):
         interaction: discord.Interaction,
         action: str,
         avatar: str | None = None,
+        image: discord.Attachment | None = None,
     ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
@@ -73,6 +84,43 @@ class Avatars(commands.Cog):
         user_id = interaction.user.id
         unlocked = await self.bot.db.list_unlocked_avatar_ids(user_id, guild_id)
         equipped = await self.bot.db.get_equipped_avatar_id(user_id, guild_id)
+
+        if action == "upload":
+            if image is None or not image.content_type or not image.content_type.startswith(
+                "image/"
+            ):
+                await interaction.response.send_message(
+                    "Attach a **PNG or GIF** image (max ~600 KB).", ephemeral=True,
+                )
+                return
+            if image.size and image.size > config.CUSTOM_AVATAR_MAX_BYTES:
+                await interaction.response.send_message(
+                    "Image too large (max 600 KB).", ephemeral=True,
+                )
+                return
+            cost = config.CUSTOM_AVATAR_UPLOAD_COST
+            if cost > 0 and not await self.bot.db.debit_wallet(
+                user_id, guild_id, cost,
+            ):
+                await interaction.response.send_message(
+                    f"Upload costs **{fmt_amount(cost)}**.", ephemeral=True,
+                )
+                return
+            data = await image.read()
+            folder = custom_avatar_dir(guild_id, user_id)
+            folder.mkdir(parents=True, exist_ok=True)
+            ext = ".gif" if image.content_type == "image/gif" else ".png"
+            (folder / f"victory{ext}").write_bytes(data)
+            (folder / f"portrait{ext}").write_bytes(data)
+            aid = custom_avatar_id(user_id)
+            await self.bot.db.unlock_custom_avatar(user_id, guild_id, aid)
+            await self.bot.db.set_equipped_avatar(user_id, guild_id, aid)
+            await interaction.response.send_message(
+                f"Custom avatar saved! Equipped as `{aid}`. "
+                f"Victory art shows on duel wins and boss killing blows.",
+                ephemeral=True,
+            )
+            return
 
         if action == "list":
             lines = []
@@ -84,6 +132,13 @@ class Avatars(commands.Cog):
                 lines.append(
                     f"{mark} {defn.emoji} **{defn.name}** (`{defn.id}`) — {price}{eq}\n"
                     f"_{defn.description}_"
+                )
+            custom_id = custom_avatar_id(user_id)
+            if custom_id in unlocked:
+                eq = " **(equipped)**" if custom_id == equipped else ""
+                lines.append(
+                    f"✅ 🎨 **Custom Avatar** (`{custom_id}`){eq}\n"
+                    f"_Your uploaded victory pose._"
                 )
             embed = discord.Embed(
                 title="Raid avatars",
@@ -110,7 +165,9 @@ class Avatars(commands.Cog):
                 )
                 return
             defn = get_avatar(avatar)
-            files, filename = build_victory_attachment(avatar)
+            files, filename = build_victory_attachment(
+                avatar, guild_id=guild_id, user_id=user_id,
+            )
             embed = discord.Embed(
                 title=f"{defn.name if defn else avatar} — victory pose",
                 description="This art appears when you win duels or land the boss killing blow.",
@@ -162,7 +219,7 @@ class Avatars(commands.Cog):
             return
 
         if action == "equip":
-            if not avatar or avatar not in AVATAR_MAP:
+            if not avatar:
                 await interaction.response.send_message(
                     "Pick an unlocked avatar from autocomplete.",
                     ephemeral=True,
@@ -170,18 +227,25 @@ class Avatars(commands.Cog):
                 return
             err = await self.bot.db.set_equipped_avatar(user_id, guild_id, avatar)
             if err == "locked":
-                defn = AVATAR_MAP[avatar]
-                price = fmt_amount(defn.price) if defn.price > 0 else "free"
+                defn = get_avatar(avatar)
+                price = (
+                    fmt_amount(defn.price)
+                    if defn is not None and defn.price > 0
+                    else "free"
+                )
                 await interaction.response.send_message(
                     f"**{defn.name}** is locked. Buy unlock for {price} first.",
                     ephemeral=True,
                 )
                 return
-            defn = AVATAR_MAP[avatar]
-            files, thumb_name = build_portrait_attachment(avatar)
+            defn = get_avatar(avatar)
+            files, thumb_name = build_portrait_attachment(
+                avatar, guild_id=guild_id, user_id=user_id,
+            )
+            label = f"{defn.emoji} {defn.name}" if defn else avatar
             embed = discord.Embed(
                 title="Avatar equipped",
-                description=f"You are now **{defn.emoji} {defn.name}**.",
+                description=f"You are now **{label}**.",
                 color=discord.Color.blue(),
             )
             if thumb_name:

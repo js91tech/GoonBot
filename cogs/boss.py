@@ -330,8 +330,12 @@ class Boss(commands.Cog):
                 value=f"**{killer_name}** — {pose_label} victory pose",
                 inline=False,
             )
-            victory_files, victory_name = build_victory_attachment(avatar_id)
-            portrait_files, portrait_name = build_portrait_attachment(avatar_id)
+            victory_files, victory_name = build_victory_attachment(
+                avatar_id, guild_id=guild.id, user_id=killer_user_id,
+            )
+            portrait_files, portrait_name = build_portrait_attachment(
+                avatar_id, guild_id=guild.id, user_id=killer_user_id,
+            )
             if victory_name:
                 embed.set_image(url=f"attachment://{victory_name}")
                 files.extend(victory_files)

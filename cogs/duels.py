@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -20,9 +22,63 @@ from utils.quests import record_quest_event
 from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
 
 
+class RematchView(discord.ui.View):
+    """Loser opens a 2-minute window to /duel the winner without same-target cooldown."""
+
+    def __init__(self, cog: Duels, guild_id: int, winner_id: int, loser_id: int) -> None:  # noqa: F821
+        super().__init__(timeout=120.0)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.winner_id = winner_id
+        self.loser_id = loser_id
+
+    @discord.ui.button(label="Rematch", style=discord.ButtonStyle.primary, emoji="🔄")
+    async def rematch(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        if interaction.user.id != self.loser_id:
+            await interaction.response.send_message(
+                "Only the duel loser can request a rematch.", ephemeral=True,
+            )
+            return
+        self.cog.register_rematch_window(
+            self.guild_id, self.loser_id, self.winner_id,
+        )
+        await interaction.response.send_message(
+            f"Rematch window open for **2 minutes**. Run `/duel` against "
+            f"<@{self.winner_id}> — same-player cooldown waived once.",
+            ephemeral=True,
+        )
+
+
 class Duels(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self._rematch_windows: dict[tuple[int, int, int], float] = {}
+
+    def register_rematch_window(
+        self, guild_id: int, loser_id: int, winner_id: int, *, seconds: float = 120.0,
+    ) -> None:
+        expires = time.time() + seconds
+        self._rematch_windows[(guild_id, loser_id, winner_id)] = expires
+        self._rematch_windows[(guild_id, winner_id, loser_id)] = expires
+
+    def consume_rematch_window(
+        self, guild_id: int, attacker_id: int, defender_id: int,
+    ) -> bool:
+        now = time.time()
+        for key in (
+            (guild_id, attacker_id, defender_id),
+            (guild_id, defender_id, attacker_id),
+        ):
+            exp = self._rematch_windows.get(key)
+            if exp is not None and exp > now:
+                del self._rematch_windows[key]
+                return True
+            if exp is not None:
+                del self._rematch_windows[key]
+        return False
 
     async def _duel_settings(self, guild_id: int) -> tuple[float, float, int]:
         loss_fraction = await self.bot.db.get_config_value(guild_id, "duel_loss_fraction")
@@ -71,12 +127,17 @@ class Duels(commands.Cog):
         cooldown_seconds = int(
             round(cooldown_seconds * attacker_util.duel_cooldown_mult)
         )
-        remaining_target = await self.bot.db.duel_same_target_cooldown_remaining(
-            guild_id,
-            attacker.id,
-            opponent.id,
-            cooldown_seconds,
+        skip_target_cd = self.consume_rematch_window(
+            guild_id, attacker.id, opponent.id,
         )
+        remaining_target = None
+        if not skip_target_cd:
+            remaining_target = await self.bot.db.duel_same_target_cooldown_remaining(
+                guild_id,
+                attacker.id,
+                opponent.id,
+                cooldown_seconds,
+            )
         if remaining_target is not None:
             mins = int(remaining_target // 60)
             secs = int(remaining_target % 60)
@@ -175,6 +236,7 @@ class Duels(commands.Cog):
             loss_fraction=loss_fraction,
             same_target_cooldown_seconds=cooldown_seconds,
             max_attacks_per_hour=max_per_hour,
+            skip_same_target_cooldown=skip_target_cd,
         )
         if settlement is None:
             await interaction.response.send_message(
@@ -277,8 +339,12 @@ class Duels(commands.Cog):
             )
 
         files: list[discord.File] = []
-        victory_files, victory_name = build_victory_attachment(winner_avatar_id)
-        portrait_files, portrait_name = build_portrait_attachment(winner_avatar_id)
+        victory_files, victory_name = build_victory_attachment(
+            winner_avatar_id, guild_id=guild_id, user_id=result.winner_id,
+        )
+        portrait_files, portrait_name = build_portrait_attachment(
+            winner_avatar_id, guild_id=guild_id, user_id=result.winner_id,
+        )
         if victory_name:
             files.extend(victory_files)
             embed.set_image(url=f"attachment://{victory_name}")
@@ -289,11 +355,13 @@ class Duels(commands.Cog):
             files.append(discord.File(str(TRAP_BOMB_GIF_PATH), filename="trap_bomb.gif"))
             embed.set_image(url="attachment://trap_bomb.gif")
 
+        rematch_view = RematchView(self, guild_id, winner.id, loser.id)
         await interaction.response.send_message(
             content=f"{attacker.mention} vs {opponent.mention}",
             embed=embed,
             files=files or None,
             allowed_mentions=discord.AllowedMentions(users=[attacker, opponent]),
+            view=rematch_view,
         )
         await record_quest_event(self.bot.db, guild_id, result.winner_id, "duel_win")
         unlocked = await evaluate_unlocks(self.bot.db, guild_id, result.winner_id)
