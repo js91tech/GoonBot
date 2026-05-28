@@ -14,6 +14,7 @@ from utils.duel_combat import (
 from utils.helpers import fmt_amount, guild_only_message
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
+from utils.avatars import build_portrait_attachment, build_victory_attachment, get_avatar
 from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
 
 
@@ -256,8 +257,27 @@ class Duels(commands.Cog):
             footer_bits.append(f"{trap_procs} trap bomb(s) detonated")
         embed.set_footer(text=" · ".join(footer_bits))
 
+        winner_avatar_id = await self.bot.db.get_equipped_avatar_id(
+            result.winner_id, guild_id
+        )
+        winner_defn = get_avatar(winner_avatar_id)
+        if winner_defn:
+            embed.add_field(
+                name="Victory pose",
+                value=f"{winner_defn.emoji} **{winner_defn.name}**",
+                inline=False,
+            )
+
         files: list[discord.File] = []
-        if trap_procs > 0 and TRAP_BOMB_GIF_PATH.is_file():
+        victory_files, victory_name = build_victory_attachment(winner_avatar_id)
+        portrait_files, portrait_name = build_portrait_attachment(winner_avatar_id)
+        if victory_name:
+            files.extend(victory_files)
+            embed.set_image(url=f"attachment://{victory_name}")
+        if portrait_name:
+            files.extend(portrait_files)
+            embed.set_thumbnail(url=f"attachment://{portrait_name}")
+        if trap_procs > 0 and TRAP_BOMB_GIF_PATH.is_file() and not victory_name:
             files.append(discord.File(str(TRAP_BOMB_GIF_PATH), filename="trap_bomb.gif"))
             embed.set_image(url="attachment://trap_bomb.gif")
 

@@ -49,6 +49,7 @@ from utils.summoner_penalty import (
     summoner_defense_retention,
     summoner_penalty_summary,
 )
+from utils.avatars import build_portrait_attachment, build_victory_attachment, get_avatar
 
 BOSS_NAME = "Hannah"
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
@@ -292,6 +293,7 @@ class Boss(commands.Cog):
         reward_lines: list[str],
         gear_lines: list[str],
         summary: str,
+        killer_user_id: int | None = None,
     ) -> None:
         channel = await resolve_bot_announcement_channel(guild, self.bot.db)
         if channel is None:
@@ -317,10 +319,30 @@ class Boss(commands.Cog):
                 value="\n".join(gear_lines[:12]),
                 inline=False,
             )
+        files: list[discord.File] = []
+        if killer_user_id is not None:
+            avatar_id = await self.bot.db.get_equipped_avatar_id(killer_user_id, guild.id)
+            defn = get_avatar(avatar_id)
+            killer_name = self._display_name(guild, killer_user_id)
+            pose_label = defn.name if defn else "Raider"
+            embed.add_field(
+                name="Killing blow",
+                value=f"**{killer_name}** — {pose_label} victory pose",
+                inline=False,
+            )
+            victory_files, victory_name = build_victory_attachment(avatar_id)
+            portrait_files, portrait_name = build_portrait_attachment(avatar_id)
+            if victory_name:
+                embed.set_image(url=f"attachment://{victory_name}")
+                files.extend(victory_files)
+            if portrait_name:
+                embed.set_thumbnail(url=f"attachment://{portrait_name}")
+                files.extend(portrait_files)
         gate = getattr(self.bot, "outbound_gate", None)
         sent = await safe_channel_send(
             channel,
             embed=embed,
+            files=files or None,
             allowed_mentions=discord.AllowedMentions.none(),
             gate=gate,
         )
@@ -381,6 +403,7 @@ class Boss(commands.Cog):
                 reward_lines=[],
                 gear_lines=[],
                 summary=summary,
+                killer_user_id=killer_user_id,
             )
             if interaction is not None and not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -432,6 +455,7 @@ class Boss(commands.Cog):
             reward_lines=reward_lines,
             gear_lines=gear_lines,
             summary=summary,
+            killer_user_id=killer_user_id,
         )
 
         if interaction is not None and not interaction.response.is_done():

@@ -31,6 +31,7 @@ COGS = (
     "cogs.jobs",
     "cogs.classes",
     "cogs.spells",
+    "cogs.avatars",
     "cogs.admin",
 )
 
