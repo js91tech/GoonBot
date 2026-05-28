@@ -84,6 +84,25 @@ def guild_only_message() -> str:
     return "This command can only be used inside a server."
 
 
+def clip_embed_field(value: str, limit: int = 1024) -> str:
+    """Keep embed field values within Discord's length limit."""
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1] + "…"
+
+
+async def interaction_reply(
+    interaction: discord.Interaction,
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Send the initial response or a follow-up depending on defer state."""
+    if interaction.response.is_done():
+        await interaction.followup.send(*args, **kwargs)  # type: ignore[arg-type]
+    else:
+        await interaction.response.send_message(*args, **kwargs)  # type: ignore[arg-type]
+
+
 async def _resolve_channel_by_id(
     guild: discord.Guild,
     channel_id: int | None,

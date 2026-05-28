@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -18,7 +20,9 @@ from utils.avatars import (
     is_valid_image_attachment,
     load_custom_attachment_bytes,
 )
-from utils.helpers import fmt_amount, guild_only_message
+from utils.helpers import fmt_amount, guild_only_message, send_error
+
+logger = logging.getLogger(__name__)
 
 
 class Avatars(commands.Cog):
@@ -32,10 +36,14 @@ class Avatars(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         if interaction.guild_id is None:
             return []
-        unlocked = await self.bot.db.list_unlocked_avatar_ids(
-            interaction.user.id,
-            interaction.guild_id,
-        )
+        try:
+            unlocked = await self.bot.db.list_unlocked_avatar_ids(
+                interaction.user.id,
+                interaction.guild_id,
+            )
+        except Exception:
+            logger.exception("avatar autocomplete failed")
+            return []
         needle = current.lower()
         choices: list[app_commands.Choice[str]] = []
         for aid in unlocked:
@@ -137,8 +145,15 @@ class Avatars(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        await interaction.response.defer(ephemeral=True)
-        await self._save_custom_upload(interaction, image)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await self._save_custom_upload(interaction, image)
+        except Exception:
+            logger.exception("avatar-upload failed")
+            await send_error(
+                interaction,
+                "Could not save your avatar. Try again in a moment.",
+            )
 
     @app_commands.command(
         name="avatar",
@@ -173,8 +188,6 @@ class Avatars(commands.Cog):
 
         guild_id = interaction.guild_id
         user_id = interaction.user.id
-        unlocked = await self.bot.db.list_unlocked_avatar_ids(user_id, guild_id)
-        equipped = await self.bot.db.get_equipped_avatar_id(user_id, guild_id)
 
         if action == "upload":
             if image is None:
@@ -184,158 +197,177 @@ class Avatars(commands.Cog):
                     ephemeral=True,
                 )
                 return
+            try:
+                await interaction.response.defer(ephemeral=True)
+                await self._save_custom_upload(interaction, image)
+            except Exception:
+                logger.exception("avatar upload action failed")
+                await send_error(
+                    interaction,
+                    "Could not save your avatar. Try again in a moment.",
+                )
+            return
+
+        try:
             await interaction.response.defer(ephemeral=True)
-            await self._save_custom_upload(interaction, image)
-            return
 
-        if action == "list":
-            lines = []
-            for defn in AVATARS:
-                owned = defn.id in unlocked
-                mark = "✅" if owned else "🔒"
-                eq = " **(equipped)**" if defn.id == equipped else ""
-                price = "Free" if defn.price <= 0 else fmt_amount(defn.price)
-                lines.append(
-                    f"{mark} {defn.emoji} **{defn.name}** (`{defn.id}`) — {price}{eq}\n"
-                    f"_{defn.description}_"
-                )
-            custom_id = custom_avatar_id(user_id)
-            if custom_id in unlocked:
-                eq = " **(equipped)**" if custom_id == equipped else ""
-                lines.append(
-                    f"✅ 🎨 **Custom Avatar** (`{custom_id}`){eq}\n"
-                    f"_Your uploaded victory pose._"
-                )
-            embed = discord.Embed(
-                title="Raid avatars",
-                description="\n\n".join(lines),
-                color=discord.Color.gold(),
-            )
-            embed.set_footer(
-                text="Use /avatar-upload for custom art · /avatar for equip/buy/preview"
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
+            unlocked = await self.bot.db.list_unlocked_avatar_ids(user_id, guild_id)
+            equipped = await self.bot.db.get_equipped_avatar_id(user_id, guild_id)
 
-        if action == "preview":
-            if not avatar:
-                await interaction.response.send_message(
-                    "Pick an avatar you own from autocomplete.",
-                    ephemeral=True,
+            if action == "list":
+                lines = []
+                for defn in AVATARS:
+                    owned = defn.id in unlocked
+                    mark = "✅" if owned else "🔒"
+                    eq = " **(equipped)**" if defn.id == equipped else ""
+                    price = "Free" if defn.price <= 0 else fmt_amount(defn.price)
+                    lines.append(
+                        f"{mark} {defn.emoji} **{defn.name}** (`{defn.id}`) — {price}{eq}\n"
+                        f"_{defn.description}_"
+                    )
+                custom_id = custom_avatar_id(user_id)
+                if custom_id in unlocked:
+                    eq = " **(equipped)**" if custom_id == equipped else ""
+                    lines.append(
+                        f"✅ 🎨 **Custom Avatar** (`{custom_id}`){eq}\n"
+                        f"_Your uploaded victory pose._"
+                    )
+                embed = discord.Embed(
+                    title="Raid avatars",
+                    description="\n\n".join(lines),
+                    color=discord.Color.gold(),
                 )
-                return
-            if avatar not in unlocked:
-                await interaction.response.send_message(
-                    "You have not unlocked that avatar yet. Use **Buy unlock** or earn free ones.",
-                    ephemeral=True,
+                embed.set_footer(
+                    text="Use /avatar-upload for custom art · /avatar for equip/buy/preview"
                 )
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
-            defn = get_avatar(avatar)
-            _, custom_victory = await load_custom_attachment_bytes(
-                self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
-            )
-            files, filename = build_victory_attachment(
-                avatar,
-                guild_id=guild_id,
-                user_id=user_id,
-                custom_victory=custom_victory,
-            )
-            embed = discord.Embed(
-                title=f"{defn.name if defn else avatar} — victory pose",
-                description="This art appears when you win duels or land the boss killing blow.",
-                color=discord.Color.green(),
-            )
-            if filename:
-                embed.set_image(url=f"attachment://{filename}")
-            await interaction.response.send_message(
-                embed=embed,
-                files=files or None,
-                ephemeral=True,
-            )
-            return
 
-        if action == "buy":
-            if not avatar or avatar not in AVATAR_MAP:
-                await interaction.response.send_message(
-                    "Pick an avatar from autocomplete.",
-                    ephemeral=True,
-                )
-                return
-            defn = AVATAR_MAP[avatar]
-            if defn.price <= 0:
-                await self.bot.db.unlock_avatar(user_id, guild_id, avatar)
-                await interaction.response.send_message(
-                    f"**{defn.name}** is free — unlocked!",
-                    ephemeral=True,
-                )
-                return
-            err = await self.bot.db.buy_avatar_unlock(
-                user_id, guild_id, avatar, defn.price
-            )
-            if err == "already_owned":
-                await interaction.response.send_message(
-                    f"You already own **{defn.name}**.",
-                    ephemeral=True,
-                )
-                return
-            if err == "insufficient_funds":
-                await interaction.response.send_message(
-                    f"**{defn.name}** costs {fmt_amount(defn.price)}.",
-                    ephemeral=True,
-                )
-                return
-            await interaction.response.send_message(
-                f"Unlocked **{defn.name}**! Use `/avatar` → Equip to wear it.",
-                ephemeral=True,
-            )
-            return
-
-        if action == "equip":
-            if not avatar:
-                await interaction.response.send_message(
-                    "Pick an unlocked avatar from autocomplete.",
-                    ephemeral=True,
-                )
-                return
-            err = await self.bot.db.set_equipped_avatar(user_id, guild_id, avatar)
-            if err == "locked":
+            if action == "preview":
+                if not avatar:
+                    await interaction.followup.send(
+                        "Pick an avatar you own from autocomplete.",
+                        ephemeral=True,
+                    )
+                    return
+                if avatar not in unlocked:
+                    await interaction.followup.send(
+                        "You have not unlocked that avatar yet. Use **Buy unlock** or earn free ones.",
+                        ephemeral=True,
+                    )
+                    return
                 defn = get_avatar(avatar)
-                price = (
-                    fmt_amount(defn.price)
-                    if defn is not None and defn.price > 0
-                    else "free"
+                _, custom_victory = await load_custom_attachment_bytes(
+                    self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
                 )
-                await interaction.response.send_message(
-                    f"**{defn.name}** is locked. Buy unlock for {price} first.",
+                files, filename = build_victory_attachment(
+                    avatar,
+                    guild_id=guild_id,
+                    user_id=user_id,
+                    custom_victory=custom_victory,
+                )
+                embed = discord.Embed(
+                    title=f"{defn.name if defn else avatar} — victory pose",
+                    description="This art appears when you win duels or land the boss killing blow.",
+                    color=discord.Color.green(),
+                )
+                if filename:
+                    embed.set_image(url=f"attachment://{filename}")
+                await interaction.followup.send(
+                    embed=embed,
+                    files=files or None,
                     ephemeral=True,
                 )
                 return
-            defn = get_avatar(avatar)
-            custom_portrait, _ = await load_custom_attachment_bytes(
-                self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
-            )
-            files, thumb_name = build_portrait_attachment(
-                avatar,
-                guild_id=guild_id,
-                user_id=user_id,
-                custom_portrait=custom_portrait,
-            )
-            label = f"{defn.emoji} {defn.name}" if defn else avatar
-            embed = discord.Embed(
-                title="Avatar equipped",
-                description=f"You are now **{label}**.",
-                color=discord.Color.blue(),
-            )
-            if thumb_name:
-                embed.set_thumbnail(url=f"attachment://{thumb_name}")
-            await interaction.response.send_message(
-                embed=embed,
-                files=files or None,
-                ephemeral=True,
-            )
-            return
 
-        await interaction.response.send_message("Unknown action.", ephemeral=True)
+            if action == "buy":
+                if not avatar or avatar not in AVATAR_MAP:
+                    await interaction.followup.send(
+                        "Pick an avatar from autocomplete.",
+                        ephemeral=True,
+                    )
+                    return
+                defn = AVATAR_MAP[avatar]
+                if defn.price <= 0:
+                    await self.bot.db.unlock_avatar(user_id, guild_id, avatar)
+                    await interaction.followup.send(
+                        f"**{defn.name}** is free — unlocked!",
+                        ephemeral=True,
+                    )
+                    return
+                err = await self.bot.db.buy_avatar_unlock(
+                    user_id, guild_id, avatar, defn.price
+                )
+                if err == "already_owned":
+                    await interaction.followup.send(
+                        f"You already own **{defn.name}**.",
+                        ephemeral=True,
+                    )
+                    return
+                if err == "insufficient_funds":
+                    await interaction.followup.send(
+                        f"**{defn.name}** costs {fmt_amount(defn.price)}.",
+                        ephemeral=True,
+                    )
+                    return
+                await interaction.followup.send(
+                    f"Unlocked **{defn.name}**! Use `/avatar` → Equip to wear it.",
+                    ephemeral=True,
+                )
+                return
+
+            if action == "equip":
+                if not avatar:
+                    await interaction.followup.send(
+                        "Pick an unlocked avatar from autocomplete.",
+                        ephemeral=True,
+                    )
+                    return
+                err = await self.bot.db.set_equipped_avatar(user_id, guild_id, avatar)
+                if err == "locked":
+                    defn = get_avatar(avatar)
+                    price = (
+                        fmt_amount(defn.price)
+                        if defn is not None and defn.price > 0
+                        else "free"
+                    )
+                    await interaction.followup.send(
+                        f"**{defn.name}** is locked. Buy unlock for {price} first.",
+                        ephemeral=True,
+                    )
+                    return
+                defn = get_avatar(avatar)
+                custom_portrait, _ = await load_custom_attachment_bytes(
+                    self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
+                )
+                files, thumb_name = build_portrait_attachment(
+                    avatar,
+                    guild_id=guild_id,
+                    user_id=user_id,
+                    custom_portrait=custom_portrait,
+                )
+                label = f"{defn.emoji} {defn.name}" if defn else avatar
+                embed = discord.Embed(
+                    title="Avatar equipped",
+                    description=f"You are now **{label}**.",
+                    color=discord.Color.blue(),
+                )
+                if thumb_name:
+                    embed.set_thumbnail(url=f"attachment://{thumb_name}")
+                await interaction.followup.send(
+                    embed=embed,
+                    files=files or None,
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.followup.send("Unknown action.", ephemeral=True)
+        except Exception:
+            logger.exception("avatar command failed action=%s", action)
+            await send_error(
+                interaction,
+                "Something went wrong with avatars. Try again in a moment.",
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

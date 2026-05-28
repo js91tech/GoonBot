@@ -21,7 +21,7 @@ from utils.duel_combat import (
     format_strike_line,
     simulate_duel,
 )
-from utils.helpers import fmt_amount, guild_only_message
+from utils.helpers import clip_embed_field, fmt_amount, guild_only_message, send_error
 from utils.quests import record_quest_event
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
@@ -164,6 +164,40 @@ class Duels(commands.Cog):
             )
             return
 
+        await interaction.response.defer()
+
+        try:
+            await self._resolve_duel(
+                interaction,
+                guild_id,
+                attacker,
+                opponent,
+                loss_fraction=loss_fraction,
+                cooldown_seconds=cooldown_seconds,
+                max_per_hour=max_per_hour,
+                skip_target_cd=skip_target_cd,
+                attacker_util=attacker_util,
+            )
+        except Exception:
+            logger.exception("duel failed guild=%s attacker=%s", guild_id, attacker.id)
+            await send_error(
+                interaction,
+                "The duel could not be completed. Try again in a moment.",
+            )
+
+    async def _resolve_duel(
+        self,
+        interaction: discord.Interaction,
+        guild_id: int,
+        attacker: discord.Member,
+        opponent: discord.Member,
+        *,
+        loss_fraction: float,
+        cooldown_seconds: int,
+        max_per_hour: int,
+        skip_target_cd: bool,
+        attacker_util: object,
+    ) -> None:
         attacker_equipment = await self.bot.db.get_equipment(attacker.id, guild_id)
         defender_equipment = await self.bot.db.get_equipment(opponent.id, guild_id)
         attacker_progress = await self.bot.db.get_user_progress(attacker.id, guild_id)
@@ -247,7 +281,7 @@ class Duels(commands.Cog):
             skip_same_target_cooldown=skip_target_cd,
         )
         if settlement is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Duel blocked by cooldown limits. Please try again.",
                 ephemeral=True,
             )
@@ -315,9 +349,12 @@ class Duels(commands.Cog):
             ),
             inline=False,
         )
+        battle_log = clip_embed_field(
+            "\n".join(log_lines) if log_lines else "No strikes recorded.",
+        )
         embed.add_field(
             name="Battle log",
-            value="\n".join(log_lines) if log_lines else "No strikes recorded.",
+            value=battle_log,
             inline=False,
         )
         base_max = int(
@@ -381,7 +418,7 @@ class Duels(commands.Cog):
             embed.set_image(url="attachment://trap_bomb.gif")
 
         rematch_view = RematchView(self, guild_id, winner.id, loser.id)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content=f"{attacker.mention} vs {opponent.mention}",
             embed=embed,
             files=files or None,

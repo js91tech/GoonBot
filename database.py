@@ -5154,15 +5154,23 @@ class Database:
     async def get_custom_avatar_assets(
         self, guild_id: int, user_id: int,
     ) -> tuple[bytes, bytes, str] | None:
-        cursor = await self.conn.execute(
-            """
-            SELECT portrait_data, victory_data, file_ext
-            FROM custom_avatar_assets
-            WHERE guild_id = ? AND user_id = ?
-            """,
-            (guild_id, user_id),
-        )
-        row = await cursor.fetchone()
+        try:
+            cursor = await self.conn.execute(
+                """
+                SELECT portrait_data, victory_data, file_ext
+                FROM custom_avatar_assets
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+        except Exception:
+            logging.exception(
+                "custom_avatar_assets lookup failed guild=%s user=%s",
+                guild_id,
+                user_id,
+            )
+            return None
         if row is None:
             return None
         portrait = row["portrait_data"]
