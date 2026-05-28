@@ -32,6 +32,12 @@ COGS = (
     "cogs.classes",
     "cogs.spells",
     "cogs.avatars",
+    "cogs.help",
+    "cogs.profile",
+    "cogs.loadout",
+    "cogs.consumables",
+    "cogs.crews",
+    "cogs.dungeon",
     "cogs.admin",
 )
 

@@ -835,6 +835,11 @@ class Boss(commands.Cog):
                         extra_crit=ctx.extra_crit + spell_state.extra_crit,
                     )
                     spell_note = f" via **{skill.name}**"
+        if await self.bot.db.take_pending_consumable(
+            interaction.user.id, interaction.guild_id, "raid_potion",
+        ):
+            ctx = replace(ctx, damage_mult=ctx.damage_mult * 1.2)
+            spell_note += " · **Raid Potion** +20%"
         damage, attack_critical, attack_verb = roll_player_damage(
             loadout.primary,
             off_hand=loadout.off_hand,
@@ -924,6 +929,28 @@ class Boss(commands.Cog):
             )
         if boss_element:
             embed.add_field(name="Element", value=boss_element.title(), inline=True)
+            from utils.classes import get_class
+
+            cls = get_class(class_id)
+            if cls is not None and cls.element:
+                strong_vs = config.BOSS_ELEMENT_BEATS.get(cls.element)
+                weak_to = None
+                for elem, beaten in config.BOSS_ELEMENT_BEATS.items():
+                    if beaten == cls.element:
+                        weak_to = elem
+                        break
+                if strong_vs == boss_element:
+                    embed.add_field(
+                        name="Element tip",
+                        value=f"Your **{cls.element.title()}** is **strong** vs this boss.",
+                        inline=False,
+                    )
+                elif weak_to == boss_element:
+                    embed.add_field(
+                        name="Element tip",
+                        value=f"Boss **{boss_element.title()}** is **strong** vs your **{cls.element.title()}**.",
+                        inline=False,
+                    )
         if counter_text:
             embed.add_field(name="Counterattack", value=counter_text.strip(), inline=False)
         if phase_note:

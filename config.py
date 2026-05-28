@@ -238,6 +238,19 @@ DUEL_LOSS_FRACTION = 0.10
 DUEL_SAME_TARGET_COOLDOWN_SECONDS = 40 * 60
 DUEL_MAX_ATTACKS_PER_HOUR = 3
 DUEL_MAX_COMBAT_ROUNDS = 25
+DUEL_ELO_START = 1000
+DUEL_ELO_K_FACTOR = 32
+
+JACKPOT_CONTRIBUTION_RATE = 0.02
+JACKPOT_WIN_CHANCE_SLOTS = 0.004
+
+SLOTS_MIN_BET = 10.0
+SLOTS_MAX_BET = 25_000.0
+
+DUNGEON_ROOMS = 5
+DUNGEON_ENTRY_COST = 250.0
+DUNGEON_ROOM_REWARD = 180.0
+DUNGEON_CLEAR_BONUS = 1_200.0
 
 # Job shifts consume energy; energy refills on a fixed timer up to a cap.
 ENERGY_BASE_CAP = 30
@@ -252,6 +265,7 @@ SEASONAL_EVENT_TYPES: tuple[str, ...] = (
     "bonus_income",
     "festival_boss",
     "trivia_fiesta",
+    "world_boss_week",
 )
 
 

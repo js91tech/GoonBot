@@ -18,6 +18,7 @@ EVENT_LABELS: dict[str, tuple[str, float]] = {
     "bonus_income": ("Bonus nugget income", 1.5),
     "festival_boss": ("Festival boss HP (+25%)", 1.25),
     "trivia_fiesta": ("Double trivia rewards", 2.0),
+    "world_boss_week": ("World boss HP (+50%)", 1.5),
 }
 
 
@@ -367,7 +368,32 @@ class Progression(commands.Cog):
             ),
             inline=False,
         )
-        embed.set_footer(text="Pinned stats · Try /coinflip or /blackjack in the casino corner")
+        embed.add_field(
+            name="Most duel wins",
+            value=format_rows(
+                snapshot.get("duel_wins", []), value_label="wins", value_key="score"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Top duel ELO",
+            value=format_rows(
+                snapshot.get("duel_elo", []), value_label="ELO", value_key="score"
+            ),
+            inline=False,
+        )
+        crew_rows = snapshot.get("crews", [])
+        if crew_rows:
+            crew_lines = [
+                f"**{i}. {row['crew_name']}** — Lv{int(row['level'])} · {fmt_amount(float(row['score']))}"
+                for i, row in enumerate(crew_rows, start=1)
+            ]
+            embed.add_field(
+                name="Top crews",
+                value="\n".join(crew_lines) if crew_lines else "_None_",
+                inline=False,
+            )
+        embed.set_footer(text="Casino: /slots · /jackpot · Solo PvE: /dungeon")
         await interaction.response.send_message(embed=embed)
 
 

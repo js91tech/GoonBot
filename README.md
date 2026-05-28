@@ -99,6 +99,21 @@ python bot.py
 
 Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `python3 scripts/generate_avatar_assets.py`.
 
+### QoL & DLC commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Paginated command guide |
+| `/profile` | Wallet, class, ELO, crew, cooldowns |
+| `/loadout` | Save/apply gear presets (slots 1–3) |
+| `/equip-best` | Auto-equip best weapon and armor |
+| `/sell-worn` | Sell all battle-worn drops |
+| `/use` | Raid potion, energy drink, duel scroll |
+| `/dungeon` | Solo 5-room dungeon run |
+| `/crew` | Persistent crews, treasury, leaderboard |
+| `/slots` · `/jackpot` | Casino slots + server jackpot |
+| `/fuse-aspects` | Burn 3 aspects → stronger roll |
+
 ### Shop and Gear
 
 | Command | Description |

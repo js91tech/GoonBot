@@ -32,6 +32,9 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "prestige_1": Achievement("prestige_1", "Reborn", "Prestige once.", "♻️"),
     "prestige_5": Achievement("prestige_5", "Ascendant", "Reach prestige 5.", "✨"),
     "hundred_raids": Achievement("hundred_raids", "Raid Legend", "Help defeat 100 bosses.", "🏆"),
+    "duel_master": Achievement("duel_master", "Duel Master", "Win 10 PvP duels.", "🥊"),
+    "dungeon_delver": Achievement("dungeon_delver", "Dungeon Delver", "Clear 5 dungeons.", "🗝️"),
+    "high_roller": Achievement("high_roller", "High Roller", "Win 20 casino games.", "🎰"),
 }
 
 
@@ -85,6 +88,25 @@ async def evaluate_unlocks(
         if str(row["item_id"]) == "nugget_excalibur" and int(row["quantity"]) > 0:
             await grant("excalibur_owner")
             break
+
+    try:
+        duel_wins = int(progress["duel_wins"])
+    except (KeyError, TypeError):
+        duel_wins = 0
+    try:
+        dungeons_cleared = int(progress["dungeons_cleared"])
+    except (KeyError, TypeError):
+        dungeons_cleared = 0
+    try:
+        gambles_won = int(progress["gambles_won"])
+    except (KeyError, TypeError):
+        gambles_won = 0
+    if duel_wins >= 10:
+        await grant("duel_master")
+    if dungeons_cleared >= 5:
+        await grant("dungeon_delver")
+    if gambles_won >= 20:
+        await grant("high_roller")
 
     return newly
 

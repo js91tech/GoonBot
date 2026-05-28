@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+HELP_PAGES: tuple[tuple[str, str], ...] = (
+    (
+        "Economy",
+        "**/daily** · **/balance** · **/pay** · **/leaderboard**\n"
+        "**/jobs** · **/work** · **/energy** · **/upgrade-energy**\n"
+        "Passive nuggets from chat, VC, and activity.",
+    ),
+    (
+        "Raid & boss",
+        "**/attack** · **/heal** · **/boss** · **/raid-leaderboard**\n"
+        "**/shop** · **/buy** · **/equip** · **/craft** · **/prestige**\n"
+        "**/dungeon** — solo instanced runs (DLC)",
+    ),
+    (
+        "PvP & casino",
+        "**/duel** · **/coinflip** · **/blackjack** · **/slots** · **/jackpot**\n"
+        "**/crew** — join crews, treasury, heists get crew bonuses",
+    ),
+    (
+        "Character",
+        "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar**\n"
+        "**/loadout** — presets, equip-best, sell battle-worn\n"
+        "**/profile** · **/stats** · **/quests** · **/achievements**",
+    ),
+    (
+        "Chaos modules",
+        "**/bounty** · **/heist** · **/hack** · **/trivia**\n"
+        "**/hall-of-fame** · **/event** (admins)",
+    ),
+)

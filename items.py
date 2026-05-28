@@ -329,8 +329,39 @@ TRAP_BOMB = ShopItem(
     "Stacks in inventory. Detonates for 75–125 true damage (ignores mitigation) when a duelist hits you.",
     shop_listed=True,
 )
+RAID_POTION = ShopItem(
+    "raid_potion",
+    "Raid Potion",
+    "consumable",
+    350,
+    0,
+    "Use before /attack: next boss hit deals +20% damage (one fight).",
+    shop_listed=True,
+)
+ENERGY_DRINK = ShopItem(
+    "energy_drink",
+    "Energy Drink",
+    "consumable",
+    400,
+    0,
+    "Use with /use: restores 15 job energy instantly.",
+    shop_listed=True,
+)
+DUEL_SCROLL = ShopItem(
+    "duel_scroll",
+    "Duel Scroll",
+    "consumable",
+    600,
+    0,
+    "Use before /duel: next duel strike deals +15% damage.",
+    shop_listed=True,
+)
 
-CONSUMABLES: tuple[ShopItem, ...] = (TRAP_BOMB,)
+CONSUMABLES: tuple[ShopItem, ...] = (TRAP_BOMB, RAID_POTION, ENERGY_DRINK, DUEL_SCROLL)
+
+CONSUMABLE_USE_IDS: frozenset[str] = frozenset(
+    item.id for item in CONSUMABLES if item.id != "trap_bomb"
+)
 
 
 def _inferior_boss_drop(base: ShopItem) -> ShopItem:

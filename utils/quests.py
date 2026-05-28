@@ -37,6 +37,9 @@ DAILY_QUEST_POOL: tuple[QuestDef, ...] = (
     QuestDef("gamble_once", "Lucky Break", "Play `/coinflip` or `/blackjack`.", 1, 600.0, "gamble_play"),
     QuestDef("messages", "Stay Active", "Earn from 20 chat messages.", 20, 550.0, "chat_message"),
     QuestDef("job_shifts", "Day Job", "Complete 3 instant job shifts with `/work`.", 3, 650.0, "job_work"),
+    QuestDef("duel_win", "Duelist", "Win a `/duel`.", 1, 900.0, "duel_win"),
+    QuestDef("slots_spin", "Lucky Slots", "Play `/slots` once.", 1, 550.0, "gamble_play"),
+    QuestDef("dungeon_clear", "Delver", "Clear a `/dungeon` run.", 1, 1_100.0, "dungeon_clear"),
 )
 
 DAILY_QUEST_COUNT = 3

@@ -391,6 +391,76 @@ class Gambling(commands.Cog):
         embed = view._embed(reveal_dealer=False)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @app_commands.command(name="slots", description="Spin the nugget slots (3-reel).")
+    @app_commands.describe(amount="Nuggets to wager")
+    @app_commands.guild_only()
+    async def slots(self, interaction: discord.Interaction, amount: float) -> None:
+        bet = await self._validate_bet(interaction, amount)
+        if bet is None or interaction.guild_id is None:
+            return
+        if bet > config.SLOTS_MAX_BET:
+            await interaction.response.send_message(
+                f"Max slots bet is {fmt_amount(config.SLOTS_MAX_BET)}.",
+                ephemeral=True,
+            )
+            return
+        if not await self.bot.db.debit_wallet(interaction.user.id, interaction.guild_id, bet):
+            await interaction.response.send_message("Insufficient nuggets.", ephemeral=True)
+            return
+
+        symbols = ["🍘", "💰", "⚔️", "💎", "7️⃣"]
+        reels = [random.choice(symbols) for _ in range(3)]
+        tax = await self.bot.db.get_config_value(interaction.guild_id, "gambling_house_tax")
+        payout = 0.0
+        if reels[0] == reels[1] == reels[2]:
+            mult = {"7️⃣": 8.0, "💎": 5.0, "⚔️": 3.0, "💰": 2.0}.get(reels[0], 1.5)
+            payout = _payout_after_tax(bet, bet * mult, tax)
+        elif reels[0] == reels[1] or reels[1] == reels[2]:
+            payout = _payout_after_tax(bet, bet * 1.4, tax)
+
+        lines = [f"{' | '.join(reels)}"]
+        if payout > 0:
+            await self.bot.db.credit_wallet(interaction.user.id, interaction.guild_id, payout)
+            profit = payout - bet
+            await self.bot.db.increment_progress(
+                interaction.user.id, interaction.guild_id, gambles_won=1,
+            )
+            await self.bot.db.add_jackpot_contribution(
+                interaction.guild_id, profit * config.JACKPOT_CONTRIBUTION_RATE,
+            )
+            lines.append(f"You win **{fmt_amount(payout)}** (+{fmt_amount(profit)} after tax).")
+            jackpot_win = await self.bot.db.try_win_jackpot(
+                interaction.guild_id,
+                interaction.user.id,
+                config.JACKPOT_WIN_CHANCE_SLOTS,
+            )
+            if jackpot_win > 0:
+                lines.append(f"**JACKPOT!** +{fmt_amount(jackpot_win)} from the server pool!")
+        else:
+            await self.bot.db.add_jackpot_contribution(
+                interaction.guild_id, bet * config.JACKPOT_CONTRIBUTION_RATE,
+            )
+            lines.append(f"No match. You lose **{fmt_amount(bet)}**.")
+
+        await record_quest_event(
+            self.bot.db, interaction.guild_id, interaction.user.id, "gamble_play",
+        )
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+    @app_commands.command(name="jackpot", description="View the server gambling jackpot pool.")
+    @app_commands.guild_only()
+    async def jackpot(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        pool = await self.bot.db.get_jackpot_pool(interaction.guild_id)
+        await interaction.response.send_message(
+            f"Server jackpot: **{fmt_amount(pool)}**\n"
+            f"A sliver of casino winnings feeds the pool. **/slots** can hit it "
+            f"({config.JACKPOT_WIN_CHANCE_SLOTS * 100:.2f}% chance per spin).",
+            ephemeral=True,
+        )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Gambling(bot))
