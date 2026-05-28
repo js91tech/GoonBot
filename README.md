@@ -90,6 +90,15 @@ python bot.py
 | `/boss` | Check boss status |
 | `/summon variant` | **Admin only:** force-spawn a boss |
 
+### Raid avatars
+
+| Command | Description |
+|---------|-------------|
+| `/avatar` | List, buy, equip, or preview victory-pose art for your character |
+| | Victory GIF/PNG shows on **duel wins** and when you land the **boss killing blow** |
+
+Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `python3 scripts/generate_avatar_assets.py`.
+
 ### Shop and Gear
 
 | Command | Description |

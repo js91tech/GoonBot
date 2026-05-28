@@ -419,6 +419,44 @@ class Database:
         await self._migrate_mana_system()
         await self._migrate_aspect_system()
         await self._migrate_aspect_equip_slots()
+        await self._migrate_player_avatars()
+
+    async def _migrate_player_avatars(self) -> None:
+        cols = [("avatar_id", "TEXT NOT NULL DEFAULT 'nugget_raider'")]
+        if self.is_postgres:
+            for col, typedef in cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_character' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_avatar_unlocks (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                avatar_id TEXT NOT NULL,
+                unlocked_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id, avatar_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_aspect_system(self) -> None:
         await self.conn.execute(
@@ -1496,6 +1534,10 @@ class Database:
             )
             await self.conn.execute(
                 "DELETE FROM user_character WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM player_avatar_unlocks WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             )
             await self.conn.execute(
@@ -2913,6 +2955,140 @@ class Database:
                 )
             await self.conn.commit()
             return bonus
+
+    async def ensure_avatar_unlocks(self, user_id: int, guild_id: int) -> None:
+        from utils.avatars import AVATARS
+
+        await self._ensure_character_no_lock(user_id, guild_id)
+        now = time.time()
+        for avatar in AVATARS:
+            if avatar.price > 0:
+                continue
+            await self.conn.execute(
+                """
+                INSERT OR IGNORE INTO player_avatar_unlocks
+                    (guild_id, user_id, avatar_id, unlocked_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (guild_id, user_id, avatar.id, now),
+            )
+
+    async def list_unlocked_avatar_ids(self, user_id: int, guild_id: int) -> set[str]:
+        async with self._write_lock:
+            await self.ensure_avatar_unlocks(user_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                SELECT avatar_id FROM player_avatar_unlocks
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (guild_id, user_id),
+            )
+            rows = await cursor.fetchall()
+            await self.conn.commit()
+        return {str(row["avatar_id"]) for row in rows}
+
+    async def get_equipped_avatar_id(self, user_id: int, guild_id: int) -> str:
+        row = await self.get_user_character(user_id, guild_id)
+        try:
+            stored = str(row["avatar_id"] or "")
+        except (KeyError, TypeError):
+            stored = ""
+        from utils.avatars import resolve_equipped_avatar_id
+
+        return resolve_equipped_avatar_id(stored or None)
+
+    async def unlock_avatar(self, user_id: int, guild_id: int, avatar_id: str) -> None:
+        async with self._write_lock:
+            await self.ensure_avatar_unlocks(user_id, guild_id)
+            await self.conn.execute(
+                """
+                INSERT OR IGNORE INTO player_avatar_unlocks
+                    (guild_id, user_id, avatar_id, unlocked_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (guild_id, user_id, avatar_id, time.time()),
+            )
+            await self.conn.commit()
+
+    async def buy_avatar_unlock(
+        self,
+        user_id: int,
+        guild_id: int,
+        avatar_id: str,
+        price: float,
+    ) -> str | None:
+        """Unlock paid avatar. Returns None on success, or error code string."""
+        if price <= 0:
+            await self.unlock_avatar(user_id, guild_id, avatar_id)
+            return None
+        async with self._write_lock:
+            await self.ensure_avatar_unlocks(user_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                SELECT 1 FROM player_avatar_unlocks
+                WHERE guild_id = ? AND user_id = ? AND avatar_id = ?
+                """,
+                (guild_id, user_id, avatar_id),
+            )
+            if await cursor.fetchone() is not None:
+                return "already_owned"
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self._ensure_user_no_lock(user_id, guild_id)
+                cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (user_id, guild_id),
+                )
+                wallet_row = await cursor.fetchone()
+                if wallet_row is None or float(wallet_row["wallet"]) < price:
+                    await self.conn.execute("ROLLBACK")
+                    return "insufficient_funds"
+                await self.conn.execute(
+                    """
+                    UPDATE users SET wallet = wallet - ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (price, user_id, guild_id),
+                )
+                await self.conn.execute(
+                    """
+                    INSERT OR IGNORE INTO player_avatar_unlocks
+                        (guild_id, user_id, avatar_id, unlocked_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (guild_id, user_id, avatar_id, time.time()),
+                )
+                await self.conn.commit()
+                return None
+            except Exception:
+                await self.conn.execute("ROLLBACK")
+                raise
+
+    async def set_equipped_avatar(
+        self,
+        user_id: int,
+        guild_id: int,
+        avatar_id: str,
+    ) -> str | None:
+        """Equip avatar. Returns None on success, or error code."""
+        from utils.avatars import AVATAR_MAP
+
+        if avatar_id not in AVATAR_MAP:
+            return "unknown"
+        unlocked = await self.list_unlocked_avatar_ids(user_id, guild_id)
+        if avatar_id not in unlocked:
+            return "locked"
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character SET avatar_id = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (avatar_id, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return None
 
     async def spend_job_energy(
         self,
