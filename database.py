@@ -421,6 +421,43 @@ class Database:
         await self._migrate_aspect_equip_slots()
         await self._migrate_player_avatars()
         await self._migrate_dlc_expansion()
+        await self._migrate_dlc_followup()
+
+    async def _migrate_dlc_followup(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guild_elo_season (
+                guild_id BIGINT PRIMARY KEY,
+                season_number INTEGER NOT NULL DEFAULT 1,
+                last_reset_at REAL NOT NULL DEFAULT 0
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dungeon_parties (
+                guild_id BIGINT NOT NULL,
+                leader_id BIGINT NOT NULL,
+                room INTEGER NOT NULL DEFAULT 1,
+                enemy_hp REAL NOT NULL,
+                started_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, leader_id)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dungeon_party_members (
+                guild_id BIGINT NOT NULL,
+                leader_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                player_hp REAL NOT NULL,
+                max_hp REAL NOT NULL,
+                PRIMARY KEY (guild_id, leader_id, user_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_dlc_expansion(self) -> None:
         progress_cols = [
@@ -3215,9 +3252,9 @@ class Database:
         avatar_id: str,
     ) -> str | None:
         """Equip avatar. Returns None on success, or error code."""
-        from utils.avatars import AVATAR_MAP
+        from utils.avatars import AVATAR_MAP, is_custom_avatar_id
 
-        if avatar_id not in AVATAR_MAP:
+        if not is_custom_avatar_id(avatar_id) and avatar_id not in AVATAR_MAP:
             return "unknown"
         unlocked = await self.list_unlocked_avatar_ids(user_id, guild_id)
         if avatar_id not in unlocked:
@@ -4199,6 +4236,7 @@ class Database:
         same_target_cooldown_seconds: float,
         max_attacks_per_hour: int,
         timestamp: float | None = None,
+        skip_same_target_cooldown: bool = False,
     ) -> tuple[float, float] | None:
         """Record duel and transfer loot. Returns (loot, loser_wallet) or None if blocked."""
         if winner_id not in (attacker_id, defender_id):
@@ -4221,7 +4259,11 @@ class Database:
                     (guild_id, attacker_id, defender_id),
                 )
                 row = await cursor.fetchone()
-                if row is not None and row["last_at"] is not None:
+                if (
+                    not skip_same_target_cooldown
+                    and row is not None
+                    and row["last_at"] is not None
+                ):
                     remaining = (float(row["last_at"]) + same_target_cooldown_seconds) - now
                     if remaining > 0:
                         await self.conn.rollback()
@@ -4842,3 +4884,399 @@ class Database:
                 raise
             await self.conn.commit()
             return new_id
+
+    async def get_elo_season(self, guild_id: int) -> tuple[int, float]:
+        cursor = await self.conn.execute(
+            "SELECT season_number, last_reset_at FROM guild_elo_season WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return 1, 0.0
+        return int(row["season_number"]), float(row["last_reset_at"])
+
+    async def reset_elo_season(self, guild_id: int) -> int:
+        """Reset all duel ELO to start rating; bump season. Returns new season number."""
+        import config
+
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT season_number FROM guild_elo_season WHERE guild_id = ?",
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+            season = int(row["season_number"]) + 1 if row is not None else 1
+            now = time.time()
+            await self.conn.execute(
+                """
+                INSERT INTO guild_elo_season (guild_id, season_number, last_reset_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    season_number = excluded.season_number,
+                    last_reset_at = excluded.last_reset_at
+                """,
+                (guild_id, season, now),
+            )
+            await self.conn.execute(
+                """
+                UPDATE duel_elo SET rating = ?
+                WHERE guild_id = ?
+                """,
+                (config.DUEL_ELO_START, guild_id),
+            )
+            await self.conn.commit()
+        return season
+
+    async def get_party_leader_for_member(self, guild_id: int, user_id: int) -> int | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT leader_id FROM dungeon_party_members
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return int(row["leader_id"]) if row is not None else None
+
+    async def get_dungeon_party(self, guild_id: int, leader_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+            (guild_id, leader_id),
+        )
+        return await cursor.fetchone()
+
+    async def list_party_members(
+        self, guild_id: int, leader_id: int,
+    ) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM dungeon_party_members
+            WHERE guild_id = ? AND leader_id = ?
+            ORDER BY user_id ASC
+            """,
+            (guild_id, leader_id),
+        )
+        return list(await cursor.fetchall())
+
+    async def create_dungeon_party(
+        self, guild_id: int, leader_id: int, player_hp: float, max_hp: float, enemy_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM dungeon_party_members WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_parties (guild_id, leader_id, room, enemy_hp, started_at)
+                VALUES (?, ?, 1, ?, ?)
+                """,
+                (guild_id, leader_id, enemy_hp, time.time()),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_party_members
+                    (guild_id, leader_id, user_id, player_hp, max_hp)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (guild_id, leader_id, leader_id, player_hp, max_hp),
+            )
+            await self.conn.commit()
+
+    async def join_dungeon_party(
+        self,
+        guild_id: int,
+        leader_id: int,
+        user_id: int,
+        player_hp: float,
+        max_hp: float,
+    ) -> str | None:
+        async with self._write_lock:
+            party = await self.get_dungeon_party(guild_id, leader_id)
+            if party is None:
+                return "no_party"
+            members = await self.list_party_members(guild_id, leader_id)
+            if len(members) >= 4:
+                return "full"
+            if any(int(m["user_id"]) == user_id for m in members):
+                return "already_in"
+            other = await self.get_party_leader_for_member(guild_id, user_id)
+            if other is not None and other != leader_id:
+                return "in_other_party"
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_party_members
+                    (guild_id, leader_id, user_id, player_hp, max_hp)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (guild_id, leader_id, user_id, player_hp, max_hp),
+            )
+            await self.conn.commit()
+        return None
+
+    async def leave_dungeon_party(self, guild_id: int, user_id: int) -> bool:
+        async with self._write_lock:
+            leader_id = await self.get_party_leader_for_member(guild_id, user_id)
+            if leader_id is None:
+                return False
+            await self.conn.execute(
+                """
+                DELETE FROM dungeon_party_members
+                WHERE guild_id = ? AND leader_id = ? AND user_id = ?
+                """,
+                (guild_id, leader_id, user_id),
+            )
+            if leader_id == user_id:
+                await self.conn.execute(
+                    "DELETE FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+                    (guild_id, leader_id),
+                )
+                await self.conn.execute(
+                    "DELETE FROM dungeon_party_members WHERE guild_id = ? AND leader_id = ?",
+                    (guild_id, leader_id),
+                )
+            await self.conn.commit()
+            return True
+
+    async def update_party_member_hp(
+        self, guild_id: int, leader_id: int, user_id: int, player_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE dungeon_party_members SET player_hp = ?
+                WHERE guild_id = ? AND leader_id = ? AND user_id = ?
+                """,
+                (player_hp, guild_id, leader_id, user_id),
+            )
+            await self.conn.commit()
+
+    async def update_dungeon_party_enemy(
+        self, guild_id: int, leader_id: int, *, room: int, enemy_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE dungeon_parties SET room = ?, enemy_hp = ?
+                WHERE guild_id = ? AND leader_id = ?
+                """,
+                (room, enemy_hp, guild_id, leader_id),
+            )
+            await self.conn.commit()
+
+    async def clear_dungeon_party(self, guild_id: int, leader_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM dungeon_party_members WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.commit()
+
+    async def unlock_custom_avatar(self, user_id: int, guild_id: int, avatar_id: str) -> None:
+        await self.unlock_avatar(user_id, guild_id, avatar_id)
+
+    async def get_elo_season(self, guild_id: int) -> tuple[int, float]:
+        cursor = await self.conn.execute(
+            "SELECT season_number, last_reset_at FROM guild_elo_season WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return 1, 0.0
+        return int(row["season_number"]), float(row["last_reset_at"])
+
+    async def reset_elo_season(self, guild_id: int) -> int:
+        """Reset all duel ELO to start rating; bump season. Returns new season number."""
+        import config
+
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT season_number FROM guild_elo_season WHERE guild_id = ?",
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+            season = int(row["season_number"]) + 1 if row is not None else 1
+            now = time.time()
+            await self.conn.execute(
+                """
+                INSERT INTO guild_elo_season (guild_id, season_number, last_reset_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    season_number = excluded.season_number,
+                    last_reset_at = excluded.last_reset_at
+                """,
+                (guild_id, season, now),
+            )
+            await self.conn.execute(
+                """
+                UPDATE duel_elo SET rating = ?
+                WHERE guild_id = ?
+                """,
+                (config.DUEL_ELO_START, guild_id),
+            )
+            await self.conn.commit()
+        return season
+
+    async def get_party_leader_for_member(self, guild_id: int, user_id: int) -> int | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT leader_id FROM dungeon_party_members
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return int(row["leader_id"]) if row is not None else None
+
+    async def get_dungeon_party(self, guild_id: int, leader_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+            (guild_id, leader_id),
+        )
+        return await cursor.fetchone()
+
+    async def list_party_members(
+        self, guild_id: int, leader_id: int,
+    ) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM dungeon_party_members
+            WHERE guild_id = ? AND leader_id = ?
+            ORDER BY user_id ASC
+            """,
+            (guild_id, leader_id),
+        )
+        return list(await cursor.fetchall())
+
+    async def create_dungeon_party(
+        self, guild_id: int, leader_id: int, player_hp: float, max_hp: float, enemy_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM dungeon_party_members WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_parties (guild_id, leader_id, room, enemy_hp, started_at)
+                VALUES (?, ?, 1, ?, ?)
+                """,
+                (guild_id, leader_id, enemy_hp, time.time()),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_party_members
+                    (guild_id, leader_id, user_id, player_hp, max_hp)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (guild_id, leader_id, leader_id, player_hp, max_hp),
+            )
+            await self.conn.commit()
+
+    async def join_dungeon_party(
+        self,
+        guild_id: int,
+        leader_id: int,
+        user_id: int,
+        player_hp: float,
+        max_hp: float,
+    ) -> str | None:
+        async with self._write_lock:
+            party = await self.get_dungeon_party(guild_id, leader_id)
+            if party is None:
+                return "no_party"
+            members = await self.list_party_members(guild_id, leader_id)
+            if len(members) >= 4:
+                return "full"
+            if any(int(m["user_id"]) == user_id for m in members):
+                return "already_in"
+            other = await self.get_party_leader_for_member(guild_id, user_id)
+            if other is not None and other != leader_id:
+                return "in_other_party"
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_party_members
+                    (guild_id, leader_id, user_id, player_hp, max_hp)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (guild_id, leader_id, user_id, player_hp, max_hp),
+            )
+            await self.conn.commit()
+        return None
+
+    async def leave_dungeon_party(self, guild_id: int, user_id: int) -> bool:
+        async with self._write_lock:
+            leader_id = await self.get_party_leader_for_member(guild_id, user_id)
+            if leader_id is None:
+                return False
+            await self.conn.execute(
+                """
+                DELETE FROM dungeon_party_members
+                WHERE guild_id = ? AND leader_id = ? AND user_id = ?
+                """,
+                (guild_id, leader_id, user_id),
+            )
+            if leader_id == user_id:
+                await self.conn.execute(
+                    "DELETE FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+                    (guild_id, leader_id),
+                )
+                await self.conn.execute(
+                    "DELETE FROM dungeon_party_members WHERE guild_id = ? AND leader_id = ?",
+                    (guild_id, leader_id),
+                )
+            await self.conn.commit()
+            return True
+
+    async def update_party_member_hp(
+        self, guild_id: int, leader_id: int, user_id: int, player_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE dungeon_party_members SET player_hp = ?
+                WHERE guild_id = ? AND leader_id = ? AND user_id = ?
+                """,
+                (player_hp, guild_id, leader_id, user_id),
+            )
+            await self.conn.commit()
+
+    async def update_dungeon_party_enemy(
+        self, guild_id: int, leader_id: int, *, room: int, enemy_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE dungeon_parties SET room = ?, enemy_hp = ?
+                WHERE guild_id = ? AND leader_id = ?
+                """,
+                (room, enemy_hp, guild_id, leader_id),
+            )
+            await self.conn.commit()
+
+    async def clear_dungeon_party(self, guild_id: int, leader_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM dungeon_party_members WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM dungeon_parties WHERE guild_id = ? AND leader_id = ?",
+                (guild_id, leader_id),
+            )
+            await self.conn.commit()
+
+    async def unlock_custom_avatar(self, user_id: int, guild_id: int, avatar_id: str) -> None:
+        await self.unlock_avatar(user_id, guild_id, avatar_id)

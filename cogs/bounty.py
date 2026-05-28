@@ -104,6 +104,38 @@ class Bounty(commands.Cog):
 
         await interaction.response.send_message("\n".join(lines))
 
+    @app_commands.command(
+        name="bounty-board",
+        description="Post a public embed of all active bounties in this channel.",
+    )
+    @app_commands.guild_only()
+    async def bounty_board(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+
+        rows = await self.bot.db.list_bounties(interaction.guild.id)
+        embed = discord.Embed(
+            title=f"{interaction.guild.name} — Bounty board",
+            color=discord.Color.dark_red(),
+        )
+        if not rows:
+            embed.description = "_No active bounties. Use `/bounty` to post one._"
+        else:
+            lines = []
+            for row in rows[:15]:
+                target = interaction.guild.get_member(int(row["target_id"]))
+                target_name = target.display_name if target else f"User {row['target_id']}"
+                placer = interaction.guild.get_member(int(row["placer_id"]))
+                placer_name = placer.display_name if placer else "Unknown"
+                lines.append(
+                    f"**#{row['id']}** · {target_name} — {fmt_amount(float(row['amount']))}\n"
+                    f"Trigger: `{row['trigger_word']}` · Posted by {placer_name}"
+                )
+            embed.description = "\n\n".join(lines)
+        embed.set_footer(text="Say the trigger word after the target slips up to claim")
+        await interaction.response.send_message(embed=embed)
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or message.guild is None:

@@ -11,7 +11,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "Raid & boss",
         "**/attack** · **/heal** · **/boss** · **/raid-leaderboard**\n"
         "**/shop** · **/buy** · **/equip** · **/craft** · **/prestige**\n"
-        "**/dungeon** — solo instanced runs (DLC)",
+        "**/dungeon** — solo or **party** runs · **/alchemy** · **/season**",
     ),
     (
         "PvP & casino",
@@ -20,13 +20,13 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Character",
-        "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar**\n"
+        "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar** (upload custom)\n"
         "**/loadout** — presets, equip-best, sell battle-worn\n"
         "**/profile** · **/stats** · **/quests** · **/achievements**",
     ),
     (
         "Chaos modules",
-        "**/bounty** · **/heist** · **/hack** · **/trivia**\n"
+        "**/bounty** · **/bounty-board** · **/heist** · **/hack** · **/trivia**\n"
         "**/hall-of-fame** · **/event** (admins)",
     ),
 )

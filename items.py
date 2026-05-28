@@ -357,7 +357,23 @@ DUEL_SCROLL = ShopItem(
     shop_listed=True,
 )
 
-CONSUMABLES: tuple[ShopItem, ...] = (TRAP_BOMB, RAID_POTION, ENERGY_DRINK, DUEL_SCROLL)
+ALCHEMY_SCRAP = ShopItem(
+    "alchemy_scrap",
+    "Alchemy Scrap",
+    "consumable",
+    0,
+    0,
+    "Crafting material from dungeons. Used with /alchemy.",
+    shop_listed=False,
+)
+
+CONSUMABLES: tuple[ShopItem, ...] = (
+    TRAP_BOMB,
+    RAID_POTION,
+    ENERGY_DRINK,
+    DUEL_SCROLL,
+    ALCHEMY_SCRAP,
+)
 
 CONSUMABLE_USE_IDS: frozenset[str] = frozenset(
     item.id for item in CONSUMABLES if item.id != "trap_bomb"
