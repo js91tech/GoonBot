@@ -31,6 +31,34 @@ def _item_line(item: ShopItem) -> str:
     return f"`{item.id}` - **{item.name}** ({', '.join(price_bits)}): {format_item_stats(item)}"
 
 
+# Discord embed description max is 4096; field values max 1024.
+_EMBED_DESC_MAX = 4096
+_EMBED_FIELD_MAX = 1024
+
+
+def _shop_embed_chunks(lines: list[str]) -> tuple[str | None, list[tuple[str, str]]]:
+    """Return optional description and field chunks that fit Discord limits."""
+    text = "\n".join(lines)
+    if len(text) <= _EMBED_DESC_MAX:
+        return text, []
+    fields: list[tuple[str, str]] = []
+    chunk: list[str] = []
+    chunk_len = 0
+    field_index = 1
+    for line in lines:
+        line_len = len(line) + (1 if chunk else 0)
+        if chunk and chunk_len + line_len > _EMBED_FIELD_MAX:
+            fields.append((f"Items ({field_index})", "\n".join(chunk)))
+            field_index += 1
+            chunk = []
+            chunk_len = 0
+        chunk.append(line)
+        chunk_len += line_len
+    if chunk:
+        fields.append((f"Items ({field_index})", "\n".join(chunk)))
+    return None, fields[:25]
+
+
 class Shop(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -134,11 +162,15 @@ class Shop(commands.Cog):
             if category == "all"
             else f"Nugget Shop — {category_labels.get(category, category.title())}"
         )
-        embed = discord.Embed(
-            title=title,
-            description="\n".join(_item_line(item) for item in items),
-            color=discord.Color.orange(),
-        )
+        lines = [_item_line(item) for item in items]
+        description, field_chunks = _shop_embed_chunks(lines)
+        embed = discord.Embed(title=title, color=discord.Color.orange())
+        if description is not None:
+            embed.description = description
+        else:
+            embed.description = f"{len(items)} items — use category filters if needed."
+            for field_name, field_value in field_chunks:
+                embed.add_field(name=field_name, value=field_value, inline=False)
         embed.set_footer(
             text="Use /buy [item] [quantity] then /equip. Trap bombs: /buy trap_bomb. Aspects: /buy-aspect."
         )

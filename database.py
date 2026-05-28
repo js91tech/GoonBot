@@ -4694,33 +4694,25 @@ class Database:
                 "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
                 (amount, user_id, guild_id),
             )
+            xp_gain = int(amount // 100)
             await self.conn.execute(
                 """
                 INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
-                VALUES (?, ?, 0, 1, 0)
-                ON CONFLICT(guild_id, crew_name) DO NOTHING
+                VALUES (?, ?, ?, 1, ?)
+                ON CONFLICT(guild_id, crew_name) DO UPDATE SET
+                    treasury = crew_stats.treasury + excluded.treasury,
+                    xp = crew_stats.xp + excluded.xp
                 """,
-                (guild_id, crew_name),
+                (guild_id, crew_name, amount, xp_gain),
             )
-            xp_gain = int(amount // 100)
-            treasury_cursor = await self.conn.execute(
-                """
-                UPDATE crew_stats SET treasury = treasury + ?, xp = xp + ?
-                WHERE guild_id = ? AND crew_name = ?
-                """,
-                (amount, xp_gain, guild_id, crew_name),
-            )
-            updated = int(getattr(treasury_cursor, "rowcount", 0) or 0)
-            if updated < 1:
-                await self.conn.commit()
-                return "treasury_error"
             await self.conn.execute(
                 """
                 INSERT INTO crew_member_contributions
                     (guild_id, crew_name, user_id, contributed)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(guild_id, crew_name, user_id) DO UPDATE SET
-                    contributed = contributed + excluded.contributed
+                    contributed = crew_member_contributions.contributed
+                        + excluded.contributed
                 """,
                 (guild_id, crew_name, user_id, amount),
             )
