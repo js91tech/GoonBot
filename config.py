@@ -255,7 +255,19 @@ DUNGEON_PARTY_ENTRY_COST = 400.0
 DUNGEON_SCRAP_PER_CLEAR = 2
 
 CUSTOM_AVATAR_UPLOAD_COST = 1_000.0
-CUSTOM_AVATAR_MAX_BYTES = 600_000
+# Discord allows up to 8 MB per slash-command attachment; default to that cap.
+CUSTOM_AVATAR_MAX_BYTES = int(
+    os.getenv("CUSTOM_AVATAR_MAX_BYTES", str(8 * 1024 * 1024)),
+)
+
+
+def custom_avatar_max_size_label() -> str:
+    """Human-readable upload cap for command messages."""
+    n = CUSTOM_AVATAR_MAX_BYTES
+    if n >= 1024 * 1024:
+        mb = n / (1024 * 1024)
+        return f"{mb:.0f} MB" if mb == int(mb) else f"{mb:.1f} MB"
+    return f"{max(1, n // 1024)} KB"
 
 # Job shifts consume energy; energy refills on a fixed timer up to a cap.
 ENERGY_BASE_CAP = 30

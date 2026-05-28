@@ -71,15 +71,16 @@ class Avatars(commands.Cog):
             return
         user_id = interaction.user.id
 
+        max_label = config.custom_avatar_max_size_label()
         if not is_valid_image_attachment(image):
             await interaction.followup.send(
-                "Attach a **PNG, GIF, or WebP** image (max ~600 KB).",
+                f"Attach a **PNG, GIF, or WebP** image (max {max_label}).",
                 ephemeral=True,
             )
             return
         if image.size and image.size > config.CUSTOM_AVATAR_MAX_BYTES:
             await interaction.followup.send(
-                "Image too large (max 600 KB).", ephemeral=True,
+                f"Image too large (max {max_label}).", ephemeral=True,
             )
             return
 
@@ -93,7 +94,7 @@ class Avatars(commands.Cog):
         data = await image.read()
         if len(data) > config.CUSTOM_AVATAR_MAX_BYTES:
             await interaction.followup.send(
-                "Image too large (max 600 KB).", ephemeral=True,
+                f"Image too large (max {max_label}).", ephemeral=True,
             )
             return
 
