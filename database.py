@@ -448,6 +448,38 @@ class Database:
         await self._migrate_player_avatars()
         await self._migrate_dlc_expansion()
         await self._migrate_dlc_followup()
+        await self._migrate_crew_banking()
+
+    async def _migrate_crew_banking(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS crew_member_contributions (
+                guild_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                user_id BIGINT NOT NULL,
+                contributed REAL NOT NULL DEFAULT 0 CHECK (contributed >= 0),
+                PRIMARY KEY (guild_id, crew_name, user_id)
+            )
+            """,
+        )
+        pk = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS crew_loans (
+                loan_id {pk},
+                guild_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                borrower_id BIGINT NOT NULL,
+                principal REAL NOT NULL CHECK (principal > 0),
+                remaining REAL NOT NULL CHECK (remaining >= 0),
+                interest_rate REAL NOT NULL,
+                created_at REAL NOT NULL,
+                due_at REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active'
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_dlc_followup(self) -> None:
         await self.conn.execute(
@@ -4528,22 +4560,43 @@ class Database:
         row = await cursor.fetchone()
         return str(row["crew_name"]) if row is not None else None
 
-    async def list_joinable_crew_names(self, guild_id: int) -> list[str]:
+    async def list_joinable_crews(
+        self, guild_id: int, *, exclude_user_id: int | None = None,
+    ) -> list[tuple[str, int]]:
+        """Crews with fewer than 8 members. Optionally exclude crews the user is already in."""
         cursor = await self.conn.execute(
             """
-            SELECT cs.crew_name, COUNT(cm.user_id) AS members
+            SELECT cs.crew_name, COUNT(cm.user_id) AS member_count
             FROM crew_stats cs
             LEFT JOIN crew_members cm
                 ON cs.guild_id = cm.guild_id AND cs.crew_name = cm.crew_name
             WHERE cs.guild_id = ?
             GROUP BY cs.crew_name
-            HAVING members < 8
+            HAVING COUNT(cm.user_id) < 8
             ORDER BY cs.crew_name ASC
             """,
             (guild_id,),
         )
         rows = await cursor.fetchall()
-        return [str(row["crew_name"]) for row in rows]
+        out: list[tuple[str, int]] = []
+        for row in rows:
+            name = str(row["crew_name"])
+            count = int(row["member_count"])
+            if exclude_user_id is not None:
+                member_cursor = await self.conn.execute(
+                    """
+                    SELECT 1 FROM crew_members
+                    WHERE guild_id = ? AND crew_name = ? AND user_id = ?
+                    """,
+                    (guild_id, name, exclude_user_id),
+                )
+                if await member_cursor.fetchone() is not None:
+                    continue
+            out.append((name, count))
+        return out
+
+    async def list_joinable_crew_names(self, guild_id: int) -> list[str]:
+        return [name for name, _ in await self.list_joinable_crews(guild_id)]
 
     async def resolve_crew_name(self, guild_id: int, crew_name: str) -> str | None:
         """Match an existing crew name case-insensitively; return canonical spelling."""
@@ -4601,7 +4654,10 @@ class Database:
             await self.conn.commit()
         return None
 
-    async def leave_crew(self, user_id: int, guild_id: int) -> bool:
+    async def leave_crew(self, user_id: int, guild_id: int) -> bool | str:
+        loan = await self.get_active_crew_loan(user_id, guild_id)
+        if loan is not None and float(loan["remaining"]) > 0:
+            return "active_loan"
         async with self._write_lock:
             cursor = await self.conn.execute(
                 "DELETE FROM crew_members WHERE guild_id = ? AND user_id = ?",
@@ -4646,17 +4702,274 @@ class Database:
                 """,
                 (guild_id, crew_name),
             )
+            xp_gain = int(amount // 100)
             treasury_cursor = await self.conn.execute(
                 """
                 UPDATE crew_stats SET treasury = treasury + ?, xp = xp + ?
                 WHERE guild_id = ? AND crew_name = ?
                 """,
-                (amount, int(amount // 100), guild_id, crew_name),
+                (amount, xp_gain, guild_id, crew_name),
             )
             updated = int(getattr(treasury_cursor, "rowcount", 0) or 0)
             if updated < 1:
                 await self.conn.commit()
                 return "treasury_error"
+            await self.conn.execute(
+                """
+                INSERT INTO crew_member_contributions
+                    (guild_id, crew_name, user_id, contributed)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, crew_name, user_id) DO UPDATE SET
+                    contributed = contributed + excluded.contributed
+                """,
+                (guild_id, crew_name, user_id, amount),
+            )
+            await self._recalc_crew_level_no_lock(guild_id, crew_name)
+            await self.conn.commit()
+        return None
+
+    async def _recalc_crew_level_no_lock(self, guild_id: int, crew_name: str) -> None:
+        from utils.crew_banking import crew_level_from_xp
+
+        cursor = await self.conn.execute(
+            "SELECT xp FROM crew_stats WHERE guild_id = ? AND crew_name = ?",
+            (guild_id, crew_name),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return
+        level = crew_level_from_xp(int(row["xp"]))
+        await self.conn.execute(
+            """
+            UPDATE crew_stats SET level = ?
+            WHERE guild_id = ? AND crew_name = ?
+            """,
+            (level, guild_id, crew_name),
+        )
+
+    async def get_crew_contributed(
+        self, guild_id: int, crew_name: str, user_id: int,
+    ) -> float:
+        cursor = await self.conn.execute(
+            """
+            SELECT contributed FROM crew_member_contributions
+            WHERE guild_id = ? AND crew_name = ? AND user_id = ?
+            """,
+            (guild_id, crew_name, user_id),
+        )
+        row = await cursor.fetchone()
+        return float(row["contributed"]) if row is not None else 0.0
+
+    async def get_active_crew_loan(
+        self, user_id: int, guild_id: int,
+    ) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM crew_loans
+            WHERE guild_id = ? AND borrower_id = ? AND status = 'active'
+            ORDER BY loan_id DESC
+            LIMIT 1
+            """,
+            (guild_id, user_id),
+        )
+        return await cursor.fetchone()
+
+    async def get_crew_banking_snapshot(
+        self, user_id: int, guild_id: int,
+    ) -> dict[str, object] | None:
+        crew_name = await self.get_crew_membership(user_id, guild_id)
+        if crew_name is None:
+            return None
+        stats = await self.get_crew_stats(guild_id, crew_name)
+        if stats is None:
+            return None
+        contributed = await self.get_crew_contributed(guild_id, crew_name, user_id)
+        loan = await self.get_active_crew_loan(user_id, guild_id)
+        return {
+            "crew_name": crew_name,
+            "treasury": float(stats["treasury"]),
+            "xp": int(stats["xp"]),
+            "level": int(stats["level"]),
+            "contributed": contributed,
+            "loan": loan,
+        }
+
+    async def issue_crew_loan(
+        self, user_id: int, guild_id: int, amount: float,
+    ) -> str | None:
+        import config
+        from utils.crew_banking import effective_interest_rate, max_loan_amount
+
+        if amount < config.CREW_LOAN_MIN_AMOUNT:
+            return "amount_too_low"
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                await self.conn.commit()
+                return "not_in_crew"
+            crew_name = str(row["crew_name"])
+            if await self.get_active_crew_loan(user_id, guild_id) is not None:
+                await self.conn.commit()
+                return "active_loan"
+            stats = await self.get_crew_stats(guild_id, crew_name)
+            if stats is None:
+                await self.conn.commit()
+                return "no_treasury"
+            treasury = float(stats["treasury"])
+            level = int(stats["level"])
+            cap = max_loan_amount(treasury, level)
+            if amount > cap:
+                await self.conn.commit()
+                return "amount_too_high"
+            if amount > treasury:
+                await self.conn.commit()
+                return "insufficient_treasury"
+            now = time.time()
+            rate = effective_interest_rate(level)
+            await self.conn.execute(
+                """
+                UPDATE crew_stats SET treasury = treasury - ?
+                WHERE guild_id = ? AND crew_name = ?
+                """,
+                (amount, guild_id, crew_name),
+            )
+            await self.conn.execute(
+                """
+                UPDATE users SET wallet = wallet + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO crew_loans (
+                    guild_id, crew_name, borrower_id, principal, remaining,
+                    interest_rate, created_at, due_at, status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                """,
+                (
+                    guild_id,
+                    crew_name,
+                    user_id,
+                    amount,
+                    amount,
+                    rate,
+                    now,
+                    now + config.CREW_LOAN_TERM_SECONDS,
+                ),
+            )
+            await self.conn.commit()
+        return None
+
+    async def repay_crew_loan(
+        self, user_id: int, guild_id: int, payment: float,
+    ) -> str | None:
+        if payment <= 0:
+            return "invalid_amount"
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            loan = await self.get_active_crew_loan(user_id, guild_id)
+            if loan is None:
+                await self.conn.commit()
+                return "no_loan"
+            remaining = float(loan["remaining"])
+            if remaining <= 0:
+                await self.conn.commit()
+                return "no_loan"
+            rate = float(loan["interest_rate"])
+            wallet_cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await wallet_cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < payment:
+                await self.conn.commit()
+                return "insufficient_funds"
+            pay = min(payment, remaining * (1.0 + rate))
+            interest_portion = pay * rate
+            principal_portion = pay - interest_portion
+            new_remaining = max(0.0, remaining - principal_portion)
+            crew_name = str(loan["crew_name"])
+            loan_id = int(loan["loan_id"])
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (pay, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE crew_stats SET treasury = treasury + ?
+                WHERE guild_id = ? AND crew_name = ?
+                """,
+                (pay, guild_id, crew_name),
+            )
+            status = "paid" if new_remaining <= 0.01 else "active"
+            await self.conn.execute(
+                """
+                UPDATE crew_loans SET remaining = ?, status = ?
+                WHERE loan_id = ?
+                """,
+                (new_remaining, status, loan_id),
+            )
+            await self.conn.commit()
+        return None
+
+    async def withdraw_crew_contribution(
+        self, user_id: int, guild_id: int, amount: float,
+    ) -> str | None:
+        import config
+
+        if amount < config.CREW_WITHDRAW_MIN:
+            return "invalid_amount"
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            loan = await self.get_active_crew_loan(user_id, guild_id)
+            if loan is not None and float(loan["remaining"]) > 0:
+                await self.conn.commit()
+                return "active_loan"
+            cursor = await self.conn.execute(
+                "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                await self.conn.commit()
+                return "not_in_crew"
+            crew_name = str(row["crew_name"])
+            contributed = await self.get_crew_contributed(guild_id, crew_name, user_id)
+            if amount > contributed:
+                await self.conn.commit()
+                return "insufficient_contribution"
+            stats = await self.get_crew_stats(guild_id, crew_name)
+            if stats is None or float(stats["treasury"]) < amount:
+                await self.conn.commit()
+                return "insufficient_treasury"
+            await self.conn.execute(
+                """
+                UPDATE crew_member_contributions SET contributed = contributed - ?
+                WHERE guild_id = ? AND crew_name = ? AND user_id = ?
+                """,
+                (amount, guild_id, crew_name, user_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE crew_stats SET treasury = treasury - ?
+                WHERE guild_id = ? AND crew_name = ?
+                """,
+                (amount, guild_id, crew_name),
+            )
+            await self.conn.execute(
+                """
+                UPDATE users SET wallet = wallet + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, user_id, guild_id),
+            )
             await self.conn.commit()
         return None
 

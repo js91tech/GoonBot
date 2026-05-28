@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import logging
+import time
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.helpers import fmt_amount, guild_only_message, valid_amount
+import config
+from utils.crew_banking import perks_summary
+from utils.helpers import fmt_amount, guild_only_message, send_error, valid_amount
+
+logger = logging.getLogger(__name__)
 
 
 class Crews(commands.Cog):
@@ -18,29 +25,52 @@ class Crews(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         if interaction.guild_id is None:
             return []
-        names = await self.bot.db.list_joinable_crew_names(interaction.guild_id)
-        needle = current.lower()
+        action = getattr(interaction.namespace, "action", None)
+        if action is not None and str(action) != "join":
+            return []
+        try:
+            if await self.bot.db.get_crew_membership(
+                interaction.user.id, interaction.guild_id,
+            ):
+                return []
+            crews = await self.bot.db.list_joinable_crews(
+                interaction.guild_id,
+                exclude_user_id=interaction.user.id,
+            )
+        except Exception:
+            logger.exception("crew_name_autocomplete failed")
+            return []
+        needle = (current or "").strip().lower()
         choices: list[app_commands.Choice[str]] = []
-        for name in names:
+        for name, count in crews:
             if needle and needle not in name.lower():
                 continue
-            choices.append(app_commands.Choice(name=name[:100], value=name))
+            label = f"{name} ({count}/8)"
+            if len(label) > 100:
+                label = label[:97] + "..."
+            choices.append(app_commands.Choice(name=label, value=name[:100]))
             if len(choices) >= 25:
                 break
         return choices
 
-    @app_commands.command(name="crew", description="Crew 2.0: join, treasury, leaderboard.")
+    @app_commands.command(
+        name="crew",
+        description="Crew bank: join, deposit, withdraw, loans, repay, leaderboard.",
+    )
     @app_commands.describe(
         action="What to do",
-        name="Crew name — pick an existing crew or type a new one",
-        amount="Nuggets to deposit into crew treasury",
+        name="Crew name (Join — pick from autocomplete)",
+        amount="Nuggets for deposit, withdraw, loan, or repay",
     )
     @app_commands.choices(
         action=[
-            app_commands.Choice(name="Status", value="status"),
+            app_commands.Choice(name="Bank / status", value="bank"),
             app_commands.Choice(name="Join crew", value="join"),
             app_commands.Choice(name="Leave crew", value="leave"),
             app_commands.Choice(name="Deposit", value="deposit"),
+            app_commands.Choice(name="Withdraw", value="withdraw"),
+            app_commands.Choice(name="Borrow loan", value="loan"),
+            app_commands.Choice(name="Repay loan", value="repay"),
             app_commands.Choice(name="Leaderboard", value="leaderboard"),
         ],
     )
@@ -86,6 +116,11 @@ class Crews(commands.Cog):
                     ephemeral=True,
                 )
                 return
+            if await self.bot.db.get_crew_membership(uid, guild_id):
+                await interaction.response.send_message(
+                    "Leave your current crew before joining another.", ephemeral=True,
+                )
+                return
             err = await self.bot.db.join_crew(uid, guild_id, name)
             messages = {
                 "invalid_name": "Crew name must be 2–32 characters.",
@@ -102,78 +137,167 @@ class Crews(commands.Cog):
             return
 
         if action == "leave":
-            if await self.bot.db.leave_crew(uid, guild_id):
+            result = await self.bot.db.leave_crew(uid, guild_id)
+            if result is True:
                 await interaction.response.send_message("You left your crew.", ephemeral=True)
+            elif result == "active_loan":
+                await interaction.response.send_message(
+                    "Repay your crew loan first (`/crew` → Repay loan).", ephemeral=True,
+                )
             else:
                 await interaction.response.send_message(
                     "You are not in a crew.", ephemeral=True,
                 )
             return
 
-        if action == "deposit":
-            if amount is None:
-                await interaction.response.send_message(
-                    "Set an **amount** to deposit.", ephemeral=True,
+        banking_actions = {"bank", "deposit", "withdraw", "loan", "repay"}
+        if action in banking_actions:
+            await interaction.response.defer(ephemeral=True)
+            try:
+                if action == "bank":
+                    await self._send_bank_embed(interaction, guild_id, uid)
+                    return
+                if amount is None:
+                    await interaction.followup.send(
+                        "Set an **amount** for this action.", ephemeral=True,
+                    )
+                    return
+                min_amount = (
+                    config.CREW_LOAN_MIN_AMOUNT
+                    if action in {"loan", "repay"}
+                    else config.CREW_WITHDRAW_MIN
                 )
-                return
-            if not valid_amount(amount):
-                await interaction.response.send_message(
-                    "Enter a positive amount (at least 0.01 nuggets).", ephemeral=True,
-                )
-                return
-            deposit = float(amount)
-            err = await self.bot.db.deposit_crew_treasury(uid, guild_id, deposit)
-            if err:
-                msgs = {
-                    "not_in_crew": "Join a crew first.",
-                    "insufficient_funds": "Not enough nuggets.",
-                    "invalid_amount": "Enter a positive amount.",
-                    "treasury_error": "Could not update crew treasury. Try again.",
-                }
-                await interaction.response.send_message(
-                    msgs.get(err, err), ephemeral=True,
-                )
-                return
-            membership = await self.bot.db.get_crew_membership(uid, guild_id)
-            stats = (
-                await self.bot.db.get_crew_stats(guild_id, membership)
-                if membership is not None
-                else None
-            )
-            treasury = float(stats["treasury"]) if stats is not None else deposit
-            await interaction.response.send_message(
-                f"Deposited **{fmt_amount(deposit)}** into your crew treasury "
-                f"(total **{fmt_amount(treasury)}**).",
-                ephemeral=True,
-            )
+                if not valid_amount(amount, minimum=min_amount):
+                    await interaction.followup.send(
+                        "Enter a positive amount.", ephemeral=True,
+                    )
+                    return
+                value = float(amount)
+                if action == "deposit":
+                    err = await self.bot.db.deposit_crew_treasury(uid, guild_id, value)
+                    msgs = {
+                        "not_in_crew": "Join a crew first.",
+                        "insufficient_funds": "Not enough nuggets.",
+                        "invalid_amount": "Enter a positive amount.",
+                        "treasury_error": "Could not update crew treasury. Try again.",
+                    }
+                    if err:
+                        await interaction.followup.send(msgs.get(err, err), ephemeral=True)
+                        return
+                    snap = await self.bot.db.get_crew_banking_snapshot(uid, guild_id)
+                    treasury = float(snap["treasury"]) if snap else value
+                    await interaction.followup.send(
+                        f"Deposited **{fmt_amount(value)}** (treasury **{fmt_amount(treasury)}**).",
+                        ephemeral=True,
+                    )
+                    return
+                if action == "withdraw":
+                    err = await self.bot.db.withdraw_crew_contribution(uid, guild_id, value)
+                    msgs = {
+                        "not_in_crew": "Join a crew first.",
+                        "active_loan": "Repay your loan before withdrawing contributions.",
+                        "insufficient_contribution": "You can only withdraw what you deposited.",
+                        "insufficient_treasury": "Crew treasury is too low.",
+                        "insufficient_funds": "Could not credit your wallet.",
+                        "invalid_amount": "Enter a positive amount.",
+                    }
+                    if err:
+                        await interaction.followup.send(msgs.get(err, err), ephemeral=True)
+                        return
+                    await interaction.followup.send(
+                        f"Withdrew **{fmt_amount(value)}** to your wallet.", ephemeral=True,
+                    )
+                    return
+                if action == "loan":
+                    err = await self.bot.db.issue_crew_loan(uid, guild_id, value)
+                    msgs = {
+                        "not_in_crew": "Join a crew first.",
+                        "active_loan": "You already have a crew loan. Repay it first.",
+                        "amount_too_low": f"Minimum loan is {fmt_amount(config.CREW_LOAN_MIN_AMOUNT)}.",
+                        "amount_too_high": "Loan exceeds your crew limit or treasury.",
+                        "insufficient_treasury": "Crew treasury does not have enough nuggets.",
+                        "invalid_amount": "Enter a positive amount.",
+                    }
+                    if err:
+                        await interaction.followup.send(msgs.get(err, err), ephemeral=True)
+                        return
+                    await interaction.followup.send(
+                        f"Borrowed **{fmt_amount(value)}** from the crew treasury.", ephemeral=True,
+                    )
+                    return
+                if action == "repay":
+                    err = await self.bot.db.repay_crew_loan(uid, guild_id, value)
+                    msgs = {
+                        "no_loan": "You have no active crew loan.",
+                        "insufficient_funds": "Not enough nuggets in your wallet.",
+                        "invalid_amount": "Enter a positive amount.",
+                    }
+                    if err:
+                        await interaction.followup.send(msgs.get(err, err), ephemeral=True)
+                        return
+                    loan = await self.bot.db.get_active_crew_loan(uid, guild_id)
+                    if loan is not None and float(loan["remaining"]) > 0:
+                        await interaction.followup.send(
+                            f"Paid **{fmt_amount(value)}**. "
+                            f"Remaining: **{fmt_amount(float(loan['remaining']))}**.",
+                            ephemeral=True,
+                        )
+                    else:
+                        await interaction.followup.send(
+                            f"Loan paid off! (**{fmt_amount(value)}**)", ephemeral=True,
+                        )
+                    return
+            except Exception:
+                logger.exception("crew banking action=%s failed", action)
+                await send_error(interaction, "Something went wrong. Try again in a moment.")
             return
 
-        membership = await self.bot.db.get_crew_membership(uid, guild_id)
-        if membership is None:
-            await interaction.response.send_message(
+        await interaction.response.send_message("Unknown action.", ephemeral=True)
+
+    async def _send_bank_embed(
+        self, interaction: discord.Interaction, guild_id: int, uid: int,
+    ) -> None:
+        snap = await self.bot.db.get_crew_banking_snapshot(uid, guild_id)
+        if snap is None:
+            await interaction.followup.send(
                 "You are not in a crew. Use **Join crew** to create or join one.",
                 ephemeral=True,
             )
             return
-        stats = await self.bot.db.get_crew_stats(guild_id, membership)
-        members = await self.bot.db.list_crew_members(guild_id, membership)
+        members = await self.bot.db.list_crew_members(guild_id, snap["crew_name"])
         member_names = []
         if interaction.guild:
             for row in members[:8]:
                 m = interaction.guild.get_member(int(row["user_id"]))
                 member_names.append(m.display_name if m else f"User {row['user_id']}")
-        treasury = float(stats["treasury"]) if stats else 0.0
-        level = int(stats["level"]) if stats else 1
-        xp = int(stats["xp"]) if stats else 0
+        level = int(snap["level"])
         embed = discord.Embed(
-            title=f"Crew {membership}",
+            title=f"Crew {snap['crew_name']}",
             description="\n".join(member_names) or "_No members_",
             color=discord.Color.blue(),
         )
-        embed.add_field(name="Treasury", value=fmt_amount(treasury), inline=True)
-        embed.add_field(name="Level / XP", value=f"{level} / {xp}", inline=True)
-        embed.set_footer(text="Heists with crewmates get +10% success per member (existing rule)")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed.add_field(name="Treasury", value=fmt_amount(float(snap["treasury"])), inline=True)
+        embed.add_field(name="Your deposits", value=fmt_amount(float(snap["contributed"])), inline=True)
+        embed.add_field(name="Level / XP", value=f"{level} / {int(snap['xp'])}", inline=True)
+        embed.add_field(name="Perks", value=perks_summary(level), inline=False)
+        loan = snap["loan"]
+        if loan is not None:
+            remaining = float(loan["remaining"])
+            due_at = float(loan["due_at"])
+            overdue = time.time() > due_at
+            embed.add_field(
+                name="Active loan",
+                value=(
+                    f"Remaining **{fmt_amount(remaining)}** of "
+                    f"{fmt_amount(float(loan['principal']))}"
+                    f"{' — **overdue**' if overdue else ''}"
+                ),
+                inline=False,
+            )
+        embed.set_footer(
+            text="Deposit · Withdraw (your share) · Borrow · Repay · Same-crew /heist +5% each",
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

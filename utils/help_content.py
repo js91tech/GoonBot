@@ -16,7 +16,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     (
         "PvP & casino",
         "**/duel** · **/coinflip** · **/blackjack** · **/slots** · **/jackpot**\n"
-        "**/crew** — join crews, treasury, heists get crew bonuses",
+        "**/crew** — bank, join, deposit, withdraw, crew loans, repay; same persistent crew on `/heist` +5% each",
     ),
     (
         "Character",

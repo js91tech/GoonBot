@@ -35,6 +35,7 @@ class Profile(commands.Cog):
         progress = await self.bot.db.get_user_progress(uid, guild_id)
         rating, elo_wins, elo_losses = await self.bot.db.get_duel_elo(uid, guild_id)
         crew = await self.bot.db.get_crew_membership(uid, guild_id)
+        crew_loan = await self.bot.db.get_active_crew_loan(uid, guild_id)
         avatar_id = await self.bot.db.get_equipped_avatar_id(uid, guild_id)
         class_id = await self.bot.db.get_class_id(uid, guild_id)
         snap = await self.bot.db.get_mana_snapshot(uid, guild_id)
@@ -83,9 +84,14 @@ class Profile(commands.Cog):
         class_text = class_id or "_No class — /class-choose_"
         embed.add_field(name="Class", value=f"`{class_text}`", inline=True)
         embed.add_field(name="Avatar", value=f"`{avatar_id}`", inline=True)
+        crew_value = crew or "_None — /crew join_"
+        if crew_loan is not None and float(crew_loan["remaining"]) > 0:
+            crew_value += (
+                f"\nLoan: **{fmt_amount(float(crew_loan['remaining']))}** remaining"
+            )
         embed.add_field(
             name="Crew",
-            value=crew or "_None — /crew join_",
+            value=crew_value,
             inline=True,
         )
         embed.add_field(

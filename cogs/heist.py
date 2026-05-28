@@ -9,6 +9,7 @@ from discord.ext import commands
 
 import config
 from utils.achievements import evaluate_unlocks, format_unlock_message
+from utils.crew_banking import heist_same_crew_bonus
 from utils.gear_sets import heist_intimidation_bonus
 from utils.helpers import fmt_amount, guild_only_message
 from utils.loadout import parse_loadout
@@ -89,6 +90,16 @@ class Heist(commands.Cog):
             interaction.user.id,
             interaction.guild_id,
         )
+        crew_by_user: dict[int, str | None] = {}
+        for member in participants:
+            crew_by_user[member.id] = await self.bot.db.get_crew_membership(
+                member.id,
+                interaction.guild_id,
+            )
+        persistent_crew_bonus = heist_same_crew_bonus(
+            [member.id for member in participants],
+            crew_by_user,
+        )
         success_chance = min(
             config.HEIST_MAX_SUCCESS,
             base_success
@@ -96,6 +107,7 @@ class Heist(commands.Cog):
             + intimidation
             + class_mod.heist_success_bonus
             + spell_heist
+            + persistent_crew_bonus
             - class_mod.heist_success_penalty,
         )
 

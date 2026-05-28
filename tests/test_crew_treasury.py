@@ -40,12 +40,13 @@ class CrewTreasuryTests(unittest.IsolatedAsyncioTestCase):
         await self.db.join_crew(1000, guild_id, "FullCrew")
         for i in range(1, 8):
             await self.db.join_crew(1000 + i, guild_id, "FullCrew")
-        names = await self.db.list_joinable_crew_names(guild_id)
-        self.assertNotIn("FullCrew", names)
+        joinable = await self.db.list_joinable_crews(guild_id)
+        self.assertNotIn("FullCrew", [name for name, _ in joinable])
 
         await self.db.join_crew(2000, guild_id, "OpenCrew")
-        names = await self.db.list_joinable_crew_names(guild_id)
-        self.assertIn("OpenCrew", names)
+        joinable = await self.db.list_joinable_crews(guild_id)
+        open_row = next((row for row in joinable if row[0] == "OpenCrew"), None)
+        self.assertIsNotNone(open_row)
 
 
 if __name__ == "__main__":
