@@ -112,6 +112,21 @@ Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `p
 | `/dungeon` | Solo 5-room dungeon run |
 | `/crew` | Bank, join, deposit, withdraw, crew loans, repay, leaderboard |
 | `/slots` · `/jackpot` | Casino slots + server jackpot |
+
+### Crew banking
+
+Persistent crews share a **treasury** funded by member deposits. Deposits earn crew **XP** and raise **level**, which unlocks higher loan caps and lower interest.
+
+| `/crew` action | What it does |
+|----------------|--------------|
+| **Bank / status** | Treasury, your contributed balance, active loan, level perks |
+| **Deposit** | Move nuggets from your wallet into the crew treasury (tracks your contribution) |
+| **Withdraw** | Pull up to what you deposited (blocked while you owe a loan) |
+| **Loan** | Borrow from the treasury within your crew level cap (min 50 nuggets) |
+| **Repay** | Pay down your loan; interest returns to the treasury |
+| **Leave** | Blocked until your crew loan is paid off |
+
+`/heist` still gives +10% per tagged `crew1`/`crew2`. Members in the same **persistent** `/crew` roster add **+5%** success each (up to +15%).
 | `/fuse-aspects` | Burn 3 aspects → stronger roll |
 
 ### Shop and Gear
