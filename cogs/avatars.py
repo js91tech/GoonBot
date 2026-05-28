@@ -18,7 +18,7 @@ from utils.avatars import (
     get_avatar,
     is_custom_avatar_id,
     is_valid_image_attachment,
-    load_custom_attachment_bytes,
+    load_avatar_attachment_bytes,
 )
 from utils.helpers import fmt_amount, guild_only_message, send_error
 
@@ -258,7 +258,7 @@ class Avatars(commands.Cog):
                     )
                     return
                 defn = get_avatar(avatar)
-                _, custom_victory = await load_custom_attachment_bytes(
+                _, custom_victory = await load_avatar_attachment_bytes(
                     self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
                 )
                 files, filename = build_victory_attachment(
@@ -338,7 +338,7 @@ class Avatars(commands.Cog):
                     )
                     return
                 defn = get_avatar(avatar)
-                custom_portrait, _ = await load_custom_attachment_bytes(
+                custom_portrait, _ = await load_avatar_attachment_bytes(
                     self.bot.db, avatar, guild_id=guild_id, user_id=user_id,
                 )
                 files, thumb_name = build_portrait_attachment(

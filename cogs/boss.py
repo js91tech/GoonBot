@@ -28,12 +28,7 @@ from utils.aspects import (
     random_aspect_definition,
     roll_pct_for_threat,
 )
-from utils.avatars import (
-    build_portrait_attachment,
-    build_victory_attachment,
-    get_avatar,
-    load_custom_attachment_bytes,
-)
+from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.combat_engine import (
     attack_context_for_class,
     roll_jester_reflect,
@@ -335,30 +330,17 @@ class Boss(commands.Cog):
                 value=f"**{killer_name}** — {pose_label} victory pose",
                 inline=False,
             )
-            custom_portrait, custom_victory = await load_custom_attachment_bytes(
+            avatar_files, victory_name, portrait_name = await build_avatar_embed_files(
                 self.bot.db,
                 avatar_id,
                 guild_id=guild.id,
                 user_id=killer_user_id,
             )
-            victory_files, victory_name = build_victory_attachment(
-                avatar_id,
-                guild_id=guild.id,
-                user_id=killer_user_id,
-                custom_victory=custom_victory,
-            )
-            portrait_files, portrait_name = build_portrait_attachment(
-                avatar_id,
-                guild_id=guild.id,
-                user_id=killer_user_id,
-                custom_portrait=custom_portrait,
-            )
+            files.extend(avatar_files)
             if victory_name:
                 embed.set_image(url=f"attachment://{victory_name}")
-                files.extend(victory_files)
             if portrait_name:
                 embed.set_thumbnail(url=f"attachment://{portrait_name}")
-                files.extend(portrait_files)
         gate = getattr(self.bot, "outbound_gate", None)
         sent = await safe_channel_send(
             channel,

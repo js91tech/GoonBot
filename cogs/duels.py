@@ -9,12 +9,7 @@ from discord.ext import commands
 
 import config
 from utils.achievements import evaluate_unlocks, format_unlock_message
-from utils.avatars import (
-    build_portrait_attachment,
-    build_victory_attachment,
-    get_avatar,
-    load_custom_attachment_bytes,
-)
+from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.duel_combat import (
     DuelFighter,
     fighter_from_equipment,
@@ -387,29 +382,15 @@ class Duels(commands.Cog):
         victory_name: str | None = None
         portrait_name: str | None = None
         try:
-            custom_portrait, custom_victory = await load_custom_attachment_bytes(
+            files, victory_name, portrait_name = await build_avatar_embed_files(
                 self.bot.db,
                 winner_avatar_id,
                 guild_id=guild_id,
                 user_id=result.winner_id,
             )
-            victory_files, victory_name = build_victory_attachment(
-                winner_avatar_id,
-                guild_id=guild_id,
-                user_id=result.winner_id,
-                custom_victory=custom_victory,
-            )
-            portrait_files, portrait_name = build_portrait_attachment(
-                winner_avatar_id,
-                guild_id=guild_id,
-                user_id=result.winner_id,
-                custom_portrait=custom_portrait,
-            )
             if victory_name:
-                files.extend(victory_files)
                 embed.set_image(url=f"attachment://{victory_name}")
             if portrait_name:
-                files.extend(portrait_files)
                 embed.set_thumbnail(url=f"attachment://{portrait_name}")
         except Exception:
             logger.exception("Failed to attach winner avatar art for duel embed")

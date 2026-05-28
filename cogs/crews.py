@@ -11,10 +11,28 @@ class Crews(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    async def crew_name_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        if interaction.guild_id is None:
+            return []
+        names = await self.bot.db.list_joinable_crew_names(interaction.guild_id)
+        needle = current.lower()
+        choices: list[app_commands.Choice[str]] = []
+        for name in names:
+            if needle and needle not in name.lower():
+                continue
+            choices.append(app_commands.Choice(name=name[:100], value=name))
+            if len(choices) >= 25:
+                break
+        return choices
+
     @app_commands.command(name="crew", description="Crew 2.0: join, treasury, leaderboard.")
     @app_commands.describe(
         action="What to do",
-        name="Crew name (2–32 chars)",
+        name="Crew name — pick an existing crew or type a new one",
         amount="Nuggets to deposit into crew treasury",
     )
     @app_commands.choices(
@@ -26,6 +44,7 @@ class Crews(commands.Cog):
             app_commands.Choice(name="Leaderboard", value="leaderboard"),
         ],
     )
+    @app_commands.autocomplete(name=crew_name_autocomplete)
     @app_commands.guild_only()
     async def crew(
         self,
@@ -50,7 +69,7 @@ class Crews(commands.Cog):
             lines = [
                 f"**{i}. {row['crew_name']}** — Lv{int(row['level'])} · "
                 f"{fmt_amount(float(row['score']))} treasury · {int(row['xp'])} XP"
-                for i, row in enumerate(rows, start=1)
+                for i, row in enumerate(rows, 1)
             ]
             embed = discord.Embed(
                 title="Crew leaderboard",
@@ -63,7 +82,8 @@ class Crews(commands.Cog):
         if action == "join":
             if not name:
                 await interaction.response.send_message(
-                    "Provide a **name** for your crew.", ephemeral=True,
+                    "Pick an existing crew from autocomplete or type a **new crew name** (2–32 chars).",
+                    ephemeral=True,
                 )
                 return
             err = await self.bot.db.join_crew(uid, guild_id, name)
@@ -75,8 +95,9 @@ class Crews(commands.Cog):
             if err:
                 await interaction.response.send_message(messages.get(err, err), ephemeral=True)
                 return
+            joined_name = await self.bot.db.resolve_crew_name(guild_id, name) or name.strip()[:32]
             await interaction.response.send_message(
-                f"You joined crew **{name.strip()[:32]}**!", ephemeral=True,
+                f"You joined crew **{joined_name}**!", ephemeral=True,
             )
             return
 
@@ -95,23 +116,34 @@ class Crews(commands.Cog):
                     "Set an **amount** to deposit.", ephemeral=True,
                 )
                 return
-            try:
-                deposit = valid_amount(amount)
-            except ValueError as exc:
-                await interaction.response.send_message(str(exc), ephemeral=True)
+            if not valid_amount(amount):
+                await interaction.response.send_message(
+                    "Enter a positive amount (at least 0.01 nuggets).", ephemeral=True,
+                )
                 return
+            deposit = float(amount)
             err = await self.bot.db.deposit_crew_treasury(uid, guild_id, deposit)
             if err:
                 msgs = {
                     "not_in_crew": "Join a crew first.",
                     "insufficient_funds": "Not enough nuggets.",
+                    "invalid_amount": "Enter a positive amount.",
+                    "treasury_error": "Could not update crew treasury. Try again.",
                 }
                 await interaction.response.send_message(
                     msgs.get(err, err), ephemeral=True,
                 )
                 return
+            membership = await self.bot.db.get_crew_membership(uid, guild_id)
+            stats = (
+                await self.bot.db.get_crew_stats(guild_id, membership)
+                if membership is not None
+                else None
+            )
+            treasury = float(stats["treasury"]) if stats is not None else deposit
             await interaction.response.send_message(
-                f"Deposited **{fmt_amount(deposit)}** into your crew treasury.",
+                f"Deposited **{fmt_amount(deposit)}** into your crew treasury "
+                f"(total **{fmt_amount(treasury)}**).",
                 ephemeral=True,
             )
             return

@@ -4528,10 +4528,46 @@ class Database:
         row = await cursor.fetchone()
         return str(row["crew_name"]) if row is not None else None
 
+    async def list_joinable_crew_names(self, guild_id: int) -> list[str]:
+        cursor = await self.conn.execute(
+            """
+            SELECT cs.crew_name, COUNT(cm.user_id) AS members
+            FROM crew_stats cs
+            LEFT JOIN crew_members cm
+                ON cs.guild_id = cm.guild_id AND cs.crew_name = cm.crew_name
+            WHERE cs.guild_id = ?
+            GROUP BY cs.crew_name
+            HAVING members < 8
+            ORDER BY cs.crew_name ASC
+            """,
+            (guild_id,),
+        )
+        rows = await cursor.fetchall()
+        return [str(row["crew_name"]) for row in rows]
+
+    async def resolve_crew_name(self, guild_id: int, crew_name: str) -> str | None:
+        """Match an existing crew name case-insensitively; return canonical spelling."""
+        needle = crew_name.strip()
+        if len(needle) < 2:
+            return None
+        cursor = await self.conn.execute(
+            "SELECT crew_name FROM crew_stats WHERE guild_id = ?",
+            (guild_id,),
+        )
+        lowered = needle.lower()
+        for row in await cursor.fetchall():
+            canonical = str(row["crew_name"])
+            if canonical.lower() == lowered:
+                return canonical
+        return None
+
     async def join_crew(self, user_id: int, guild_id: int, crew_name: str) -> str | None:
         name = crew_name.strip()[:32]
         if len(name) < 2:
             return "invalid_name"
+        existing = await self.resolve_crew_name(guild_id, name)
+        if existing is not None:
+            name = existing
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
             cursor = await self.conn.execute(
@@ -4580,38 +4616,47 @@ class Database:
         if amount <= 0:
             return "invalid_amount"
         async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
             cursor = await self.conn.execute(
                 "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             )
             row = await cursor.fetchone()
             if row is None:
+                await self.conn.commit()
                 return "not_in_crew"
             crew_name = str(row["crew_name"])
-            await self.conn.execute("BEGIN IMMEDIATE")
-            try:
-                wallet_cursor = await self.conn.execute(
-                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
-                    (user_id, guild_id),
-                )
-                wallet_row = await wallet_cursor.fetchone()
-                if wallet_row is None or float(wallet_row["wallet"]) < amount:
-                    await self.conn.rollback()
-                    return "insufficient_funds"
-                await self.conn.execute(
-                    "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
-                    (amount, user_id, guild_id),
-                )
-                await self.conn.execute(
-                    """
-                    UPDATE crew_stats SET treasury = treasury + ?, xp = xp + ?
-                    WHERE guild_id = ? AND crew_name = ?
-                    """,
-                    (amount, int(amount // 100), guild_id, crew_name),
-                )
-            except Exception:
-                await self.conn.rollback()
-                raise
+            wallet_cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await wallet_cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < amount:
+                await self.conn.commit()
+                return "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (amount, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
+                VALUES (?, ?, 0, 1, 0)
+                ON CONFLICT(guild_id, crew_name) DO NOTHING
+                """,
+                (guild_id, crew_name),
+            )
+            treasury_cursor = await self.conn.execute(
+                """
+                UPDATE crew_stats SET treasury = treasury + ?, xp = xp + ?
+                WHERE guild_id = ? AND crew_name = ?
+                """,
+                (amount, int(amount // 100), guild_id, crew_name),
+            )
+            updated = int(getattr(treasury_cursor, "rowcount", 0) or 0)
+            if updated < 1:
+                await self.conn.commit()
+                return "treasury_error"
             await self.conn.commit()
         return None
 
