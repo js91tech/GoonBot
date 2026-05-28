@@ -49,7 +49,12 @@ from utils.summoner_penalty import (
     summoner_defense_retention,
     summoner_penalty_summary,
 )
-from utils.avatars import build_portrait_attachment, build_victory_attachment, get_avatar
+from utils.avatars import (
+    build_portrait_attachment,
+    build_victory_attachment,
+    get_avatar,
+    load_custom_attachment_bytes,
+)
 
 BOSS_NAME = "Hannah"
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
@@ -330,11 +335,23 @@ class Boss(commands.Cog):
                 value=f"**{killer_name}** — {pose_label} victory pose",
                 inline=False,
             )
+            custom_portrait, custom_victory = await load_custom_attachment_bytes(
+                self.bot.db,
+                avatar_id,
+                guild_id=guild.id,
+                user_id=killer_user_id,
+            )
             victory_files, victory_name = build_victory_attachment(
-                avatar_id, guild_id=guild.id, user_id=killer_user_id,
+                avatar_id,
+                guild_id=guild.id,
+                user_id=killer_user_id,
+                custom_victory=custom_victory,
             )
             portrait_files, portrait_name = build_portrait_attachment(
-                avatar_id, guild_id=guild.id, user_id=killer_user_id,
+                avatar_id,
+                guild_id=guild.id,
+                user_id=killer_user_id,
+                custom_portrait=custom_portrait,
             )
             if victory_name:
                 embed.set_image(url=f"attachment://{victory_name}")

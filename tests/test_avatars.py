@@ -5,6 +5,7 @@ import unittest
 
 from utils.avatars import (
     DEFAULT_AVATAR_ID,
+    attachment_image_ext,
     build_victory_attachment,
     get_avatar,
     portrait_path,
@@ -34,6 +35,22 @@ class AvatarUtilsTests(unittest.TestCase):
         self.assertEqual(len(files), 1)
         self.assertIsNotNone(name)
         self.assertTrue(name.endswith(".gif") or name.endswith(".png"))
+
+    def test_victory_attachment_from_bytes(self) -> None:
+        png_header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+        files, name = build_victory_attachment(
+            "custom_123",
+            custom_victory=(png_header, ".png"),
+        )
+        self.assertEqual(len(files), 1)
+        self.assertEqual(name, "victory_custom_123.png")
+
+    def test_attachment_ext_from_filename(self) -> None:
+        class FakeAttachment:
+            content_type = None
+            filename = "pose.GIF"
+
+        self.assertEqual(attachment_image_ext(FakeAttachment()), ".gif")
 
 
 if __name__ == "__main__":

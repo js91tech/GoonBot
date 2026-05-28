@@ -17,7 +17,12 @@ from utils.helpers import fmt_amount, guild_only_message
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
 from utils.achievements import evaluate_unlocks, format_unlock_message
-from utils.avatars import build_portrait_attachment, build_victory_attachment, get_avatar
+from utils.avatars import (
+    build_portrait_attachment,
+    build_victory_attachment,
+    get_avatar,
+    load_custom_attachment_bytes,
+)
 from utils.quests import record_quest_event
 from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
 
@@ -339,11 +344,23 @@ class Duels(commands.Cog):
             )
 
         files: list[discord.File] = []
+        custom_portrait, custom_victory = await load_custom_attachment_bytes(
+            self.bot.db,
+            winner_avatar_id,
+            guild_id=guild_id,
+            user_id=result.winner_id,
+        )
         victory_files, victory_name = build_victory_attachment(
-            winner_avatar_id, guild_id=guild_id, user_id=result.winner_id,
+            winner_avatar_id,
+            guild_id=guild_id,
+            user_id=result.winner_id,
+            custom_victory=custom_victory,
         )
         portrait_files, portrait_name = build_portrait_attachment(
-            winner_avatar_id, guild_id=guild_id, user_id=result.winner_id,
+            winner_avatar_id,
+            guild_id=guild_id,
+            user_id=result.winner_id,
+            custom_portrait=custom_portrait,
         )
         if victory_name:
             files.extend(victory_files)
