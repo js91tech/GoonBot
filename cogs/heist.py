@@ -177,14 +177,5 @@ class Heist(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(name="crew", description="Show crew information.")
-    @app_commands.guild_only()
-    async def crew(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_message(
-            "Crews are temporary for each `/heist`; bring up to two crew members as command options.",
-            ephemeral=True,
-        )
-
-
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Heist(bot))

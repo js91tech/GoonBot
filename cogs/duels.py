@@ -14,7 +14,9 @@ from utils.duel_combat import (
 from utils.helpers import fmt_amount, guild_only_message
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
+from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.avatars import build_portrait_attachment, build_victory_attachment, get_avatar
+from utils.quests import record_quest_event
 from utils.trap_bombs import TRAP_BOMB_GIF_PATH, TRAP_BOMB_ITEM_ID
 
 
@@ -131,6 +133,10 @@ class Duels(commands.Cog):
             aspect_bonuses=defender_bonuses,
             trap_bomb_count=defender_bombs,
         )
+        if await self.bot.db.take_pending_consumable(
+            attacker.id, guild_id, "duel_scroll",
+        ):
+            attacker_fighter.consumable_boost = 1.15
         for fighter, uid in (
             (attacker_fighter, attacker.id),
             (defender_fighter, opponent.id),
@@ -250,8 +256,10 @@ class Duels(commands.Cog):
         limit_note = f"{max_per_hour}/hr"
         if max_per_hour > base_max:
             limit_note = f"{max_per_hour}/hr (+{max_per_hour - base_max} from aspect)"
+        winner_elo = await self.bot.db.get_duel_elo(result.winner_id, guild_id)
         footer_bits = [
             f"Limits: {limit_note} · {int(cooldown_seconds // 60)}m cooldown vs same player",
+            f"Winner ELO: **{winner_elo[0]}**",
         ]
         if trap_procs > 0:
             footer_bits.append(f"{trap_procs} trap bomb(s) detonated")
@@ -287,6 +295,11 @@ class Duels(commands.Cog):
             files=files or None,
             allowed_mentions=discord.AllowedMentions(users=[attacker, opponent]),
         )
+        await record_quest_event(self.bot.db, guild_id, result.winner_id, "duel_win")
+        unlocked = await evaluate_unlocks(self.bot.db, guild_id, result.winner_id)
+        if unlocked:
+            msg = format_unlock_message(unlocked)
+            await interaction.followup.send(msg, ephemeral=True)
         for line in jester_lines:
             await interaction.followup.send(
                 line,

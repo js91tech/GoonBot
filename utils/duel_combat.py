@@ -36,6 +36,8 @@ class DuelFighter:
     spell_defense_used: bool = False
     aspect_bonuses: AspectBonuses | None = None
     trap_bomb_count: int = 0
+    consumable_boost: float = 1.0
+    consumable_boost_used: bool = False
 
 
 @dataclass(frozen=True)
@@ -158,6 +160,9 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         ctx=ctx,
         set_bonus=attacker.set_bonus,
     )
+    if not attacker.consumable_boost_used and attacker.consumable_boost > 1.0:
+        raw = int(raw * attacker.consumable_boost)
+        attacker.consumable_boost_used = True
     from utils.classes import get_modifiers
 
     fortify_mult = 1.0

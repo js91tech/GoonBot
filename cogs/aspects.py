@@ -292,6 +292,59 @@ class Aspects(commands.Cog):
             ephemeral=True,
         )
 
+    @app_commands.command(
+        name="fuse-aspects",
+        description="Sacrifice 3 unequipped aspects to forge one stronger roll.",
+    )
+    @app_commands.describe(
+        aspect1="First aspect instance id",
+        aspect2="Second aspect instance id",
+        aspect3="Third aspect instance id",
+    )
+    @app_commands.autocomplete(aspect1=aspect_instance_autocomplete)
+    @app_commands.autocomplete(aspect2=aspect_instance_autocomplete)
+    @app_commands.autocomplete(aspect3=aspect_instance_autocomplete)
+    @app_commands.guild_only()
+    async def fuse_aspects(
+        self,
+        interaction: discord.Interaction,
+        aspect1: str,
+        aspect2: str,
+        aspect3: str,
+    ) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        try:
+            ids = [int(aspect1), int(aspect2), int(aspect3)]
+        except ValueError:
+            await interaction.response.send_message(
+                "Pick three aspects from autocomplete.", ephemeral=True,
+            )
+            return
+        if len(set(ids)) != 3:
+            await interaction.response.send_message(
+                "You must pick three **different** aspects.", ephemeral=True,
+            )
+            return
+        new_id = await self.bot.db.fuse_aspect_instances(
+            interaction.user.id, interaction.guild_id, ids,
+        )
+        if new_id is None:
+            await interaction.response.send_message(
+                "Fusion failed — aspects must be yours, unequipped, and valid.",
+                ephemeral=True,
+            )
+            return
+        row = await self.bot.db.get_aspect_instance(
+            interaction.user.id, interaction.guild_id, new_id,
+        )
+        inst = instance_from_row(row)
+        await interaction.response.send_message(
+            f"Fusion complete! Created **{inst.name}** ({inst.roll_pct:g}%) — instance `#{new_id}`.",
+            ephemeral=True,
+        )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Aspects(bot))

@@ -420,6 +420,134 @@ class Database:
         await self._migrate_aspect_system()
         await self._migrate_aspect_equip_slots()
         await self._migrate_player_avatars()
+        await self._migrate_dlc_expansion()
+
+    async def _migrate_dlc_expansion(self) -> None:
+        progress_cols = [
+            ("duel_wins", "INTEGER NOT NULL DEFAULT 0"),
+            ("gambles_won", "INTEGER NOT NULL DEFAULT 0"),
+            ("dungeons_cleared", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        if self.is_postgres:
+            for col, typedef in progress_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_progress' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_progress)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in progress_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guild_jackpot (
+                guild_id BIGINT PRIMARY KEY,
+                pool REAL NOT NULL DEFAULT 0 CHECK (pool >= 0)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS duel_elo (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                rating INTEGER NOT NULL DEFAULT 1000,
+                wins INTEGER NOT NULL DEFAULT 0,
+                losses INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS crew_stats (
+                guild_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                treasury REAL NOT NULL DEFAULT 0 CHECK (treasury >= 0),
+                level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1),
+                xp INTEGER NOT NULL DEFAULT 0 CHECK (xp >= 0),
+                PRIMARY KEY (guild_id, crew_name)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS crew_members (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                joined_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS loadout_presets (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                slot INTEGER NOT NULL CHECK (slot >= 1 AND slot <= 3),
+                name TEXT NOT NULL,
+                weapon_id TEXT,
+                off_hand_id TEXT,
+                armor_id TEXT,
+                PRIMARY KEY (guild_id, user_id, slot)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dungeon_runs (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                room INTEGER NOT NULL DEFAULT 1,
+                player_hp REAL NOT NULL,
+                max_hp REAL NOT NULL,
+                enemy_hp REAL NOT NULL DEFAULT 0,
+                started_at REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        char_cols = [
+            ("pending_consumable", "TEXT"),
+            ("pending_consumable_expires", "REAL"),
+        ]
+        if self.is_postgres:
+            for col, typedef in char_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_character' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in char_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
 
     async def _migrate_player_avatars(self) -> None:
         cols = [("avatar_id", "TEXT NOT NULL DEFAULT 'nugget_raider'")]
@@ -1538,6 +1666,22 @@ class Database:
             )
             await self.conn.execute(
                 "DELETE FROM player_avatar_unlocks WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM crew_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM loadout_presets WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM dungeon_runs WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.execute(
+                "DELETE FROM duel_elo WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             )
             await self.conn.execute(
@@ -3335,8 +3479,14 @@ class Database:
 
     async def get_boss_hp_multiplier(self, guild_id: int) -> float:
         event = await self.get_active_guild_event(guild_id)
-        if event is not None and str(event["event_type"]) == "festival_boss":
-            return float(event["multiplier"])
+        if event is None:
+            return 1.0
+        event_type = str(event["event_type"])
+        mult = float(event["multiplier"])
+        if event_type == "festival_boss":
+            return mult
+        if event_type == "world_boss_week":
+            return mult
         return 1.0
 
     async def _apply_income_bonuses(self, user_id: int, guild_id: int, amount: float) -> float:
@@ -3377,8 +3527,22 @@ class Database:
         heals_given: int = 0,
         mythic_kills: int = 0,
         crafts_done: int = 0,
+        duel_wins: int = 0,
+        gambles_won: int = 0,
+        dungeons_cleared: int = 0,
     ) -> None:
-        if not any((bosses_killed, heists_won, heals_given, mythic_kills, crafts_done)):
+        if not any(
+            (
+                bosses_killed,
+                heists_won,
+                heals_given,
+                mythic_kills,
+                crafts_done,
+                duel_wins,
+                gambles_won,
+                dungeons_cleared,
+            )
+        ):
             return
         async with self._write_lock:
             await self._ensure_progress_no_lock(user_id, guild_id)
@@ -3389,7 +3553,10 @@ class Database:
                     heists_won = heists_won + ?,
                     heals_given = heals_given + ?,
                     mythic_kills = mythic_kills + ?,
-                    crafts_done = crafts_done + ?
+                    crafts_done = crafts_done + ?,
+                    duel_wins = duel_wins + ?,
+                    gambles_won = gambles_won + ?,
+                    dungeons_cleared = dungeons_cleared + ?
                 WHERE user_id = ? AND guild_id = ?
                 """,
                 (
@@ -3398,6 +3565,9 @@ class Database:
                     heals_given,
                     mythic_kills,
                     crafts_done,
+                    duel_wins,
+                    gambles_won,
+                    dungeons_cleared,
                     user_id,
                     guild_id,
                 ),
@@ -3830,6 +4000,9 @@ class Database:
             "boss_kills": await self.progress_leaderboard(guild_id, "bosses_killed", limit=limit),
             "heals": await self.progress_leaderboard(guild_id, "heals_given", limit=limit),
             "achievements": await self.achievement_count_leaderboard(guild_id, limit=limit),
+            "duel_wins": await self.progress_leaderboard(guild_id, "duel_wins", limit=limit),
+            "duel_elo": await self.duel_elo_leaderboard(guild_id, limit=limit),
+            "crews": await self.crew_leaderboard(guild_id, limit=limit),
         }
 
     async def list_user_quests(
@@ -4105,6 +4278,17 @@ class Database:
                     """,
                     (guild_id, attacker_id, defender_id, winner_id, loot, now),
                 )
+                await self._apply_duel_elo_no_lock(
+                    guild_id, winner_id, loser_id,
+                )
+                await self._ensure_progress_no_lock(winner_id, guild_id)
+                await self.conn.execute(
+                    """
+                    UPDATE user_progress SET duel_wins = duel_wins + 1
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (winner_id, guild_id),
+                )
             except Exception:
                 await self.conn.rollback()
                 raise
@@ -4116,3 +4300,545 @@ class Database:
             final = await cursor.fetchone()
             final_wallet = float(final["wallet"]) if final is not None else 0.0
             return loot, final_wallet
+
+    async def _apply_duel_elo_no_lock(
+        self,
+        guild_id: int,
+        winner_id: int,
+        loser_id: int,
+    ) -> None:
+        import config
+
+        k = config.DUEL_ELO_K_FACTOR
+        for user_id in (winner_id, loser_id):
+            await self.conn.execute(
+                """
+                INSERT OR IGNORE INTO duel_elo (guild_id, user_id, rating, wins, losses)
+                VALUES (?, ?, ?, 0, 0)
+                """,
+                (guild_id, user_id, config.DUEL_ELO_START),
+            )
+        cursor = await self.conn.execute(
+            """
+            SELECT user_id, rating FROM duel_elo
+            WHERE guild_id = ? AND user_id IN (?, ?)
+            """,
+            (guild_id, winner_id, loser_id),
+        )
+        ratings = {int(row["user_id"]): int(row["rating"]) for row in await cursor.fetchall()}
+        win_r = ratings.get(winner_id, config.DUEL_ELO_START)
+        lose_r = ratings.get(loser_id, config.DUEL_ELO_START)
+        expected_win = 1.0 / (1.0 + 10 ** ((lose_r - win_r) / 400.0))
+        delta = round(k * (1.0 - expected_win))
+        new_win = max(100, win_r + delta)
+        new_lose = max(100, lose_r - delta)
+        await self.conn.execute(
+            """
+            UPDATE duel_elo SET rating = ?, wins = wins + 1
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (new_win, guild_id, winner_id),
+        )
+        await self.conn.execute(
+            """
+            UPDATE duel_elo SET rating = ?, losses = losses + 1
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (new_lose, guild_id, loser_id),
+        )
+
+    async def get_duel_elo(self, user_id: int, guild_id: int) -> tuple[int, int, int]:
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            import config
+
+            await self.conn.execute(
+                """
+                INSERT OR IGNORE INTO duel_elo (guild_id, user_id, rating, wins, losses)
+                VALUES (?, ?, ?, 0, 0)
+                """,
+                (guild_id, user_id, config.DUEL_ELO_START),
+            )
+            cursor = await self.conn.execute(
+                "SELECT rating, wins, losses FROM duel_elo WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+            await self.conn.commit()
+        if row is None:
+            return config.DUEL_ELO_START, 0, 0
+        return int(row["rating"]), int(row["wins"]), int(row["losses"])
+
+    async def duel_elo_leaderboard(
+        self, guild_id: int, *, limit: int = 10,
+    ) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT user_id, rating AS score FROM duel_elo
+            WHERE guild_id = ?
+            ORDER BY rating DESC, wins DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return list(await cursor.fetchall())
+
+    async def get_jackpot_pool(self, guild_id: int) -> float:
+        cursor = await self.conn.execute(
+            "SELECT pool FROM guild_jackpot WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        return float(row["pool"]) if row is not None else 0.0
+
+    async def add_jackpot_contribution(self, guild_id: int, amount: float) -> None:
+        if amount <= 0:
+            return
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO guild_jackpot (guild_id, pool) VALUES (?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET pool = pool + excluded.pool
+                """,
+                (guild_id, amount),
+            )
+            await self.conn.commit()
+
+    async def try_win_jackpot(self, guild_id: int, user_id: int, chance: float) -> float:
+        import random
+
+        if random.random() >= chance:
+            return 0.0
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT pool FROM guild_jackpot WHERE guild_id = ?",
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+            pool = float(row["pool"]) if row is not None else 0.0
+            if pool < 1.0:
+                await self.conn.commit()
+                return 0.0
+            await self._ensure_user_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                "UPDATE guild_jackpot SET pool = 0 WHERE guild_id = ?",
+                (guild_id,),
+            )
+            await self.conn.execute(
+                """
+                UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (pool, pool, user_id, guild_id),
+            )
+            await self.conn.commit()
+            return pool
+
+    async def get_crew_membership(self, user_id: int, guild_id: int) -> str | None:
+        cursor = await self.conn.execute(
+            "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return str(row["crew_name"]) if row is not None else None
+
+    async def join_crew(self, user_id: int, guild_id: int, crew_name: str) -> str | None:
+        name = crew_name.strip()[:32]
+        if len(name) < 2:
+            return "invalid_name"
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            if await cursor.fetchone() is not None:
+                return "already_in_crew"
+            count_cursor = await self.conn.execute(
+                "SELECT COUNT(*) AS cnt FROM crew_members WHERE guild_id = ? AND crew_name = ?",
+                (guild_id, name),
+            )
+            cnt_row = await count_cursor.fetchone()
+            if cnt_row is not None and int(cnt_row["cnt"]) >= 8:
+                return "crew_full"
+            await self.conn.execute(
+                """
+                INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
+                VALUES (?, ?, 0, 1, 0)
+                ON CONFLICT(guild_id, crew_name) DO NOTHING
+                """,
+                (guild_id, name),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO crew_members (guild_id, user_id, crew_name, joined_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (guild_id, user_id, name, time.time()),
+            )
+            await self.conn.commit()
+        return None
+
+    async def leave_crew(self, user_id: int, guild_id: int) -> bool:
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "DELETE FROM crew_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.commit()
+            return bool(getattr(cursor, "rowcount", 0))
+
+    async def deposit_crew_treasury(
+        self, user_id: int, guild_id: int, amount: float,
+    ) -> str | None:
+        if amount <= 0:
+            return "invalid_amount"
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return "not_in_crew"
+            crew_name = str(row["crew_name"])
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                wallet_cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (user_id, guild_id),
+                )
+                wallet_row = await wallet_cursor.fetchone()
+                if wallet_row is None or float(wallet_row["wallet"]) < amount:
+                    await self.conn.rollback()
+                    return "insufficient_funds"
+                await self.conn.execute(
+                    "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                    (amount, user_id, guild_id),
+                )
+                await self.conn.execute(
+                    """
+                    UPDATE crew_stats SET treasury = treasury + ?, xp = xp + ?
+                    WHERE guild_id = ? AND crew_name = ?
+                    """,
+                    (amount, int(amount // 100), guild_id, crew_name),
+                )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+        return None
+
+    async def get_crew_stats(self, guild_id: int, crew_name: str) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM crew_stats WHERE guild_id = ? AND crew_name = ?",
+            (guild_id, crew_name),
+        )
+        return await cursor.fetchone()
+
+    async def list_crew_members(self, guild_id: int, crew_name: str) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT user_id FROM crew_members
+            WHERE guild_id = ? AND crew_name = ?
+            ORDER BY joined_at ASC
+            """,
+            (guild_id, crew_name),
+        )
+        return list(await cursor.fetchall())
+
+    async def crew_leaderboard(self, guild_id: int, *, limit: int = 5) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT crew_name, treasury AS score, level, xp
+            FROM crew_stats
+            WHERE guild_id = ?
+            ORDER BY level DESC, xp DESC, treasury DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return list(await cursor.fetchall())
+
+    async def save_loadout_preset(
+        self,
+        user_id: int,
+        guild_id: int,
+        slot: int,
+        name: str,
+        weapon_id: str | None,
+        off_hand_id: str | None,
+        armor_id: str | None,
+    ) -> None:
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                INSERT INTO loadout_presets (
+                    guild_id, user_id, slot, name, weapon_id, off_hand_id, armor_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                    name = excluded.name,
+                    weapon_id = excluded.weapon_id,
+                    off_hand_id = excluded.off_hand_id,
+                    armor_id = excluded.armor_id
+                """,
+                (guild_id, user_id, slot, name[:32], weapon_id, off_hand_id, armor_id),
+            )
+            await self.conn.commit()
+
+    async def get_loadout_preset(
+        self, user_id: int, guild_id: int, slot: int,
+    ) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM loadout_presets
+            WHERE guild_id = ? AND user_id = ? AND slot = ?
+            """,
+            (guild_id, user_id, slot),
+        )
+        return await cursor.fetchone()
+
+    async def list_loadout_presets(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM loadout_presets
+            WHERE guild_id = ? AND user_id = ?
+            ORDER BY slot ASC
+            """,
+            (guild_id, user_id),
+        )
+        return list(await cursor.fetchall())
+
+    async def sell_all_battle_worn(
+        self, user_id: int, guild_id: int,
+    ) -> tuple[int, float]:
+        """Sell every boss_weak_* item. Returns (items_sold, nuggets gained)."""
+        from items import get_item, sell_refund_for_item
+
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                SELECT item_id, quantity FROM inventory
+                WHERE guild_id = ? AND user_id = ? AND item_id LIKE 'boss_weak_%'
+                """,
+                (guild_id, user_id),
+            )
+            rows = await cursor.fetchall()
+            total_sold = 0
+            total_payout = 0.0
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                for row in rows:
+                    item_id = str(row["item_id"])
+                    qty = int(row["quantity"])
+                    item = get_item(item_id)
+                    if item is None:
+                        continue
+                    refund = sell_refund_for_item(item)
+                    if refund is None:
+                        continue
+                    total_sold += qty
+                    total_payout += refund * qty
+                    await self.conn.execute(
+                        """
+                        DELETE FROM inventory
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (guild_id, user_id, item_id),
+                    )
+                if total_payout > 0:
+                    await self.conn.execute(
+                        """
+                        UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ?
+                        WHERE user_id = ? AND guild_id = ?
+                        """,
+                        (total_payout, total_payout, user_id, guild_id),
+                    )
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+        return total_sold, total_payout
+
+    async def set_pending_consumable(
+        self, user_id: int, guild_id: int, consumable_id: str, *, duration_seconds: float = 300.0,
+    ) -> None:
+        expires = time.time() + duration_seconds
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET pending_consumable = ?, pending_consumable_expires = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (consumable_id, expires, user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def take_pending_consumable(self, user_id: int, guild_id: int, expected: str) -> bool:
+        """Consume pending buff if it matches expected id and is not expired."""
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            try:
+                pending = row["pending_consumable"]
+                expires = float(row["pending_consumable_expires"] or 0)
+            except (KeyError, TypeError):
+                return False
+            if not pending or str(pending) != expected:
+                return False
+            if expires < time.time():
+                await self.conn.execute(
+                    """
+                    UPDATE user_character
+                    SET pending_consumable = NULL, pending_consumable_expires = NULL
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (user_id, guild_id),
+                )
+                await self.conn.commit()
+                return False
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET pending_consumable = NULL, pending_consumable_expires = NULL
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+            return True
+
+    async def add_energy(self, user_id: int, guild_id: int, amount: int) -> int:
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            cap = int(row["energy_cap"])
+            new_energy = min(cap, int(row["energy"]) + amount)
+            await self.conn.execute(
+                "UPDATE user_character SET energy = ? WHERE user_id = ? AND guild_id = ?",
+                (new_energy, user_id, guild_id),
+            )
+            await self.conn.commit()
+            return new_energy
+
+    async def get_dungeon_run(self, user_id: int, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM dungeon_runs WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id),
+        )
+        return await cursor.fetchone()
+
+    async def start_dungeon_run(
+        self, user_id: int, guild_id: int, player_hp: float, max_hp: float, enemy_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO dungeon_runs (
+                    guild_id, user_id, room, player_hp, max_hp, enemy_hp, started_at
+                )
+                VALUES (?, ?, 1, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    room = 1,
+                    player_hp = excluded.player_hp,
+                    max_hp = excluded.max_hp,
+                    enemy_hp = excluded.enemy_hp,
+                    started_at = excluded.started_at
+                """,
+                (guild_id, user_id, player_hp, max_hp, enemy_hp, time.time()),
+            )
+            await self.conn.commit()
+
+    async def update_dungeon_run(
+        self,
+        user_id: int,
+        guild_id: int,
+        *,
+        room: int,
+        player_hp: float,
+        enemy_hp: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE dungeon_runs
+                SET room = ?, player_hp = ?, enemy_hp = ?
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (room, player_hp, enemy_hp, guild_id, user_id),
+            )
+            await self.conn.commit()
+
+    async def clear_dungeon_run(self, user_id: int, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM dungeon_runs WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            await self.conn.commit()
+
+    async def fuse_aspect_instances(
+        self,
+        user_id: int,
+        guild_id: int,
+        instance_ids: list[int],
+    ) -> int | None:
+        """Burn 3 aspects → one new rolled aspect. Returns new instance_id or None."""
+        if len(instance_ids) != 3:
+            return None
+        from utils.aspects import random_aspect_definition, roll_pct_shop
+
+        async with self._write_lock:
+            ids_set = set(instance_ids)
+            if len(ids_set) != 3:
+                return None
+            for inst_id in ids_set:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT instance_id FROM aspect_instances
+                    WHERE guild_id = ? AND user_id = ? AND instance_id = ?
+                    """,
+                    (guild_id, user_id, inst_id),
+                )
+                if await cursor.fetchone() is None:
+                    return None
+                eq = await self.conn.execute(
+                    """
+                    SELECT 1 FROM equipped_aspect
+                    WHERE guild_id = ? AND user_id = ? AND instance_id = ?
+                    """,
+                    (guild_id, user_id, inst_id),
+                )
+                if await eq.fetchone() is not None:
+                    return None
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                for inst_id in ids_set:
+                    await self.conn.execute(
+                        "DELETE FROM aspect_instances WHERE instance_id = ?",
+                        (inst_id,),
+                    )
+                defn = random_aspect_definition()
+                roll_pct = min(40.0, roll_pct_shop() + 6.0)
+                cursor = await self.conn.execute(
+                    """
+                    INSERT INTO aspect_instances
+                        (guild_id, user_id, aspect_id, roll_pct, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    RETURNING instance_id
+                    """,
+                    (guild_id, user_id, defn.id, roll_pct, time.time()),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    await self.conn.rollback()
+                    return None
+                new_id = int(row["instance_id"])
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+            return new_id
