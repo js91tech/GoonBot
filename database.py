@@ -3852,6 +3852,61 @@ class Database:
             await self.conn.commit()
             return True
 
+    async def gift_inventory_item(
+        self,
+        sender_id: int,
+        receiver_id: int,
+        guild_id: int,
+        item_id: str,
+        quantity: int = 1,
+    ) -> str | None:
+        """Move stackable items from sender to receiver. Returns error code or None."""
+        if sender_id == receiver_id:
+            return "self_gift"
+        qty = max(1, min(int(quantity), config.SHOP_MAX_BUY_QUANTITY))
+        async with self._write_lock:
+            await self._ensure_user_no_lock(sender_id, guild_id)
+            await self._ensure_user_no_lock(receiver_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                SELECT quantity FROM inventory
+                WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                """,
+                (guild_id, sender_id, item_id),
+            )
+            row = await cursor.fetchone()
+            if row is None or int(row["quantity"]) < qty:
+                await self.conn.commit()
+                return "insufficient_items"
+            remaining = int(row["quantity"]) - qty
+            if remaining <= 0:
+                await self.conn.execute(
+                    """
+                    DELETE FROM inventory
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    """,
+                    (guild_id, sender_id, item_id),
+                )
+            else:
+                await self.conn.execute(
+                    """
+                    UPDATE inventory SET quantity = ?
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    """,
+                    (remaining, guild_id, sender_id, item_id),
+                )
+            await self.conn.execute(
+                """
+                INSERT INTO inventory (guild_id, user_id, item_id, quantity)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, item_id) DO UPDATE SET
+                    quantity = inventory.quantity + excluded.quantity
+                """,
+                (guild_id, receiver_id, item_id, qty),
+            )
+            await self.conn.commit()
+        return None
+
     async def get_inventory_quantity(
         self, user_id: int, guild_id: int, item_id: str
     ) -> int:

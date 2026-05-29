@@ -356,6 +356,15 @@ DUEL_SCROLL = ShopItem(
     "Use before /duel: next duel strike deals +15% damage.",
     shop_listed=True,
 )
+CHIA_SEEDS = ShopItem(
+    "chia_seeds",
+    "Chia Seeds",
+    "consumable",
+    50,
+    0,
+    "Wholesome snack seeds. Buy from /shop, then gift with /gift.",
+    shop_listed=True,
+)
 
 ALCHEMY_SCRAP = ShopItem(
     "alchemy_scrap",
@@ -372,8 +381,11 @@ CONSUMABLES: tuple[ShopItem, ...] = (
     RAID_POTION,
     ENERGY_DRINK,
     DUEL_SCROLL,
+    CHIA_SEEDS,
     ALCHEMY_SCRAP,
 )
+
+GIFTABLE_ITEM_IDS: frozenset[str] = frozenset({"chia_seeds"})
 
 CONSUMABLE_USE_IDS: frozenset[str] = frozenset(
     item.id for item in CONSUMABLES if item.id != "trap_bomb"
