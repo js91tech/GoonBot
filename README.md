@@ -130,7 +130,7 @@ Persistent crews share a **treasury** funded by member deposits. Deposits earn c
 
 ### Territories
 
-Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly nuggets paid into crew treasury** (30–100/hr by tier).
+Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly nuggets paid into crew treasury** (1,800–6,000/hr by tier).
 
 | `/territory` action | What it does |
 |---------------------|--------------|

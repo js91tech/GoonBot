@@ -15,11 +15,11 @@ class TerritoryDef:
 
 
 TERRITORY_MAP: dict[str, TerritoryDef] = {
-    "docks": TerritoryDef("docks", "Docks", 30.0, 3, 1),
-    "market": TerritoryDef("market", "Market", 45.0, 4, 2),
-    "foundry": TerritoryDef("foundry", "Foundry", 60.0, 5, 3),
-    "vault": TerritoryDef("vault", "Vault", 75.0, 6, 4),
-    "citadel": TerritoryDef("citadel", "Citadel", 100.0, 8, 5),
+    "docks": TerritoryDef("docks", "Docks", 1_800.0, 3, 1),
+    "market": TerritoryDef("market", "Market", 2_700.0, 4, 2),
+    "foundry": TerritoryDef("foundry", "Foundry", 3_600.0, 5, 3),
+    "vault": TerritoryDef("vault", "Vault", 4_500.0, 6, 4),
+    "citadel": TerritoryDef("citadel", "Citadel", 6_000.0, 8, 5),
 }
 
 TERRITORY_IDS: tuple[str, ...] = tuple(TERRITORY_MAP.keys())
