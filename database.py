@@ -449,6 +449,26 @@ class Database:
         await self._migrate_dlc_expansion()
         await self._migrate_dlc_followup()
         await self._migrate_crew_banking()
+        await self._migrate_territories()
+
+    async def _migrate_territories(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS territory_control (
+                guild_id BIGINT NOT NULL,
+                territory_id TEXT NOT NULL,
+                owner_crew_name TEXT,
+                guards INTEGER NOT NULL DEFAULT 0 CHECK (guards >= 0),
+                last_income_at REAL NOT NULL,
+                siege_attacker_crew TEXT,
+                siege_ends_at REAL,
+                siege_started_at REAL,
+                last_siege_at REAL,
+                PRIMARY KEY (guild_id, territory_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_crew_banking(self) -> None:
         await self.conn.execute(
@@ -4995,6 +5015,417 @@ class Database:
             (guild_id, limit),
         )
         return list(await cursor.fetchall())
+
+    async def ensure_territories(self, guild_id: int) -> None:
+        from utils.territories import TERRITORY_IDS
+
+        now = time.time()
+        for territory_id in TERRITORY_IDS:
+            await self.conn.execute(
+                """
+                INSERT INTO territory_control (
+                    guild_id, territory_id, owner_crew_name, guards,
+                    last_income_at, siege_attacker_crew, siege_ends_at,
+                    siege_started_at, last_siege_at
+                )
+                VALUES (?, ?, NULL, 0, ?, NULL, NULL, NULL, NULL)
+                ON CONFLICT(guild_id, territory_id) DO NOTHING
+                """,
+                (guild_id, territory_id, now),
+            )
+        await self.conn.commit()
+
+    async def list_territory_rows(self, guild_id: int) -> list[aiosqlite.Row]:
+        await self.ensure_territories(guild_id)
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM territory_control
+            WHERE guild_id = ?
+            ORDER BY territory_id ASC
+            """,
+            (guild_id,),
+        )
+        return list(await cursor.fetchall())
+
+    async def get_territory_row(
+        self, guild_id: int, territory_id: str,
+    ) -> aiosqlite.Row | None:
+        await self.ensure_territories(guild_id)
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM territory_control
+            WHERE guild_id = ? AND territory_id = ?
+            """,
+            (guild_id, territory_id),
+        )
+        return await cursor.fetchone()
+
+    async def count_crew_territories(self, guild_id: int, crew_name: str) -> int:
+        cursor = await self.conn.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM territory_control
+            WHERE guild_id = ? AND owner_crew_name = ?
+            """,
+            (guild_id, crew_name),
+        )
+        row = await cursor.fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    async def count_crew_members(self, guild_id: int, crew_name: str) -> int:
+        cursor = await self.conn.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM crew_members
+            WHERE guild_id = ? AND crew_name = ?
+            """,
+            (guild_id, crew_name),
+        )
+        row = await cursor.fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    async def credit_crew_treasury_no_wallet(
+        self, guild_id: int, crew_name: str, amount: float,
+    ) -> None:
+        """Add nuggets to crew treasury (territory income, etc.) without a member deposit."""
+        if amount <= 0:
+            return
+        xp_gain = int(amount // 100)
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
+                VALUES (?, ?, ?, 1, ?)
+                ON CONFLICT(guild_id, crew_name) DO UPDATE SET
+                    treasury = crew_stats.treasury + excluded.treasury,
+                    xp = crew_stats.xp + excluded.xp
+                """,
+                (guild_id, crew_name, amount, xp_gain),
+            )
+            await self._recalc_crew_level_no_lock(guild_id, crew_name)
+            await self.conn.commit()
+
+    async def process_territory_hourly_income(self, guild_id: int) -> float:
+        """Pay hourly income to owning crews; returns total paid this tick."""
+        import config
+        from utils.territories import TERRITORY_MAP, income_multiplier_under_siege
+
+        await self.ensure_territories(guild_id)
+        now = time.time()
+        total_paid = 0.0
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT * FROM territory_control WHERE guild_id = ?",
+                (guild_id,),
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                owner = row["owner_crew_name"]
+                if owner is None:
+                    continue
+                territory_id = str(row["territory_id"])
+                defn = TERRITORY_MAP.get(territory_id)
+                if defn is None:
+                    continue
+                last_at = float(row["last_income_at"])
+                elapsed = now - last_at
+                if elapsed < config.TERRITORY_HOURLY_TICK_SECONDS:
+                    continue
+                hours = int(elapsed // config.TERRITORY_HOURLY_TICK_SECONDS)
+                if hours < 1:
+                    continue
+                mult = 1.0
+                siege_end = row["siege_ends_at"]
+                if siege_end is not None and float(siege_end) > now:
+                    mult = income_multiplier_under_siege()
+                payout = defn.income_per_hour * hours * mult
+                if payout <= 0:
+                    await self.conn.execute(
+                        """
+                        UPDATE territory_control SET last_income_at = ?
+                        WHERE guild_id = ? AND territory_id = ?
+                        """,
+                        (last_at + hours * config.TERRITORY_HOURLY_TICK_SECONDS, guild_id, territory_id),
+                    )
+                    continue
+                await self.conn.execute(
+                    """
+                    INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
+                    VALUES (?, ?, ?, 1, ?)
+                    ON CONFLICT(guild_id, crew_name) DO UPDATE SET
+                        treasury = crew_stats.treasury + excluded.treasury,
+                        xp = crew_stats.xp + excluded.xp
+                    """,
+                    (guild_id, str(owner), payout, int(payout // 100)),
+                )
+                await self._recalc_crew_level_no_lock(guild_id, str(owner))
+                await self.conn.execute(
+                    """
+                    UPDATE territory_control SET last_income_at = ?
+                    WHERE guild_id = ? AND territory_id = ?
+                    """,
+                    (
+                        last_at + hours * config.TERRITORY_HOURLY_TICK_SECONDS,
+                        guild_id,
+                        territory_id,
+                    ),
+                )
+                total_paid += payout
+            await self.conn.commit()
+        return total_paid
+
+    async def buy_territory_guards(
+        self, user_id: int, guild_id: int, territory_id: str, count: int,
+    ) -> str | None:
+        from utils.territories import guard_cost_per_unit, territory_by_id
+
+        defn = territory_by_id(territory_id)
+        if defn is None:
+            return "invalid_territory"
+        qty = max(1, min(int(count), 20))
+        crew_name = await self.get_crew_membership(user_id, guild_id)
+        if crew_name is None:
+            return "not_in_crew"
+        row = await self.get_territory_row(guild_id, defn.territory_id)
+        if row is None:
+            return "invalid_territory"
+        if not row["owner_crew_name"] or str(row["owner_crew_name"]) != crew_name:
+            return "not_owner"
+        if row["siege_ends_at"] is not None and float(row["siege_ends_at"]) > time.time():
+            return "under_siege"
+        current_guards = int(row["guards"])
+        if current_guards + qty > defn.max_guards:
+            return "guard_cap"
+        unit_cost = guard_cost_per_unit(defn)
+        total_cost = unit_cost * qty
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            wallet_cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await wallet_cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < total_cost:
+                await self.conn.commit()
+                return "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (total_cost, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE territory_control SET guards = guards + ?
+                WHERE guild_id = ? AND territory_id = ?
+                """,
+                (qty, guild_id, defn.territory_id),
+            )
+            await self.conn.commit()
+        return None
+
+    async def start_territory_siege(
+        self, user_id: int, guild_id: int, territory_id: str,
+    ) -> str | None:
+        import config
+        from utils.territories import territory_by_id
+
+        defn = territory_by_id(territory_id)
+        if defn is None:
+            return "invalid_territory"
+        attacker_crew = await self.get_crew_membership(user_id, guild_id)
+        if attacker_crew is None:
+            return "not_in_crew"
+        row = await self.get_territory_row(guild_id, defn.territory_id)
+        if row is None:
+            return "invalid_territory"
+        owner = row["owner_crew_name"]
+        if not owner:
+            return await self._claim_neutral_territory(
+                user_id, guild_id, defn.territory_id, attacker_crew,
+            )
+        members = await self.count_crew_members(guild_id, attacker_crew)
+        if members < config.TERRITORY_MIN_CREW_MEMBERS_TO_ATTACK:
+            return "crew_too_small"
+        if str(owner) == attacker_crew:
+            return "own_territory"
+        now = time.time()
+        if row["siege_ends_at"] is not None and float(row["siege_ends_at"]) > now:
+            return "already_under_siege"
+        last_siege = row["last_siege_at"]
+        if (
+            last_siege is not None
+            and now - float(last_siege) < config.TERRITORY_SIEGE_COOLDOWN_SECONDS
+        ):
+            return "siege_cooldown"
+        held = await self.count_crew_territories(guild_id, attacker_crew)
+        if held >= config.TERRITORY_MAX_HELD_PER_CREW:
+            return "max_territories"
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE territory_control SET
+                    siege_attacker_crew = ?,
+                    siege_started_at = ?,
+                    siege_ends_at = ?,
+                    last_siege_at = ?
+                WHERE guild_id = ? AND territory_id = ?
+                """,
+                (
+                    attacker_crew,
+                    now,
+                    now + config.TERRITORY_SIEGE_DURATION_SECONDS,
+                    now,
+                    guild_id,
+                    defn.territory_id,
+                ),
+            )
+            await self.conn.commit()
+        return None
+
+    async def _claim_neutral_territory(
+        self, user_id: int, guild_id: int, territory_id: str, crew_name: str,
+    ) -> str | None:
+        import config
+
+        del user_id
+        held = await self.count_crew_territories(guild_id, crew_name)
+        if held >= config.TERRITORY_MAX_HELD_PER_CREW:
+            return "max_territories"
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
+                VALUES (?, ?, 0, 1, 0)
+                ON CONFLICT(guild_id, crew_name) DO NOTHING
+                """,
+                (guild_id, crew_name),
+            )
+            await self.conn.execute(
+                """
+                UPDATE territory_control SET
+                    owner_crew_name = ?,
+                    siege_attacker_crew = NULL,
+                    siege_started_at = NULL,
+                    siege_ends_at = NULL,
+                    guards = 0
+                WHERE guild_id = ? AND territory_id = ?
+                """,
+                (crew_name, guild_id, territory_id),
+            )
+            await self.conn.commit()
+        return "claimed_neutral"
+
+    async def abandon_territory(
+        self, user_id: int, guild_id: int, territory_id: str,
+    ) -> str | None:
+        from utils.territories import territory_by_id
+
+        defn = territory_by_id(territory_id)
+        if defn is None:
+            return "invalid_territory"
+        crew_name = await self.get_crew_membership(user_id, guild_id)
+        if crew_name is None:
+            return "not_in_crew"
+        row = await self.get_territory_row(guild_id, defn.territory_id)
+        if row is None or not row["owner_crew_name"] or str(row["owner_crew_name"]) != crew_name:
+            return "not_owner"
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE territory_control SET
+                    owner_crew_name = NULL,
+                    guards = 0,
+                    siege_attacker_crew = NULL,
+                    siege_started_at = NULL,
+                    siege_ends_at = NULL
+                WHERE guild_id = ? AND territory_id = ?
+                """,
+                (guild_id, defn.territory_id),
+            )
+            await self.conn.commit()
+        return None
+
+    async def resolve_territory_sieges(self, guild_id: int) -> list[dict[str, object]]:
+        """Resolve expired sieges; returns summary dicts for announcements."""
+        import random
+
+        from utils.territories import TERRITORY_MAP, siege_success_chance
+
+        now = time.time()
+        results: list[dict[str, object]] = []
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                SELECT * FROM territory_control
+                WHERE guild_id = ?
+                  AND siege_ends_at IS NOT NULL
+                  AND siege_ends_at <= ?
+                """,
+                (guild_id, now),
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                territory_id = str(row["territory_id"])
+                defn = TERRITORY_MAP.get(territory_id)
+                if defn is None:
+                    continue
+                attacker = row["siege_attacker_crew"]
+                if attacker is None:
+                    await self.conn.execute(
+                        """
+                        UPDATE territory_control SET
+                            siege_attacker_crew = NULL,
+                            siege_started_at = NULL,
+                            siege_ends_at = NULL
+                        WHERE guild_id = ? AND territory_id = ?
+                        """,
+                        (guild_id, territory_id),
+                    )
+                    continue
+                owner = row["owner_crew_name"]
+                guards = int(row["guards"])
+                members = await self.count_crew_members(guild_id, str(attacker))
+                chance = siege_success_chance(members, guards, defn)
+                won = random.random() < chance
+                if won:
+                    await self.conn.execute(
+                        """
+                        UPDATE territory_control SET
+                            owner_crew_name = ?,
+                            guards = 0,
+                            siege_attacker_crew = NULL,
+                            siege_started_at = NULL,
+                            siege_ends_at = NULL
+                        WHERE guild_id = ? AND territory_id = ?
+                        """,
+                        (attacker, guild_id, territory_id),
+                    )
+                    results.append({
+                        "territory_id": territory_id,
+                        "name": defn.name,
+                        "won": True,
+                        "attacker": str(attacker),
+                        "defender": str(owner) if owner else None,
+                        "chance": chance,
+                    })
+                else:
+                    await self.conn.execute(
+                        """
+                        UPDATE territory_control SET
+                            siege_attacker_crew = NULL,
+                            siege_started_at = NULL,
+                            siege_ends_at = NULL
+                        WHERE guild_id = ? AND territory_id = ?
+                        """,
+                        (guild_id, territory_id),
+                    )
+                    results.append({
+                        "territory_id": territory_id,
+                        "name": defn.name,
+                        "won": False,
+                        "attacker": str(attacker),
+                        "defender": str(owner) if owner else None,
+                        "chance": chance,
+                    })
+            await self.conn.commit()
+        return results
 
     async def save_loadout_preset(
         self,

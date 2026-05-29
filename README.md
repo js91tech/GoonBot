@@ -127,6 +127,19 @@ Persistent crews share a **treasury** funded by member deposits. Deposits earn c
 | **Leave** | Blocked until your crew loan is paid off |
 
 `/heist` still gives +10% per tagged `crew1`/`crew2`. Members in the same **persistent** `/crew` roster add **+5%** success each (up to +15%).
+
+### Territories
+
+Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly nuggets paid into crew treasury** (30–100/hr by tier).
+
+| `/territory` action | What it does |
+|---------------------|--------------|
+| **Map / status** | Who holds each zone, guards, active sieges |
+| **Attack / claim** | Claim neutral zones instantly; contested zones enter a **30 min** siege |
+| **Buy guards** | Spend nuggets to add defenders (improves hold chance when sieged) |
+| **Abandon** | Release a zone your crew holds |
+
+Max **3 zones per crew**. Siege cooldown **12h** per zone after an attack.
 | `/fuse-aspects` | Burn 3 aspects → stronger roll |
 
 ### Shop and Gear

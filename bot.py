@@ -37,6 +37,7 @@ COGS = (
     "cogs.loadout",
     "cogs.consumables",
     "cogs.crews",
+    "cogs.territories",
     "cogs.dungeon",
     "cogs.season",
     "cogs.alchemy",
