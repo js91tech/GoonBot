@@ -199,6 +199,14 @@ class Progression(commands.Cog):
             interaction.guild_id, "craft_upgrade_cost_factor"
         )
         cost = craft_upgrade_cost(base_id, cost_factor=craft_factor)
+        crew = await self.bot.db.get_crew_membership(
+            interaction.user.id, interaction.guild_id,
+        )
+        held = await self.bot.db.get_crew_territory_perk_ids(
+            interaction.guild_id, crew,
+        )
+        if "foundry" in held:
+            cost *= 1.0 - config.TERRITORY_PERK_FOUNDRY_CRAFT_DISCOUNT
         if base_item is None or cost is None:
             await interaction.response.send_message("That recipe is not valid.", ephemeral=True)
             return

@@ -492,6 +492,13 @@ class Shop(commands.Cog):
             await interaction.response.send_message("You cannot sell starter gear.", ephemeral=True)
             return
 
+        crew = await self.bot.db.get_crew_membership(interaction.user.id, interaction.guild_id)
+        held = await self.bot.db.get_crew_territory_perk_ids(
+            interaction.guild_id, crew,
+        )
+        if "market" in held:
+            refund_amount *= 1.0 + config.TERRITORY_PERK_MARKET_SELL_BONUS
+
         rows = await self.bot.db.get_inventory(interaction.user.id, interaction.guild_id)
         owned_qty = 0
         for row in rows:

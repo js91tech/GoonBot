@@ -140,6 +140,8 @@ Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly
 | **Abandon** | Release a zone your crew holds |
 
 Max **3 zones per crew**. Siege cooldown **12h** per zone after an attack.
+
+**Zone perks** (while your crew holds the zone): Docks +5% heist loot · Market +5% sell · Foundry −5% craft cost · Vault +3% heist success · Citadel +10% Citadel income.
 | `/fuse-aspects` | Burn 3 aspects → stronger roll |
 
 ### Shop and Gear

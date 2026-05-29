@@ -9,6 +9,7 @@ from discord.ext import commands
 import config
 from utils.helpers import fmt_amount, guild_only_message
 from utils.mana import mana_bar
+from utils.territories import TERRITORY_MAP, perks_from_held
 
 
 class Profile(commands.Cog):
@@ -36,6 +37,11 @@ class Profile(commands.Cog):
         rating, elo_wins, elo_losses = await self.bot.db.get_duel_elo(uid, guild_id)
         crew = await self.bot.db.get_crew_membership(uid, guild_id)
         crew_loan = await self.bot.db.get_active_crew_loan(uid, guild_id)
+        held_territories: list[tuple[str, int]] = []
+        if crew:
+            held_territories = await self.bot.db.list_crew_held_territories(
+                guild_id, crew,
+            )
         avatar_id = await self.bot.db.get_equipped_avatar_id(uid, guild_id)
         class_id = await self.bot.db.get_class_id(uid, guild_id)
         snap = await self.bot.db.get_mana_snapshot(uid, guild_id)
@@ -89,6 +95,20 @@ class Profile(commands.Cog):
             crew_value += (
                 f"\nLoan: **{fmt_amount(float(crew_loan['remaining']))}** remaining"
             )
+        if held_territories:
+            zone_names = [
+                TERRITORY_MAP[tid].name
+                for tid, _ in held_territories
+                if tid in TERRITORY_MAP
+            ]
+            if zone_names:
+                crew_value += f"\nZones: **{', '.join(zone_names)}**"
+            perk_labels = [
+                line.split(" — ", 1)[-1]
+                for line in perks_from_held({t for t, _ in held_territories}).summary_lines()
+            ]
+            if perk_labels:
+                crew_value += f"\nPerks: {' · '.join(perk_labels)}"
         embed.add_field(
             name="Crew",
             value=crew_value,

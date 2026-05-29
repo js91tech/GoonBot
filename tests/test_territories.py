@@ -68,6 +68,29 @@ class TerritoryTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(err, "guard_cap")
 
+    async def test_buy_guards_from_treasury(self) -> None:
+        guild_id, uid = 4, 400
+        defn = territory_by_id("docks")
+        assert defn is not None
+        await self.db.ensure_user(uid, guild_id)
+        await self.db.join_crew(uid, guild_id, "TreasuryCrew")
+        await self.db.start_territory_siege(uid, guild_id, defn.territory_id)
+        await self.db.credit_crew_treasury_no_wallet(guild_id, "TreasuryCrew", 10_000.0)
+        err = await self.db.buy_territory_guards(
+            uid, guild_id, defn.territory_id, 1, pay_from="treasury",
+        )
+        self.assertIsNone(err)
+        row = await self.db.get_territory_row(guild_id, defn.territory_id)
+        assert row is not None
+        self.assertEqual(int(row["guards"]), 1)
+
+    def test_perks_from_held(self) -> None:
+        from utils.territories import perks_from_held
+
+        perks = perks_from_held({"market", "docks"})
+        self.assertAlmostEqual(perks.sell_mult, 1.05)
+        self.assertAlmostEqual(perks.heist_loot_mult, 1.05)
+
     async def test_guard_cost_scales_by_tier(self) -> None:
         docks = territory_by_id("docks")
         citadel = territory_by_id("citadel")

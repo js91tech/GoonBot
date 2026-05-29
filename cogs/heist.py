@@ -100,6 +100,13 @@ class Heist(commands.Cog):
             [member.id for member in participants],
             crew_by_user,
         )
+        leader_crew = crew_by_user.get(participants[0].id)
+        held = await self.bot.db.get_crew_territory_perk_ids(
+            interaction.guild_id, leader_crew,
+        )
+        vault_bonus = (
+            config.TERRITORY_PERK_VAULT_HEIST_SUCCESS if "vault" in held else 0.0
+        )
         success_chance = min(
             config.HEIST_MAX_SUCCESS,
             base_success
@@ -108,6 +115,7 @@ class Heist(commands.Cog):
             + class_mod.heist_success_bonus
             + spell_heist
             + persistent_crew_bonus
+            + vault_bonus
             - class_mod.heist_success_penalty,
         )
 
@@ -122,10 +130,13 @@ class Heist(commands.Cog):
             )
             return
 
+        loot_frac = config.HEIST_LOOT_FRACTION
+        if "docks" in held:
+            loot_frac *= 1.0 + config.TERRITORY_PERK_DOCKS_HEIST_LOOT
         stolen = await self.bot.db.remove_up_to_balance(
             target.id,
             interaction.guild_id,
-            target_balance * config.HEIST_LOOT_FRACTION,
+            target_balance * loot_frac,
         )
         split = stolen / len(participants)
         for member in participants:

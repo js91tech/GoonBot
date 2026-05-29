@@ -10,6 +10,7 @@ from discord.ext import commands
 import config
 from utils.crew_banking import perks_summary
 from utils.helpers import fmt_amount, guild_only_message, send_error, valid_amount
+from utils.territories import TERRITORY_MAP, format_crew_territory_summary, perks_from_held
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +281,25 @@ class Crews(commands.Cog):
         embed.add_field(name="Your deposits", value=fmt_amount(float(snap["contributed"])), inline=True)
         embed.add_field(name="Level / XP", value=f"{level} / {int(snap['xp'])}", inline=True)
         embed.add_field(name="Perks", value=perks_summary(level), inline=False)
+        held = await self.bot.db.list_crew_held_territories(guild_id, snap["crew_name"])
+        if held:
+            income_total = sum(
+                TERRITORY_MAP[t].income_per_hour for t, _ in held if t in TERRITORY_MAP
+            )
+            embed.add_field(
+                name="Territories",
+                value=format_crew_territory_summary(
+                    held, income_per_hour_total=income_total,
+                ),
+                inline=False,
+            )
+            perk_lines = perks_from_held({t for t, _ in held}).summary_lines()
+            if perk_lines:
+                embed.add_field(
+                    name="Zone perks",
+                    value="\n".join(perk_lines),
+                    inline=False,
+                )
         loan = snap["loan"]
         if loan is not None:
             remaining = float(loan["remaining"])
@@ -295,7 +315,7 @@ class Crews(commands.Cog):
                 inline=False,
             )
         embed.set_footer(
-            text="Deposit · Withdraw (your share) · Borrow · Repay · Same-crew /heist +5% each",
+            text="Deposit · Withdraw · Borrow · Repay · /territory for zones",
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 

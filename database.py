@@ -450,6 +450,61 @@ class Database:
         await self._migrate_dlc_followup()
         await self._migrate_crew_banking()
         await self._migrate_territories()
+        await self._migrate_territory_integration()
+
+    async def _migrate_territory_integration(self) -> None:
+        territory_cols = [
+            ("siege_attacker_user_id", "BIGINT"),
+            ("siege_channel_id", "BIGINT"),
+            ("siege_message_id", "BIGINT"),
+        ]
+        progress_cols = [
+            ("territories_claimed", "INTEGER NOT NULL DEFAULT 0"),
+            ("sieges_won", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        if self.is_postgres:
+            for col, typedef in territory_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'territory_control' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE territory_control ADD COLUMN {col} {typedef}",
+                    )
+            for col, typedef in progress_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_progress' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(territory_control)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in territory_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE territory_control ADD COLUMN {col} {typedef}",
+                    )
+            cursor = await self.conn.execute("PRAGMA table_info(user_progress)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in progress_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
 
     async def _migrate_territories(self) -> None:
         await self.conn.execute(
@@ -3658,6 +3713,8 @@ class Database:
         duel_wins: int = 0,
         gambles_won: int = 0,
         dungeons_cleared: int = 0,
+        territories_claimed: int = 0,
+        sieges_won: int = 0,
     ) -> None:
         if not any(
             (
@@ -3669,6 +3726,8 @@ class Database:
                 duel_wins,
                 gambles_won,
                 dungeons_cleared,
+                territories_claimed,
+                sieges_won,
             )
         ):
             return
@@ -3684,7 +3743,9 @@ class Database:
                     crafts_done = crafts_done + ?,
                     duel_wins = duel_wins + ?,
                     gambles_won = gambles_won + ?,
-                    dungeons_cleared = dungeons_cleared + ?
+                    dungeons_cleared = dungeons_cleared + ?,
+                    territories_claimed = territories_claimed + ?,
+                    sieges_won = sieges_won + ?
                 WHERE user_id = ? AND guild_id = ?
                 """,
                 (
@@ -3696,6 +3757,8 @@ class Database:
                     duel_wins,
                     gambles_won,
                     dungeons_cleared,
+                    territories_claimed,
+                    sieges_won,
                     user_id,
                     guild_id,
                 ),
@@ -5016,6 +5079,84 @@ class Database:
         )
         return list(await cursor.fetchall())
 
+    async def list_crew_held_territories(
+        self, guild_id: int, crew_name: str,
+    ) -> list[tuple[str, int]]:
+        await self.ensure_territories(guild_id)
+        cursor = await self.conn.execute(
+            """
+            SELECT territory_id, guards FROM territory_control
+            WHERE guild_id = ? AND owner_crew_name = ?
+            ORDER BY territory_id ASC
+            """,
+            (guild_id, crew_name),
+        )
+        rows = await cursor.fetchall()
+        return [(str(row["territory_id"]), int(row["guards"])) for row in rows]
+
+    async def list_crew_member_user_ids(
+        self, guild_id: int, crew_name: str,
+    ) -> list[int]:
+        cursor = await self.conn.execute(
+            """
+            SELECT user_id FROM crew_members
+            WHERE guild_id = ? AND crew_name = ?
+            ORDER BY joined_at ASC
+            """,
+            (guild_id, crew_name),
+        )
+        return [int(row["user_id"]) for row in await cursor.fetchall()]
+
+    async def get_crew_territory_perk_ids(
+        self, guild_id: int, crew_name: str | None,
+    ) -> set[str]:
+        if crew_name is None:
+            return set()
+        held = await self.list_crew_held_territories(guild_id, crew_name)
+        return {tid for tid, _ in held}
+
+    async def set_territory_siege_message(
+        self,
+        guild_id: int,
+        territory_id: str,
+        channel_id: int,
+        message_id: int,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE territory_control SET
+                    siege_channel_id = ?,
+                    siege_message_id = ?
+                WHERE guild_id = ? AND territory_id = ?
+                """,
+                (channel_id, message_id, guild_id, territory_id),
+            )
+            await self.conn.commit()
+
+    async def clear_territory_siege_message(
+        self, guild_id: int, territory_id: str,
+    ) -> tuple[int | None, int | None]:
+        row = await self.get_territory_row(guild_id, territory_id)
+        if row is None:
+            return None, None
+        channel_id = row["siege_channel_id"]
+        message_id = row["siege_message_id"]
+        ch = int(channel_id) if channel_id is not None else None
+        msg = int(message_id) if message_id is not None else None
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE territory_control SET
+                    siege_channel_id = NULL,
+                    siege_message_id = NULL
+                WHERE guild_id = ? AND territory_id = ?
+                """,
+                (guild_id, territory_id),
+            )
+            await self.conn.commit()
+        return ch, msg
+
     async def ensure_territories(self, guild_id: int) -> None:
         from utils.territories import TERRITORY_IDS
 
@@ -5133,9 +5274,11 @@ class Database:
                 if hours < 1:
                     continue
                 mult = 1.0
+                if territory_id == "citadel":
+                    mult = 1.0 + config.TERRITORY_PERK_CITADEL_INCOME_BONUS
                 siege_end = row["siege_ends_at"]
                 if siege_end is not None and float(siege_end) > now:
-                    mult = income_multiplier_under_siege()
+                    mult *= income_multiplier_under_siege()
                 payout = defn.income_per_hour * hours * mult
                 if payout <= 0:
                     await self.conn.execute(
@@ -5173,7 +5316,13 @@ class Database:
         return total_paid
 
     async def buy_territory_guards(
-        self, user_id: int, guild_id: int, territory_id: str, count: int,
+        self,
+        user_id: int,
+        guild_id: int,
+        territory_id: str,
+        count: int,
+        *,
+        pay_from: str = "wallet",
     ) -> str | None:
         from utils.territories import guard_cost_per_unit, territory_by_id
 
@@ -5189,27 +5338,39 @@ class Database:
             return "invalid_territory"
         if not row["owner_crew_name"] or str(row["owner_crew_name"]) != crew_name:
             return "not_owner"
-        if row["siege_ends_at"] is not None and float(row["siege_ends_at"]) > time.time():
-            return "under_siege"
         current_guards = int(row["guards"])
         if current_guards + qty > defn.max_guards:
             return "guard_cap"
         unit_cost = guard_cost_per_unit(defn)
         total_cost = unit_cost * qty
+        use_treasury = pay_from == "treasury"
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
-            wallet_cursor = await self.conn.execute(
-                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
-                (user_id, guild_id),
-            )
-            wallet_row = await wallet_cursor.fetchone()
-            if wallet_row is None or float(wallet_row["wallet"]) < total_cost:
-                await self.conn.commit()
-                return "insufficient_funds"
-            await self.conn.execute(
-                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
-                (total_cost, user_id, guild_id),
-            )
+            if use_treasury:
+                stats = await self.get_crew_stats(guild_id, crew_name)
+                if stats is None or float(stats["treasury"]) < total_cost:
+                    await self.conn.commit()
+                    return "insufficient_treasury"
+                await self.conn.execute(
+                    """
+                    UPDATE crew_stats SET treasury = treasury - ?
+                    WHERE guild_id = ? AND crew_name = ?
+                    """,
+                    (total_cost, guild_id, crew_name),
+                )
+            else:
+                wallet_cursor = await self.conn.execute(
+                    "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                    (user_id, guild_id),
+                )
+                wallet_row = await wallet_cursor.fetchone()
+                if wallet_row is None or float(wallet_row["wallet"]) < total_cost:
+                    await self.conn.commit()
+                    return "insufficient_funds"
+                await self.conn.execute(
+                    "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                    (total_cost, user_id, guild_id),
+                )
             await self.conn.execute(
                 """
                 UPDATE territory_control SET guards = guards + ?
@@ -5262,6 +5423,7 @@ class Database:
                 """
                 UPDATE territory_control SET
                     siege_attacker_crew = ?,
+                    siege_attacker_user_id = ?,
                     siege_started_at = ?,
                     siege_ends_at = ?,
                     last_siege_at = ?
@@ -5269,6 +5431,7 @@ class Database:
                 """,
                 (
                     attacker_crew,
+                    user_id,
                     now,
                     now + config.TERRITORY_SIEGE_DURATION_SECONDS,
                     now,
@@ -5284,7 +5447,6 @@ class Database:
     ) -> str | None:
         import config
 
-        del user_id
         held = await self.count_crew_territories(guild_id, crew_name)
         if held >= config.TERRITORY_MAX_HELD_PER_CREW:
             return "max_territories"
@@ -5302,12 +5464,21 @@ class Database:
                 UPDATE territory_control SET
                     owner_crew_name = ?,
                     siege_attacker_crew = NULL,
+                    siege_attacker_user_id = NULL,
                     siege_started_at = NULL,
                     siege_ends_at = NULL,
                     guards = 0
                 WHERE guild_id = ? AND territory_id = ?
                 """,
                 (crew_name, guild_id, territory_id),
+            )
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_progress SET territories_claimed = territories_claimed + 1
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
             )
             await self.conn.commit()
         return "claimed_neutral"
@@ -5381,6 +5552,9 @@ class Database:
                     continue
                 owner = row["owner_crew_name"]
                 guards = int(row["guards"])
+                attacker_user = row["siege_attacker_user_id"]
+                channel_id = row["siege_channel_id"]
+                message_id = row["siege_message_id"]
                 members = await self.count_crew_members(guild_id, str(attacker))
                 chance = siege_success_chance(members, guards, defn)
                 won = random.random() < chance
@@ -5391,12 +5565,26 @@ class Database:
                             owner_crew_name = ?,
                             guards = 0,
                             siege_attacker_crew = NULL,
+                            siege_attacker_user_id = NULL,
                             siege_started_at = NULL,
-                            siege_ends_at = NULL
+                            siege_ends_at = NULL,
+                            siege_channel_id = NULL,
+                            siege_message_id = NULL
                         WHERE guild_id = ? AND territory_id = ?
                         """,
                         (attacker, guild_id, territory_id),
                     )
+                    if attacker_user is not None:
+                        await self._ensure_progress_no_lock(int(attacker_user), guild_id)
+                        await self.conn.execute(
+                            """
+                            UPDATE user_progress SET
+                                sieges_won = sieges_won + 1,
+                                territories_claimed = territories_claimed + 1
+                            WHERE user_id = ? AND guild_id = ?
+                            """,
+                            (int(attacker_user), guild_id),
+                        )
                     results.append({
                         "territory_id": territory_id,
                         "name": defn.name,
@@ -5404,14 +5592,20 @@ class Database:
                         "attacker": str(attacker),
                         "defender": str(owner) if owner else None,
                         "chance": chance,
+                        "attacker_user_id": int(attacker_user) if attacker_user else None,
+                        "channel_id": int(channel_id) if channel_id else None,
+                        "message_id": int(message_id) if message_id else None,
                     })
                 else:
                     await self.conn.execute(
                         """
                         UPDATE territory_control SET
                             siege_attacker_crew = NULL,
+                            siege_attacker_user_id = NULL,
                             siege_started_at = NULL,
-                            siege_ends_at = NULL
+                            siege_ends_at = NULL,
+                            siege_channel_id = NULL,
+                            siege_message_id = NULL
                         WHERE guild_id = ? AND territory_id = ?
                         """,
                         (guild_id, territory_id),
@@ -5423,6 +5617,9 @@ class Database:
                         "attacker": str(attacker),
                         "defender": str(owner) if owner else None,
                         "chance": chance,
+                        "attacker_user_id": int(attacker_user) if attacker_user else None,
+                        "channel_id": int(channel_id) if channel_id else None,
+                        "message_id": int(message_id) if message_id else None,
                     })
             await self.conn.commit()
         return results

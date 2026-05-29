@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import config
+
 if TYPE_CHECKING:
     from database import Database
 
@@ -35,6 +37,18 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "duel_master": Achievement("duel_master", "Duel Master", "Win 10 PvP duels.", "🥊"),
     "dungeon_delver": Achievement("dungeon_delver", "Dungeon Delver", "Clear 5 dungeons.", "🗝️"),
     "high_roller": Achievement("high_roller", "High Roller", "Win 20 casino games.", "🎰"),
+    "territory_claimed": Achievement(
+        "territory_claimed", "Landlord", "Claim or capture a territory.", "🏴",
+    ),
+    "siege_victor": Achievement(
+        "siege_victor", "Conqueror", "Win 5 territory sieges.", "⚔️",
+    ),
+    "crew_territory_barons": Achievement(
+        "crew_territory_barons",
+        "Territory Barons",
+        "Your crew holds 3 zones at once.",
+        "👑",
+    ),
 }
 
 
@@ -107,6 +121,25 @@ async def evaluate_unlocks(
         await grant("dungeon_delver")
     if gambles_won >= 20:
         await grant("high_roller")
+
+    try:
+        territories_claimed = int(progress["territories_claimed"])
+    except (KeyError, TypeError):
+        territories_claimed = 0
+    try:
+        sieges_won = int(progress["sieges_won"])
+    except (KeyError, TypeError):
+        sieges_won = 0
+    if territories_claimed >= 1:
+        await grant("territory_claimed")
+    if sieges_won >= 5:
+        await grant("siege_victor")
+
+    crew_name = await db.get_crew_membership(user_id, guild_id)
+    if crew_name is not None:
+        held = await db.count_crew_territories(guild_id, crew_name)
+        if held >= config.TERRITORY_MAX_HELD_PER_CREW:
+            await grant("crew_territory_barons")
 
     return newly
 
