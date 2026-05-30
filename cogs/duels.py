@@ -10,6 +10,7 @@ from discord.ext import commands
 import config
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.avatars import build_avatar_embed_files, get_avatar
+from utils.bot_players import pvp_target_error
 from utils.duel_combat import (
     DuelFighter,
     fighter_from_equipment,
@@ -106,8 +107,9 @@ class Duels(commands.Cog):
         if not isinstance(attacker, discord.Member):
             await interaction.response.send_message("Invalid attacker.", ephemeral=True)
             return
-        if opponent.bot or opponent.id == attacker.id:
-            await interaction.response.send_message("Pick another non-bot player.", ephemeral=True)
+        target_err = pvp_target_error(opponent, attacker.id)
+        if target_err:
+            await interaction.response.send_message(target_err, ephemeral=True)
             return
 
         guild_id = interaction.guild_id
@@ -195,6 +197,8 @@ class Duels(commands.Cog):
     ) -> None:
         attacker_equipment = await self.bot.db.get_equipment(attacker.id, guild_id)
         defender_equipment = await self.bot.db.get_equipment(opponent.id, guild_id)
+        attacker_unstable = await self.bot.db.list_unstable_slots(attacker.id, guild_id)
+        defender_unstable = await self.bot.db.list_unstable_slots(opponent.id, guild_id)
         attacker_progress = await self.bot.db.get_user_progress(attacker.id, guild_id)
         defender_progress = await self.bot.db.get_user_progress(opponent.id, guild_id)
         await self.bot.db.ensure_jester_class(attacker.id, guild_id)
@@ -221,6 +225,7 @@ class Duels(commands.Cog):
             class_id=attacker_class,
             aspect_bonuses=attacker_bonuses,
             trap_bomb_count=attacker_bombs,
+            unstable_slots=attacker_unstable,
         )
         defender_fighter = fighter_from_equipment(
             opponent.id,
@@ -230,6 +235,7 @@ class Duels(commands.Cog):
             class_id=defender_class,
             aspect_bonuses=defender_bonuses,
             trap_bomb_count=defender_bombs,
+            unstable_slots=defender_unstable,
         )
         if await self.bot.db.take_pending_consumable(
             attacker.id, guild_id, "duel_scroll",

@@ -56,7 +56,7 @@ python bot.py
 |---------|-------------|
 | `/daily` | Claim 75 nuggets daily |
 | `/balance` | Pocket + bank panel with deposit/withdraw buttons |
-| `/deposit amount` | Move nuggets pocket → bank (safe from heists) |
+| `/deposit amount` | Move nuggets pocket → bank (safer than pocket, but `/bank-heist` targets bank) |
 | `/withdraw amount` | Move nuggets bank → pocket |
 | `/leaderboard` | Top 10 by net worth (pocket + bank) |
 | `/pay @user amount` | Send nuggets from your pocket to another user |
@@ -72,9 +72,22 @@ python bot.py
 
 | Command | Description |
 |---------|-------------|
-| `/heist @user [@crew1] [@crew2]` | Attempt a robbery |
-| `/arrest @thief` | Arrest a failed thief during the arrest window |
-| `/crew` | Crew info |
+| `/heist @user [@crew1] [@crew2]` | Rob a user's **pocket** (wallet) |
+| `/bank-heist @user` | High-risk vault robbery — tier panel steals from **bank** |
+| `/arrest @thief` | Arrest a failed wallet heist thief (5-minute window) |
+| `/fix` | Repair unstable gear after a failed Tier 3 bank heist |
+
+**Bank heist tiers**
+
+| Tier | Success | Loot | Fail jail | Extra penalty |
+|------|---------|------|-----------|---------------|
+| 1 | 10% | 10% of bank | 120 min | — |
+| 2 | 8% | 20% of bank | 4 hours | — |
+| 3 | 5% | 35% of bank | 12 hours | 60% chance one equipped item becomes **unstable** |
+
+Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's shop price (`/fix`).
+
+| `/crew` | Interactive crew panel |
 
 ### Hacker
 
@@ -87,9 +100,10 @@ python bot.py
 
 | Command | Description |
 |---------|-------------|
-| `/attack` | Attack the active boss with equipped weapon flavor and damage |
+| `/boss` | Open the interactive raid fight panel (attack, refresh, leaderboard) |
+| `/attack` | Strike the boss once (includes fight panel buttons) |
+| `/boss-status` | Quick HP check without buttons |
 | `/heal @user` | Revive a downed teammate |
-| `/boss` | Check boss status |
 | `/summon variant` | **Admin only:** force-spawn a boss |
 
 ### Raid avatars
@@ -112,7 +126,7 @@ Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `p
 | `/sell-worn` | Sell all battle-worn drops |
 | `/use` | Raid potion, energy drink, duel scroll |
 | `/dungeon` | Solo 5-room dungeon run |
-| `/crew` | Bank, join, deposit, withdraw, crew loans, repay, leaderboard |
+| `/crew` | Interactive crew panel — join, deposit, withdraw, loans, repay |
 | `/slots` · `/jackpot` | Casino slots + server jackpot |
 
 ### Crew banking
@@ -121,7 +135,7 @@ Persistent crews share a **treasury** funded by member deposits. Deposits earn c
 
 | `/crew` action | What it does |
 |----------------|--------------|
-| **Bank / status** | Treasury, your contributed balance, active loan, level perks |
+| **Bank / status** | Opens the interactive crew panel (treasury, deposits, loans, buttons) |
 | **Deposit** | Move nuggets from your wallet into the crew treasury (tracks your contribution) |
 | **Withdraw** | Pull up to what you deposited (blocked while you owe a loan) |
 | **Loan** | Borrow from the treasury within your crew level cap (min 50 nuggets) |
@@ -136,7 +150,7 @@ Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly
 
 | `/territory` action | What it does |
 |---------------------|--------------|
-| **Map / status** | Who holds each zone, guards, active sieges |
+| **Map / status** | Interactive territory map — hire guards on held zones (+1/+5 wallet or treasury) |
 | **Attack / claim** | Claim neutral zones instantly; contested zones enter a **30 min** siege |
 | **Buy guards** | Spend nuggets to add defenders (improves hold chance when sieged) |
 | **Abandon** | Release a zone your crew holds |
