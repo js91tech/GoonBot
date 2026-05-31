@@ -11,7 +11,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "Raid & boss",
         "**/boss** · **/attack** · **/heal** · **/boss-status** · **/raid-leaderboard**\n"
         "**/shop** · **/buy** · **/equip** · **/craft** · **/prestige**\n"
-        "**/dungeon** — solo or **party** runs · **/alchemy** · **/season**",
+        "**/dungeon** — solo standard (**25** energy) · unlock **Gilded Vault** (**50k**, party raid) · **/alchemy** · **/season**",
     ),
     (
         "PvP & casino",

@@ -85,3 +85,42 @@ def energy_snapshot(
         tick_seconds=int(interval),
         seconds_until_tick=until,
     )
+
+
+def energy_bar(current: int, cap: int, *, length: int = 10) -> str:
+    if cap <= 0:
+        return "░" * length
+    filled = int(round((current / cap) * length))
+    filled = max(0, min(length, filled))
+    return "█" * filled + "░" * (length - filled)
+
+
+def format_energy_display(
+    current: int,
+    cap: int,
+    cap_upgrades: int,
+    last_tick_at: float,
+    *,
+    regen_per_tick: int | None = None,
+    tick_seconds: float | None = None,
+) -> tuple[str, int, int]:
+    """Return (display text, synced current, cap)."""
+    snap = energy_snapshot(
+        current,
+        cap,
+        cap_upgrades,
+        last_tick_at,
+        regen_per_tick=regen_per_tick,
+        tick_seconds=tick_seconds,
+    )
+    mins = snap.seconds_until_tick // 60
+    secs = snap.seconds_until_tick % 60
+    if snap.seconds_until_tick > 0:
+        regen_note = f"Next **+{snap.regen_per_tick}** in **{mins}m {secs}s**"
+    else:
+        regen_note = "Full — regen paused until you spend energy"
+    text = (
+        f"`{energy_bar(snap.current, snap.cap)}` **{snap.current}/{snap.cap}** energy\n"
+        f"+{snap.regen_per_tick} every {snap.tick_seconds // 60} min · {regen_note}"
+    )
+    return text, snap.current, snap.cap

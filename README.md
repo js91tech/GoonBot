@@ -125,7 +125,7 @@ Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `p
 | `/equip-best` | Auto-equip best weapon and armor |
 | `/sell-worn` | Sell all battle-worn drops |
 | `/use` | Raid potion, energy drink, duel scroll |
-| `/dungeon` | Solo 5-room dungeon run |
+| `/dungeon` | Solo standard dungeon panel (25 energy) · unlock Gilded Vault (50k) for a 3+ raider party raid |
 | `/crew` | Interactive crew panel — join, deposit, withdraw, loans, repay |
 | `/slots` · `/jackpot` | Casino slots + server jackpot |
 

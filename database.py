@@ -455,6 +455,7 @@ class Database:
         await self._migrate_territory_integration()
         await self._migrate_personal_bank()
         await self._migrate_bank_heist()
+        await self._migrate_dungeon_tiers()
 
     async def _migrate_bank_heist(self) -> None:
         if self.is_postgres:
@@ -486,6 +487,82 @@ class Database:
             )
             """,
         )
+        await self.conn.commit()
+
+    async def _migrate_dungeon_tiers(self) -> None:
+        progress_cols = [
+            ("vault_dungeon_unlocked", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        run_cols = [
+            ("tier", "TEXT NOT NULL DEFAULT 'normal'"),
+        ]
+        if self.is_postgres:
+            for col, typedef in progress_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_progress' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+            for col, typedef in run_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'dungeon_runs' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE dungeon_runs ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_progress)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in progress_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+            cursor = await self.conn.execute("PRAGMA table_info(dungeon_runs)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in run_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE dungeon_runs ADD COLUMN {col} {typedef}",
+                    )
+        party_cols = [
+            ("tier", "TEXT NOT NULL DEFAULT 'normal'"),
+        ]
+        if self.is_postgres:
+            for col, typedef in party_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'dungeon_parties' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE dungeon_parties ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(dungeon_parties)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in party_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE dungeon_parties ADD COLUMN {col} {typedef}",
+                    )
         await self.conn.commit()
 
     async def _migrate_personal_bank(self) -> None:
@@ -6196,24 +6273,53 @@ class Database:
         )
         return await cursor.fetchone()
 
+    async def has_vault_dungeon_unlocked(self, user_id: int, guild_id: int) -> bool:
+        progress = await self.get_user_progress(user_id, guild_id)
+        return int(progress["vault_dungeon_unlocked"]) != 0
+
+    async def unlock_vault_dungeon(self, user_id: int, guild_id: int, price: float) -> str | None:
+        """Unlock Gilded Vault access. Returns None on success or an error code."""
+        if await self.has_vault_dungeon_unlocked(user_id, guild_id):
+            return "already_unlocked"
+        if not await self.debit_wallet(user_id, guild_id, price):
+            return "insufficient_funds"
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE user_progress SET vault_dungeon_unlocked = 1
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+        return None
+
     async def start_dungeon_run(
-        self, user_id: int, guild_id: int, player_hp: float, max_hp: float, enemy_hp: float,
+        self,
+        user_id: int,
+        guild_id: int,
+        player_hp: float,
+        max_hp: float,
+        enemy_hp: float,
+        *,
+        tier: str = "normal",
     ) -> None:
         async with self._write_lock:
             await self.conn.execute(
                 """
                 INSERT INTO dungeon_runs (
-                    guild_id, user_id, room, player_hp, max_hp, enemy_hp, started_at
+                    guild_id, user_id, room, player_hp, max_hp, enemy_hp, started_at, tier
                 )
-                VALUES (?, ?, 1, ?, ?, ?, ?)
+                VALUES (?, ?, 1, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, user_id) DO UPDATE SET
                     room = 1,
                     player_hp = excluded.player_hp,
                     max_hp = excluded.max_hp,
                     enemy_hp = excluded.enemy_hp,
-                    started_at = excluded.started_at
+                    started_at = excluded.started_at,
+                    tier = excluded.tier
                 """,
-                (guild_id, user_id, player_hp, max_hp, enemy_hp, time.time()),
+                (guild_id, user_id, player_hp, max_hp, enemy_hp, time.time(), tier),
             )
             await self.conn.commit()
 
@@ -6382,7 +6488,14 @@ class Database:
         return list(await cursor.fetchall())
 
     async def create_dungeon_party(
-        self, guild_id: int, leader_id: int, player_hp: float, max_hp: float, enemy_hp: float,
+        self,
+        guild_id: int,
+        leader_id: int,
+        player_hp: float,
+        max_hp: float,
+        enemy_hp: float,
+        *,
+        tier: str = "normal",
     ) -> None:
         async with self._write_lock:
             await self.conn.execute(
@@ -6395,10 +6508,10 @@ class Database:
             )
             await self.conn.execute(
                 """
-                INSERT INTO dungeon_parties (guild_id, leader_id, room, enemy_hp, started_at)
-                VALUES (?, ?, 1, ?, ?)
+                INSERT INTO dungeon_parties (guild_id, leader_id, room, enemy_hp, started_at, tier)
+                VALUES (?, ?, 1, ?, ?, ?)
                 """,
-                (guild_id, leader_id, enemy_hp, time.time()),
+                (guild_id, leader_id, enemy_hp, time.time(), tier),
             )
             await self.conn.execute(
                 """
