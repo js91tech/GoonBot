@@ -5,6 +5,9 @@ from dataclasses import dataclass
 
 import config
 
+_STD = config.DUNGEON_NORMAL_DIFFICULTY_MULT
+_VAULT = config.DUNGEON_VAULT_DIFFICULTY_MULT
+
 
 @dataclass(frozen=True)
 class DungeonTier:
@@ -43,18 +46,18 @@ NORMAL_TIER = DungeonTier(
     energy_cost=config.DUNGEON_ENERGY_COST,
     party_only=False,
     min_party_size=1,
-    enemy_hp_room1_min=115.0,
-    enemy_hp_room1_max=185.0,
-    enemy_hp_room_bonus=22.0,
-    enemy_hp_room_spread=28.0,
-    counter_min=18,
-    counter_max=36,
-    party_enemy_hp_room1_min=160.0,
-    party_enemy_hp_room1_max=260.0,
-    party_enemy_hp_room_bonus=30.0,
-    party_enemy_hp_room_spread=35.0,
-    party_counter_min=14,
-    party_counter_max=28,
+    enemy_hp_room1_min=115.0 * _STD,
+    enemy_hp_room1_max=185.0 * _STD,
+    enemy_hp_room_bonus=22.0 * _STD,
+    enemy_hp_room_spread=28.0 * _STD,
+    counter_min=18 * _STD,
+    counter_max=36 * _STD,
+    party_enemy_hp_room1_min=160.0 * _STD,
+    party_enemy_hp_room1_max=260.0 * _STD,
+    party_enemy_hp_room_bonus=30.0 * _STD,
+    party_enemy_hp_room_spread=35.0 * _STD,
+    party_counter_min=14 * _STD,
+    party_counter_max=28 * _STD,
 )
 
 VAULT_TIER = DungeonTier(
@@ -68,18 +71,18 @@ VAULT_TIER = DungeonTier(
     energy_cost=config.DUNGEON_ENERGY_COST,
     party_only=True,
     min_party_size=config.DUNGEON_VAULT_MIN_PARTY_SIZE,
-    enemy_hp_room1_min=115.0,
-    enemy_hp_room1_max=185.0,
-    enemy_hp_room_bonus=22.0,
-    enemy_hp_room_spread=28.0,
-    counter_min=18,
-    counter_max=36,
-    party_enemy_hp_room1_min=480.0,
-    party_enemy_hp_room1_max=680.0,
-    party_enemy_hp_room_bonus=55.0,
-    party_enemy_hp_room_spread=65.0,
-    party_counter_min=24,
-    party_counter_max=42,
+    enemy_hp_room1_min=115.0 * _VAULT,
+    enemy_hp_room1_max=185.0 * _VAULT,
+    enemy_hp_room_bonus=22.0 * _VAULT,
+    enemy_hp_room_spread=28.0 * _VAULT,
+    counter_min=18 * _VAULT,
+    counter_max=36 * _VAULT,
+    party_enemy_hp_room1_min=480.0 * _VAULT,
+    party_enemy_hp_room1_max=680.0 * _VAULT,
+    party_enemy_hp_room_bonus=55.0 * _VAULT,
+    party_enemy_hp_room_spread=65.0 * _VAULT,
+    party_counter_min=24 * _VAULT,
+    party_counter_max=42 * _VAULT,
 )
 
 DUNGEON_TIERS: dict[str, DungeonTier] = {
@@ -97,9 +100,10 @@ def get_dungeon_tier(tier_id: str | None) -> DungeonTier:
 def next_enemy_hp(tier: DungeonTier, room: int) -> float:
     if room <= 1:
         return random.uniform(tier.enemy_hp_room1_min, tier.enemy_hp_room1_max)
-    base = 100 + room * tier.enemy_hp_room_bonus
-    spread = 150 + room * tier.enemy_hp_room_spread
-    return random.uniform(base, spread)
+    rooms_in = room - 1
+    lo = tier.enemy_hp_room1_min + rooms_in * tier.enemy_hp_room_bonus
+    hi = tier.enemy_hp_room1_max + rooms_in * tier.enemy_hp_room_spread
+    return random.uniform(lo, hi)
 
 
 def next_party_enemy_hp(tier: DungeonTier, room: int) -> float:
@@ -108,6 +112,7 @@ def next_party_enemy_hp(tier: DungeonTier, room: int) -> float:
             tier.party_enemy_hp_room1_min,
             tier.party_enemy_hp_room1_max,
         )
-    base = 140 + room * tier.party_enemy_hp_room_bonus
-    spread = 200 + room * tier.party_enemy_hp_room_spread
-    return random.uniform(base, spread)
+    rooms_in = room - 1
+    lo = tier.party_enemy_hp_room1_min + rooms_in * tier.party_enemy_hp_room_bonus
+    hi = tier.party_enemy_hp_room1_max + rooms_in * tier.party_enemy_hp_room_spread
+    return random.uniform(lo, hi)

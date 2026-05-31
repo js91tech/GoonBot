@@ -1,4 +1,4 @@
-"""Dungeon panel embed, energy gate, and vault party tests."""
+"""Dungeon tier difficulty scaling tests."""
 from __future__ import annotations
 
 import tempfile
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import config
 from cogs.dungeon import Dungeon
 from database import Database
-from utils.dungeon_tiers import VAULT_TIER
+from utils.dungeon_tiers import NORMAL_TIER, VAULT_TIER, next_enemy_hp, next_party_enemy_hp
 
 
 class DungeonPanelTests(unittest.IsolatedAsyncioTestCase):
@@ -94,6 +94,22 @@ class DungeonPanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(fight.error)
         assert fight.error is not None
         self.assertIn(str(config.DUNGEON_VAULT_MIN_PARTY_SIZE), fight.error)
+
+
+class DungeonDifficultyTests(unittest.TestCase):
+    def test_standard_enemy_hp_is_10x_base(self) -> None:
+        hp = next_enemy_hp(NORMAL_TIER, 1)
+        self.assertGreaterEqual(hp, NORMAL_TIER.enemy_hp_room1_min)
+        self.assertLessEqual(hp, NORMAL_TIER.enemy_hp_room1_max)
+        self.assertEqual(NORMAL_TIER.enemy_hp_room1_min, 1150.0)
+        self.assertEqual(NORMAL_TIER.counter_min, 180)
+
+    def test_vault_party_enemy_hp_is_100x_base(self) -> None:
+        hp = next_party_enemy_hp(VAULT_TIER, 1)
+        self.assertGreaterEqual(hp, VAULT_TIER.party_enemy_hp_room1_min)
+        self.assertLessEqual(hp, VAULT_TIER.party_enemy_hp_room1_max)
+        self.assertEqual(VAULT_TIER.party_enemy_hp_room1_min, 48_000.0)
+        self.assertEqual(VAULT_TIER.party_counter_min, 2400)
 
 
 if __name__ == "__main__":
