@@ -4,6 +4,7 @@ import random
 from dataclasses import dataclass
 
 import config
+from utils.helpers import fmt_amount
 
 _STD = config.DUNGEON_NORMAL_DIFFICULTY_MULT
 _VAULT = config.DUNGEON_VAULT_DIFFICULTY_MULT
@@ -15,7 +16,8 @@ class DungeonTier:
     name: str
     emoji: str
     unlock_cost: float
-    room_reward: float
+    room_reward_min: float
+    room_reward_max: float
     clear_bonus: float
     scrap_per_clear: int
     energy_cost: int
@@ -40,7 +42,8 @@ NORMAL_TIER = DungeonTier(
     name="Delver's Depths",
     emoji="🕳️",
     unlock_cost=0.0,
-    room_reward=config.DUNGEON_ROOM_REWARD,
+    room_reward_min=config.DUNGEON_ROOM_REWARD_MIN,
+    room_reward_max=config.DUNGEON_ROOM_REWARD_MAX,
     clear_bonus=config.DUNGEON_CLEAR_BONUS,
     scrap_per_clear=config.DUNGEON_SCRAP_PER_CLEAR,
     energy_cost=config.DUNGEON_ENERGY_COST,
@@ -65,7 +68,8 @@ VAULT_TIER = DungeonTier(
     name="Gilded Vault",
     emoji="🏛️",
     unlock_cost=config.DUNGEON_VAULT_UNLOCK_COST,
-    room_reward=config.DUNGEON_VAULT_ROOM_REWARD,
+    room_reward_min=config.DUNGEON_VAULT_ROOM_REWARD_MIN,
+    room_reward_max=config.DUNGEON_VAULT_ROOM_REWARD_MAX,
     clear_bonus=config.DUNGEON_VAULT_CLEAR_BONUS,
     scrap_per_clear=config.DUNGEON_VAULT_SCRAP_PER_CLEAR,
     energy_cost=config.DUNGEON_ENERGY_COST,
@@ -95,6 +99,29 @@ def get_dungeon_tier(tier_id: str | None) -> DungeonTier:
     if tier_id and tier_id in DUNGEON_TIERS:
         return DUNGEON_TIERS[tier_id]
     return NORMAL_TIER
+
+
+def format_room_reward_range(tier: DungeonTier, *, party_split: bool = False) -> str:
+    lo = fmt_amount(tier.room_reward_min)
+    hi = fmt_amount(tier.room_reward_max)
+    text = f"**{lo}–{hi}**"
+    if party_split:
+        text += " split per room"
+    return text
+
+
+def roll_room_reward(tier: DungeonTier) -> float:
+    return random.uniform(tier.room_reward_min, tier.room_reward_max)
+
+
+def roll_party_room_payouts(
+    tier: DungeonTier,
+    party_size: int,
+) -> tuple[float, float]:
+    """Return (total room pool, each surviving member's share)."""
+    total = roll_room_reward(tier)
+    each = total / max(1, party_size)
+    return total, each
 
 
 def next_enemy_hp(tier: DungeonTier, room: int) -> float:

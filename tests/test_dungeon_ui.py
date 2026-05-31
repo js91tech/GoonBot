@@ -111,6 +111,24 @@ class DungeonDifficultyTests(unittest.TestCase):
         self.assertEqual(VAULT_TIER.party_enemy_hp_room1_min, 48_000.0)
         self.assertEqual(VAULT_TIER.party_counter_min, 2400)
 
+    def test_standard_room_reward_range(self) -> None:
+        from utils.dungeon_tiers import roll_room_reward
+
+        self.assertEqual(NORMAL_TIER.room_reward_min, 1_000.0)
+        self.assertEqual(NORMAL_TIER.room_reward_max, 2_000.0)
+        for _ in range(20):
+            reward = roll_room_reward(NORMAL_TIER)
+            self.assertGreaterEqual(reward, 1_000.0)
+            self.assertLessEqual(reward, 2_000.0)
+
+    def test_vault_party_reward_split(self) -> None:
+        from utils.dungeon_tiers import roll_party_room_payouts
+
+        total, each = roll_party_room_payouts(VAULT_TIER, 4)
+        self.assertGreaterEqual(total, 3_000.0)
+        self.assertLessEqual(total, 7_000.0)
+        self.assertAlmostEqual(each, total / 4)
+
 
 if __name__ == "__main__":
     unittest.main()

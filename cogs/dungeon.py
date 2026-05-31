@@ -12,9 +12,12 @@ from utils.dungeon_tiers import (
     DUNGEON_TIERS,
     NORMAL_TIER,
     VAULT_TIER,
+    format_room_reward_range,
     get_dungeon_tier,
     next_enemy_hp,
     next_party_enemy_hp,
+    roll_party_room_payouts,
+    roll_room_reward,
 )
 from utils.dungeon_ui import DungeonActionResult, send_dungeon_panel
 from utils.energy import format_energy_display
@@ -66,9 +69,10 @@ class Dungeon(commands.Cog):
                 f"party (**{tier.min_party_size}+** raiders)"
             )
         mode = "Party raid" if tier.party_only else "Solo · tougher foes"
+        room_pay = format_room_reward_range(tier, party_split=tier.party_only)
         return (
             f"{tier.emoji} **{tier.name}** — {mode}\n"
-            f"Room **{fmt_amount(tier.room_reward)}** · "
+            f"Room {room_pay} · "
             f"Clear **{fmt_amount(tier.clear_bonus)}** + **{tier.scrap_per_clear}** scrap\n"
             f"{access}"
         )
@@ -138,7 +142,7 @@ class Dungeon(commands.Cog):
         embed.add_field(
             name="Rewards",
             value=(
-                f"Room **{fmt_amount(tier.room_reward)}** · "
+                f"Room {format_room_reward_range(tier, party_split=False)} · "
                 f"Clear **{fmt_amount(tier.clear_bonus)}** + **{tier.scrap_per_clear}** scrap"
             ),
             inline=False,
@@ -303,7 +307,7 @@ class Dungeon(commands.Cog):
             embed, _, _ = await self.build_dungeon_embed(guild_id, user_id)
             return DungeonActionResult(embed=embed, message="\n".join(lines))
 
-        reward = tier.room_reward
+        reward = roll_room_reward(tier)
         if room >= config.DUNGEON_ROOMS:
             reward += tier.clear_bonus
             await self.bot.db.clear_dungeon_run(user_id, guild_id)
@@ -468,7 +472,7 @@ class Dungeon(commands.Cog):
                 message="\n".join(lines) + f"\nEnemy **{int(enemy_hp)}** HP left.",
             )
 
-        reward_each = tier.room_reward / max(1, len(members))
+        room_total, reward_each = roll_party_room_payouts(tier, len(members))
         if room >= config.DUNGEON_ROOMS:
             reward_each += tier.clear_bonus / max(1, len(members))
             await self.bot.db.clear_dungeon_party(guild_id, lid)
@@ -485,7 +489,8 @@ class Dungeon(commands.Cog):
                 message=(
                     "\n".join(lines)
                     + f"\n**{tier.name} cleared!** "
-                    f"+{fmt_amount(reward_each)} each · scrap for survivors."
+                    f"+{fmt_amount(reward_each)} each "
+                    f"({fmt_amount(room_total)} room pool split) · scrap for survivors."
                 ),
             )
 
@@ -501,7 +506,8 @@ class Dungeon(commands.Cog):
         return DungeonActionResult(
             message=(
                 "\n".join(lines)
-                + f"\nRoom cleared (+{fmt_amount(reward_each)} each). "
+                + f"\nRoom cleared (+{fmt_amount(reward_each)} each, "
+                f"{fmt_amount(room_total)} split). "
                 f"Room **{next_room}** — enemy **{int(next_enemy)}** HP."
             ),
         )
