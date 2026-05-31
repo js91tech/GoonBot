@@ -125,7 +125,7 @@ Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `p
 | `/equip-best` | Auto-equip best weapon and armor |
 | `/sell-worn` | Sell all battle-worn drops |
 | `/use` | Raid potion, energy drink, duel scroll |
-| `/dungeon` | Solo 5-room dungeon run |
+| `/dungeon` | Solo 5-room dungeon panel (25 energy/run) — fight, flee, refresh buttons |
 | `/crew` | Interactive crew panel — join, deposit, withdraw, loans, repay |
 | `/slots` · `/jackpot` | Casino slots + server jackpot |
 
