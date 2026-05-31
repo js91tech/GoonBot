@@ -1,4 +1,4 @@
-"""Dungeon panel embed and energy gate tests."""
+"""Dungeon panel embed, energy gate, and vault party tests."""
 from __future__ import annotations
 
 import tempfile
@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import config
 from cogs.dungeon import Dungeon
 from database import Database
+from utils.dungeon_tiers import VAULT_TIER
 
 
 class DungeonPanelTests(unittest.IsolatedAsyncioTestCase):
@@ -27,16 +28,18 @@ class DungeonPanelTests(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
         self.tmp.cleanup()
 
-    async def test_build_embed_no_run_shows_energy_cost(self) -> None:
-        embed, has_run = await self.cog.build_dungeon_embed(self.guild_id, self.user_id)
+    async def test_build_embed_no_run_shows_tiers(self) -> None:
+        embed, has_run, _ = await self.cog.build_dungeon_embed(self.guild_id, self.user_id)
         self.assertFalse(has_run)
-        self.assertIn("Delver's Depths", embed.title)
-        cost_field = next(f for f in embed.fields if f.name == "Entry cost")
-        self.assertIn(str(config.DUNGEON_ENERGY_COST), cost_field.value)
+        self.assertIn("choose your depth", embed.title.lower())
+        standard = next(f for f in embed.fields if f.name == "Standard")
+        self.assertIn("Delver's Depths", standard.value)
+        premium = next(f for f in embed.fields if f.name == "Premium")
+        self.assertIn("Gilded Vault", premium.value)
 
     async def test_build_embed_active_run_shows_hp(self) -> None:
         await self.db.start_dungeon_run(self.user_id, self.guild_id, 100.0, 100.0, 80.0)
-        embed, has_run = await self.cog.build_dungeon_embed(self.guild_id, self.user_id)
+        embed, has_run, _ = await self.cog.build_dungeon_embed(self.guild_id, self.user_id)
         self.assertTrue(has_run)
         self.assertIn("Room 1/", embed.title)
         hp_field = next(f for f in embed.fields if f.name == "Your HP")
@@ -63,6 +66,34 @@ class DungeonPanelTests(unittest.IsolatedAsyncioTestCase):
         char = await self.db.get_user_character(self.user_id, self.guild_id)
         expected = int(char["energy_cap"]) - config.DUNGEON_ENERGY_COST
         self.assertEqual(int(char["energy"]), expected)
+
+    async def test_vault_solo_start_rejected(self) -> None:
+        await self.db.credit_wallet(self.user_id, self.guild_id, 100_000.0)
+        await self.db.unlock_vault_dungeon(
+            self.user_id, self.guild_id, config.DUNGEON_VAULT_UNLOCK_COST,
+        )
+        result = await self.cog.execute_dungeon_start(
+            self.guild_id, self.user_id, tier_id=VAULT_TIER.tier_id,
+        )
+        self.assertIsNotNone(result.error)
+        assert result.error is not None
+        self.assertIn("party", result.error.lower())
+
+    async def test_vault_party_requires_min_raiders(self) -> None:
+        await self.db.credit_wallet(self.user_id, self.guild_id, 100_000.0)
+        await self.db.unlock_vault_dungeon(
+            self.user_id, self.guild_id, config.DUNGEON_VAULT_UNLOCK_COST,
+        )
+        create = await self.cog.execute_party_create(
+            self.guild_id, self.user_id, tier_id=VAULT_TIER.tier_id,
+        )
+        self.assertIsNone(create.error)
+        fight = await self.cog.execute_party_fight(
+            self.guild_id, self.user_id, display_name="Tester",
+        )
+        self.assertIsNotNone(fight.error)
+        assert fight.error is not None
+        self.assertIn(str(config.DUNGEON_VAULT_MIN_PARTY_SIZE), fight.error)
 
 
 if __name__ == "__main__":
