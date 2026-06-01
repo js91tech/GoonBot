@@ -338,6 +338,42 @@ RAID_POTION = ShopItem(
     "Use before /attack: next boss hit deals +20% damage (one fight).",
     shop_listed=True,
 )
+HP_POTION_SMALL = ShopItem(
+    "hp_potion_small",
+    "Small HP Potion",
+    "consumable",
+    2500,
+    0,
+    "Auto-heals 40 HP during boss raids when your HP drops low.",
+    shop_listed=True,
+)
+HP_POTION_MEDIUM = ShopItem(
+    "hp_potion_medium",
+    "Medium HP Potion",
+    "consumable",
+    3500,
+    0,
+    "Auto-heals 75 HP during boss raids when your HP drops low.",
+    shop_listed=True,
+)
+HP_POTION_LARGE = ShopItem(
+    "hp_potion_large",
+    "Large HP Potion",
+    "consumable",
+    5500,
+    0,
+    "Auto-heals 100 HP during boss raids when your HP drops low.",
+    shop_listed=True,
+)
+HP_POTION_XXL = ShopItem(
+    "hp_potion_xxl",
+    "XXL HP Potion",
+    "consumable",
+    6000,
+    0,
+    "Auto-heals 125 HP during boss raids when your HP drops low.",
+    shop_listed=True,
+)
 ENERGY_DRINK = ShopItem(
     "energy_drink",
     "Energy Drink",
