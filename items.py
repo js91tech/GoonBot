@@ -379,11 +379,24 @@ ALCHEMY_SCRAP = ShopItem(
 CONSUMABLES: tuple[ShopItem, ...] = (
     TRAP_BOMB,
     RAID_POTION,
+    HP_POTION_SMALL,
+    HP_POTION_MEDIUM,
+    HP_POTION_LARGE,
+    HP_POTION_XXL,
     ENERGY_DRINK,
     DUEL_SCROLL,
     CHIA_SEEDS,
     ALCHEMY_SCRAP,
 )
+
+HP_POTION_HEAL: dict[str, int] = {
+    "hp_potion_small": 40,
+    "hp_potion_medium": 75,
+    "hp_potion_large": 100,
+    "hp_potion_xxl": 125,
+}
+
+HP_POTION_IDS: frozenset[str] = frozenset(HP_POTION_HEAL)
 
 GIFTABLE_ITEM_IDS: frozenset[str] = frozenset({"chia_seeds"})
 

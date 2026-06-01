@@ -5,11 +5,25 @@ from typing import TYPE_CHECKING
 
 import discord
 
+import config
+from items import HP_POTION_IDS, get_item
 from utils.helpers import fmt_amount
-from utils.summoner_penalty import boss_summoner_id, summoner_penalty_summary
 
 if TYPE_CHECKING:
     from cogs.boss import Boss
+
+POTION_TIER_OPTIONS: tuple[tuple[str, str | None], ...] = (
+    ("Off", None),
+    ("Small", "hp_potion_small"),
+    ("Medium", "hp_potion_medium"),
+    ("Large", "hp_potion_large"),
+    ("XXL", "hp_potion_xxl"),
+)
+
+POTION_TIER_BY_ID: dict[str | None, str] = {item_id: label for label, item_id in POTION_TIER_OPTIONS}
+POTION_TIER_BY_LABEL: dict[str, str | None] = {
+    label: item_id for label, item_id in POTION_TIER_OPTIONS
+}
 
 
 @dataclass
@@ -17,6 +31,100 @@ class BossAttackResult:
     embed: discord.Embed | None = None
     defeated: bool = False
     error: str | None = None
+
+
+class AutoPotionSettingsView(discord.ui.View):
+    """Configure raid auto-heal potion tier and HP threshold."""
+
+    def __init__(self, cog: Boss, guild_id: int, user_id: int) -> None:
+        super().__init__(timeout=180.0)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
+
+    @classmethod
+    async def create(cls, cog: Boss, guild_id: int, user_id: int) -> AutoPotionSettingsView:
+        view = cls(cog, guild_id, user_id)
+        item_id, threshold_pct = await cog.bot.db.get_auto_potion_settings(user_id, guild_id)
+        tier_label = POTION_TIER_BY_ID.get(item_id, "Off")
+        threshold_label = (
+            f"{threshold_pct}%"
+            if threshold_pct in config.AUTO_POTION_THRESHOLDS
+            else f"{config.AUTO_POTION_THRESHOLDS[2]}%"
+        )
+
+        tier_select = discord.ui.Select(
+            placeholder="Potion tier",
+            options=[
+                discord.SelectOption(label=label, value=label, default=(label == tier_label))
+                for label, _ in POTION_TIER_OPTIONS
+            ],
+            row=0,
+        )
+
+        async def tier_callback(interaction: discord.Interaction) -> None:
+            if interaction.user.id != user_id:
+                await interaction.response.send_message(
+                    "This panel is not yours.", ephemeral=True
+                )
+                return
+            label = tier_select.values[0]
+            new_item_id = POTION_TIER_BY_LABEL[label]
+            _, cur_threshold = await cog.bot.db.get_auto_potion_settings(user_id, guild_id)
+            threshold = (
+                cur_threshold
+                if cur_threshold in config.AUTO_POTION_THRESHOLDS
+                else config.AUTO_POTION_THRESHOLDS[2]
+            )
+            await cog.bot.db.set_auto_potion_settings(
+                user_id, guild_id, new_item_id, threshold
+            )
+            await interaction.response.send_message(
+                f"Auto-heal potion set to **{label}**.", ephemeral=True
+            )
+
+        tier_select.callback = tier_callback
+        view.add_item(tier_select)
+
+        threshold_select = discord.ui.Select(
+            placeholder="Trigger at HP %",
+            options=[
+                discord.SelectOption(
+                    label=f"{pct}% HP",
+                    value=str(pct),
+                    default=(f"{pct}%" == threshold_label),
+                )
+                for pct in config.AUTO_POTION_THRESHOLDS
+            ],
+            row=1,
+        )
+
+        async def threshold_callback(interaction: discord.Interaction) -> None:
+            if interaction.user.id != user_id:
+                await interaction.response.send_message(
+                    "This panel is not yours.", ephemeral=True
+                )
+                return
+            threshold = int(threshold_select.values[0])
+            cur_item_id, _ = await cog.bot.db.get_auto_potion_settings(user_id, guild_id)
+            await cog.bot.db.set_auto_potion_settings(
+                user_id, guild_id, cur_item_id, threshold
+            )
+            await interaction.response.send_message(
+                f"Auto-heal triggers at **{threshold}%** HP or below.", ephemeral=True
+            )
+
+        threshold_select.callback = threshold_callback
+        view.add_item(threshold_select)
+        return view
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "Open your own fight panel with `/boss`.", ephemeral=True
+            )
+            return False
+        return True
 
 
 class BossFightView(discord.ui.View):
@@ -99,6 +207,39 @@ class BossFightView(discord.ui.View):
         embed.set_footer(text="Rewards scale with damage share when the boss falls")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @discord.ui.button(label="🧪 Auto-heal", style=discord.ButtonStyle.success, row=1)
+    async def auto_heal_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        item_id, threshold_pct = await self.cog.bot.db.get_auto_potion_settings(
+            self.user_id,
+            self.guild_id,
+        )
+        if item_id and threshold_pct > 0:
+            potion = get_item(item_id)
+            tier = potion.name if potion is not None else item_id
+            current = f"**{tier}** at **{threshold_pct}%** HP or below"
+        else:
+            current = "_Off_"
+        embed = discord.Embed(
+            title="Auto-heal settings",
+            description=(
+                f"Current: {current}\n\n"
+                "Choose a potion tier and HP threshold. When a boss counter drops you "
+                "to or below that %, the bot consumes one potion from your inventory."
+            ),
+            color=discord.Color.green(),
+        )
+        for potion_id in sorted(HP_POTION_IDS):
+            potion = get_item(potion_id)
+            if potion is not None:
+                embed.add_field(
+                    name=potion.name,
+                    value=potion.description,
+                    inline=False,
+                )
+        view = await AutoPotionSettingsView.create(self.cog, self.guild_id, self.user_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 async def send_boss_fight_panel(
     interaction: discord.Interaction,
@@ -119,6 +260,13 @@ async def send_boss_fight_panel(
             interaction.guild,
             interaction=interaction,
             killer_user_id=None,
+        )
+        return
+
+    if cog.bot.db.boss_has_expired(boss_row) and interaction.guild is not None:
+        await cog._despawn_boss_timeout(interaction.guild)
+        await interaction.response.send_message(
+            "The boss despawned before you could fight.", ephemeral=True
         )
         return
 

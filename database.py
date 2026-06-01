@@ -456,8 +456,74 @@ class Database:
         await self._migrate_personal_bank()
         await self._migrate_bank_heist()
         await self._migrate_dungeon_tiers()
+        await self._migrate_boss_rebalance()
+
+    async def _migrate_boss_rebalance(self) -> None:
+        session_cols = [
+            ("expires_at", "REAL"),
+            ("solo_attack_streak", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        progress_cols = [
+            ("auto_potion_item_id", "TEXT"),
+            ("auto_potion_threshold_pct", "INTEGER NOT NULL DEFAULT 0"),
+            ("ultra_kills", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        if self.is_postgres:
+            for col, typedef in session_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'boss_sessions' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE boss_sessions ADD COLUMN {col} {typedef}",
+                    )
+            for col, typedef in progress_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_progress' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(boss_sessions)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in session_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE boss_sessions ADD COLUMN {col} {typedef}",
+                    )
+            cursor = await self.conn.execute("PRAGMA table_info(user_progress)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in progress_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS boss_attack_cooldowns (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                last_attack REAL NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_bank_heist(self) -> None:
+
         if self.is_postgres:
             cursor = await self.conn.execute(
                 """
@@ -3164,9 +3230,11 @@ class Database:
         whole_minutes = int(elapsed // 60)
         if whole_minutes <= 0:
             return boss
-        decay_amount = (
-            whole_minutes * config.BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE * max_hp
-        )
+        from utils.boss_mechanics import passive_decay_rate_for_variant
+
+        variant = str(boss["variant"])
+        decay_rate = passive_decay_rate_for_variant(variant)
+        decay_amount = whole_minutes * decay_rate * max_hp
         new_hp = max(0.0, hp - decay_amount)
         new_checkpoint = checkpoint + whole_minutes * 60.0
         await self.conn.execute(
@@ -3217,20 +3285,24 @@ class Database:
     ) -> None:
         import random
 
+        from utils.boss_mechanics import boss_expires_at
+
         elem = element or random.choice(config.BOSS_ELEMENTS)
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
                 await self.conn.execute("DELETE FROM boss_sessions WHERE guild_id = ?", (guild_id,))
                 spawn_ts = time.time() if spawned_at is None else spawned_at
+                expires_at = boss_expires_at(spawn_ts, variant)
                 await self.conn.execute(
                     """
                     INSERT INTO boss_sessions (
                         guild_id, name, variant, hp, max_hp, spawned_at, passive_decay_at,
                         phases_announced, summoned, summoner_id,
-                        element, attack_count, mirrored_variant
+                        element, attack_count, mirrored_variant,
+                        expires_at, solo_attack_streak
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, ?, ?, 0)
                     """,
                     (
                         guild_id,
@@ -3243,6 +3315,7 @@ class Database:
                         summoner_id,
                         elem,
                         mirrored_variant,
+                        expires_at,
                     ),
                 )
             except Exception:
@@ -3346,6 +3419,174 @@ class Database:
             (guild_id,),
         )
         return list(await cursor.fetchall())
+
+    async def count_distinct_boss_raiders(self, guild_id: int) -> int:
+        value = await self.fetch_value(
+            """
+            SELECT COUNT(DISTINCT user_id)
+            FROM boss_damage
+            WHERE guild_id = ? AND damage > 0
+            """,
+            (guild_id,),
+        )
+        return int(value or 0)
+
+    async def boss_attack_cooldown_remaining(
+        self,
+        guild_id: int,
+        user_id: int,
+        *,
+        at: float | None = None,
+    ) -> float | None:
+        now = time.time() if at is None else at
+        cursor = await self.conn.execute(
+            """
+            SELECT last_attack
+            FROM boss_attack_cooldowns
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        last_attack = float(row["last_attack"])
+        if last_attack <= 0:
+            return None
+        remaining = (last_attack + config.BOSS_ATTACK_COOLDOWN_SECONDS) - now
+        return remaining if remaining > 0 else None
+
+    async def record_boss_attack_time(
+        self,
+        guild_id: int,
+        user_id: int,
+        timestamp: float | None = None,
+    ) -> None:
+        ts = time.time() if timestamp is None else timestamp
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO boss_attack_cooldowns (guild_id, user_id, last_attack)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    last_attack = excluded.last_attack
+                """,
+                (guild_id, user_id, ts),
+            )
+            await self.conn.commit()
+
+    async def increment_boss_solo_streak(self, guild_id: int) -> int:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE boss_sessions
+                SET solo_attack_streak = solo_attack_streak + 1
+                WHERE guild_id = ?
+                """,
+                (guild_id,),
+            )
+            cursor = await self.conn.execute(
+                "SELECT solo_attack_streak FROM boss_sessions WHERE guild_id = ?",
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+            await self.conn.commit()
+            return int(row["solo_attack_streak"]) if row is not None else 0
+
+    async def reset_boss_solo_streak(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE boss_sessions
+                SET solo_attack_streak = 0
+                WHERE guild_id = ?
+                """,
+                (guild_id,),
+            )
+            await self.conn.commit()
+
+    def boss_has_expired(self, boss: Any, *, at: float | None = None) -> bool:
+        now = time.time() if at is None else at
+        try:
+            raw = boss["expires_at"]
+        except (KeyError, TypeError):
+            return False
+        if raw is None:
+            return False
+        return now >= float(raw)
+
+    async def get_auto_potion_settings(
+        self,
+        user_id: int,
+        guild_id: int,
+    ) -> tuple[str | None, int]:
+        async with self._write_lock:
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            await self.conn.commit()
+        cursor = await self.conn.execute(
+            """
+            SELECT auto_potion_item_id, auto_potion_threshold_pct
+            FROM user_progress
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None, 0
+        item_id = row["auto_potion_item_id"]
+        return (
+            str(item_id) if item_id is not None else None,
+            int(row["auto_potion_threshold_pct"] or 0),
+        )
+
+    async def set_auto_potion_settings(
+        self,
+        user_id: int,
+        guild_id: int,
+        item_id: str | None,
+        threshold_pct: int,
+    ) -> None:
+        async with self._write_lock:
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_progress
+                SET auto_potion_item_id = ?, auto_potion_threshold_pct = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (item_id, max(0, int(threshold_pct)), user_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def try_auto_potion_heal(
+        self,
+        user_id: int,
+        guild_id: int,
+        max_hp: float,
+    ) -> bool:
+        from items import HP_POTION_HEAL, HP_POTION_IDS, get_item
+
+        item_id, threshold_pct = await self.get_auto_potion_settings(user_id, guild_id)
+        if not item_id or threshold_pct <= 0 or item_id not in HP_POTION_IDS:
+            return False
+        if get_item(item_id) is None:
+            return False
+        state = await self.get_combat_state(user_id, guild_id)
+        if state is None:
+            return False
+        hp, cur_max = state
+        if cur_max <= 0:
+            return False
+        if int((hp / cur_max) * 100) > threshold_pct:
+            return False
+        if await self.get_inventory_quantity(user_id, guild_id, item_id) <= 0:
+            return False
+        if not await self.consume_inventory_item(user_id, guild_id, item_id):
+            return False
+        heal_amount = float(HP_POTION_HEAL[item_id])
+        await self.heal_player(user_id, guild_id, heal_amount, max_hp)
+        return True
 
     async def record_heal(self, guild_id: int, healer_id: int, target_id: int) -> None:
         async with self._write_lock:
@@ -4132,6 +4373,7 @@ class Database:
         heists_won: int = 0,
         heals_given: int = 0,
         mythic_kills: int = 0,
+        ultra_kills: int = 0,
         crafts_done: int = 0,
         duel_wins: int = 0,
         gambles_won: int = 0,
@@ -4145,6 +4387,7 @@ class Database:
                 heists_won,
                 heals_given,
                 mythic_kills,
+                ultra_kills,
                 crafts_done,
                 duel_wins,
                 gambles_won,
@@ -4163,6 +4406,7 @@ class Database:
                     heists_won = heists_won + ?,
                     heals_given = heals_given + ?,
                     mythic_kills = mythic_kills + ?,
+                    ultra_kills = ultra_kills + ?,
                     crafts_done = crafts_done + ?,
                     duel_wins = duel_wins + ?,
                     gambles_won = gambles_won + ?,
@@ -4176,6 +4420,7 @@ class Database:
                     heists_won,
                     heals_given,
                     mythic_kills,
+                    ultra_kills,
                     crafts_done,
                     duel_wins,
                     gambles_won,
@@ -4193,15 +4438,18 @@ class Database:
         guild_id: int,
         user_ids: Iterable[int],
         *,
-        mythic: bool,
+        mythic: bool = False,
+        ultra: bool = False,
     ) -> None:
         mythic_inc = 1 if mythic else 0
+        ultra_inc = 1 if ultra else 0
         for user_id in set(user_ids):
             await self.increment_progress(
                 user_id,
                 guild_id,
                 bosses_killed=1,
                 mythic_kills=mythic_inc,
+                ultra_kills=ultra_inc,
             )
 
     async def prestige_user(self, user_id: int, guild_id: int) -> int:

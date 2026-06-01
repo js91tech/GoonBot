@@ -291,6 +291,10 @@ class Dungeon(commands.Cog):
 
         if enemy_hp > 0:
             counter = random.randint(tier.counter_min, tier.counter_max)
+            counter = max(
+                1,
+                int(round(counter * config.DUNGEON_PLAYER_DAMAGE_TAKEN_MULT)),
+            )
             player_hp = max(0.0, player_hp - counter)
             lines.append(f"Enemy hits back for **{counter}**.")
             if player_hp <= 0:

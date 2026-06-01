@@ -1007,6 +1007,13 @@ class Boss(commands.Cog):
             await interaction.response.send_message("No boss is active right now.")
             return
 
+        if self.bot.db.boss_has_expired(boss_row):
+            await self._despawn_boss_timeout(interaction.guild)
+            await interaction.response.send_message(
+                "The boss despawned—no rewards were awarded.",
+            )
+            return
+
         if float(boss_row["hp"]) <= 0:
             await self._complete_boss_defeat(
                 interaction.guild,
