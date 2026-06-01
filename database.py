@@ -4172,7 +4172,7 @@ class Database:
             await self.conn.commit()
             return bonus
 
-    async def ensure_avatar_unlocks(self, user_id: int, guild_id: int) -> None:
+    async def _ensure_avatar_unlocks_unlocked(self, user_id: int, guild_id: int) -> None:
         from utils.avatars import AVATARS
 
         await self._ensure_character_no_lock(user_id, guild_id)
@@ -4188,10 +4188,66 @@ class Database:
                 """,
                 (guild_id, user_id, avatar.id, now),
             )
+        await self._ensure_unique_default_avatar_unlocked(user_id, guild_id)
+
+    async def ensure_avatar_unlocks(self, user_id: int, guild_id: int) -> None:
+        async with self._write_lock:
+            await self._ensure_avatar_unlocks_unlocked(user_id, guild_id)
+            await self.conn.commit()
+
+    async def _ensure_unique_default_avatar_unlocked(self, user_id: int, guild_id: int) -> str:
+        from utils.avatar_generate import ensure_default_avatar_assets
+        from utils.avatars import DEFAULT_AVATAR_ID, unique_default_avatar_id
+
+        await self._ensure_character_no_lock(user_id, guild_id)
+        aid = unique_default_avatar_id(user_id, guild_id)
+        cursor = await self.conn.execute(
+            """
+            SELECT 1 FROM player_avatar_unlocks
+            WHERE guild_id = ? AND user_id = ? AND avatar_id = ?
+            """,
+            (guild_id, user_id, aid),
+        )
+        if await cursor.fetchone() is not None:
+            return aid
+
+        ensure_default_avatar_assets(user_id, guild_id)
+        await self.conn.execute(
+            """
+            INSERT OR IGNORE INTO player_avatar_unlocks
+                (guild_id, user_id, avatar_id, unlocked_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (guild_id, user_id, aid, time.time()),
+        )
+        cursor = await self.conn.execute(
+            """
+            SELECT avatar_id FROM user_character
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        stored = str(row["avatar_id"] or "").strip().lower() if row is not None else ""
+        if stored in ("", DEFAULT_AVATAR_ID):
+            await self.conn.execute(
+                """
+                UPDATE user_character SET avatar_id = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (aid, user_id, guild_id),
+            )
+        return aid
+
+    async def ensure_unique_default_avatar(self, user_id: int, guild_id: int) -> str:
+        async with self._write_lock:
+            aid = await self._ensure_unique_default_avatar_unlocked(user_id, guild_id)
+            await self.conn.commit()
+            return aid
 
     async def list_unlocked_avatar_ids(self, user_id: int, guild_id: int) -> set[str]:
         async with self._write_lock:
-            await self.ensure_avatar_unlocks(user_id, guild_id)
+            await self._ensure_avatar_unlocks_unlocked(user_id, guild_id)
             cursor = await self.conn.execute(
                 """
                 SELECT avatar_id FROM player_avatar_unlocks
@@ -4204,18 +4260,25 @@ class Database:
         return {str(row["avatar_id"]) for row in rows}
 
     async def get_equipped_avatar_id(self, user_id: int, guild_id: int) -> str:
-        row = await self.get_user_character(user_id, guild_id)
-        try:
-            stored = str(row["avatar_id"] or "")
-        except (KeyError, TypeError):
-            stored = ""
+        async with self._write_lock:
+            await self._ensure_avatar_unlocks_unlocked(user_id, guild_id)
+            cursor = await self.conn.execute(
+                """
+                SELECT avatar_id FROM user_character
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            await self.conn.commit()
+        stored = str(row["avatar_id"] or "") if row is not None else ""
         from utils.avatars import resolve_equipped_avatar_id
 
         return resolve_equipped_avatar_id(stored or None)
 
     async def unlock_avatar(self, user_id: int, guild_id: int, avatar_id: str) -> None:
         async with self._write_lock:
-            await self.ensure_avatar_unlocks(user_id, guild_id)
+            await self._ensure_avatar_unlocks_unlocked(user_id, guild_id)
             await self.conn.execute(
                 """
                 INSERT OR IGNORE INTO player_avatar_unlocks
@@ -4238,7 +4301,7 @@ class Database:
             await self.unlock_avatar(user_id, guild_id, avatar_id)
             return None
         async with self._write_lock:
-            await self.ensure_avatar_unlocks(user_id, guild_id)
+            await self._ensure_avatar_unlocks_unlocked(user_id, guild_id)
             cursor = await self.conn.execute(
                 """
                 SELECT 1 FROM player_avatar_unlocks
@@ -4287,9 +4350,13 @@ class Database:
         avatar_id: str,
     ) -> str | None:
         """Equip avatar. Returns None on success, or error code."""
-        from utils.avatars import AVATAR_MAP, is_custom_avatar_id
+        from utils.avatars import AVATAR_MAP, is_custom_avatar_id, is_unique_default_avatar_id
 
-        if not is_custom_avatar_id(avatar_id) and avatar_id not in AVATAR_MAP:
+        if (
+            not is_custom_avatar_id(avatar_id)
+            and not is_unique_default_avatar_id(avatar_id)
+            and avatar_id not in AVATAR_MAP
+        ):
             return "unknown"
         unlocked = await self.list_unlocked_avatar_ids(user_id, guild_id)
         if avatar_id not in unlocked:

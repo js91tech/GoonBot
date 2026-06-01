@@ -12,6 +12,7 @@ ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "avatars"
 CUSTOM_ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "custom"
 DEFAULT_AVATAR_ID = "nugget_raider"
 CUSTOM_AVATAR_PREFIX = "custom_"
+UNIQUE_DEFAULT_PREFIX = "raider_"
 ALLOWED_IMAGE_EXTS = frozenset({".png", ".gif", ".jpg", ".jpeg", ".webp"})
 
 
@@ -69,8 +70,24 @@ def custom_avatar_id(user_id: int) -> str:
     return f"{CUSTOM_AVATAR_PREFIX}{user_id}"
 
 
+def unique_default_avatar_id(user_id: int, guild_id: int) -> str:
+    from utils.avatar_generate import unique_default_avatar_id as _uid
+
+    return _uid(user_id, guild_id)
+
+
 def is_custom_avatar_id(avatar_id: str) -> bool:
     return avatar_id.startswith(CUSTOM_AVATAR_PREFIX)
+
+
+def is_unique_default_avatar_id(avatar_id: str) -> bool:
+    return avatar_id.startswith(UNIQUE_DEFAULT_PREFIX)
+
+
+def unique_default_avatar_dir(guild_id: int, user_id: int) -> Path:
+    from utils.avatar_generate import unique_default_avatar_dir as _dir
+
+    return _dir(guild_id, user_id)
 
 
 def custom_avatar_dir(guild_id: int, user_id: int) -> Path:
@@ -82,6 +99,14 @@ def get_avatar(avatar_id: str | None) -> AvatarDef | None:
         return AVATAR_MAP.get(DEFAULT_AVATAR_ID)
     if is_custom_avatar_id(avatar_id):
         return AvatarDef(avatar_id, "Custom Avatar", "Your uploaded victory art.", 0.0, "🎨")
+    if is_unique_default_avatar_id(avatar_id):
+        return AvatarDef(
+            avatar_id,
+            "Raid Mascot",
+            "Your unique starter raider — generated just for you.",
+            0.0,
+            "⚔️",
+        )
     return AVATAR_MAP.get(avatar_id.strip().lower())
 
 
@@ -109,6 +134,12 @@ def is_valid_image_attachment(attachment: discord.Attachment) -> bool:
 
 
 def portrait_path(avatar_id: str, *, guild_id: int | None = None, user_id: int | None = None) -> Path:
+    if is_unique_default_avatar_id(avatar_id) and guild_id is not None and user_id is not None:
+        folder = unique_default_avatar_dir(guild_id, user_id)
+        for name in ("portrait.png", "portrait.gif", "portrait.jpg", "portrait.webp"):
+            p = folder / name
+            if p.is_file():
+                return p
     if is_custom_avatar_id(avatar_id) and guild_id is not None and user_id is not None:
         folder = custom_avatar_dir(guild_id, user_id)
         for name in ("portrait.png", "portrait.gif", "portrait.jpg", "portrait.webp"):
@@ -124,6 +155,12 @@ def victory_path(
     guild_id: int | None = None,
     user_id: int | None = None,
 ) -> Path:
+    if is_unique_default_avatar_id(avatar_id) and guild_id is not None and user_id is not None:
+        folder = unique_default_avatar_dir(guild_id, user_id)
+        for name in ("victory.gif", "victory.png", "victory.jpg", "victory.webp"):
+            p = folder / name
+            if p.is_file():
+                return p
     if is_custom_avatar_id(avatar_id) and guild_id is not None and user_id is not None:
         folder = custom_avatar_dir(guild_id, user_id)
         for name in ("victory.gif", "victory.png", "victory.jpg", "victory.webp"):
@@ -156,7 +193,7 @@ def normalize_catalog_avatar_id(avatar_id: str | None) -> str:
 def resolve_equipped_avatar_id(stored: str | None) -> str:
     if not stored:
         return DEFAULT_AVATAR_ID
-    if is_custom_avatar_id(stored):
+    if is_custom_avatar_id(stored) or is_unique_default_avatar_id(stored):
         return stored
     lowered = stored.strip().lower()
     if lowered in AVATAR_MAP:
