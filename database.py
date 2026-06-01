@@ -2794,8 +2794,8 @@ class Database:
             await self.conn.commit()
 
     async def fix_unstable_slot(self, user_id: int, guild_id: int, slot: str) -> str | None:
-        from items import get_item
         import config
+        from items import get_item
 
         unstable = await self.list_unstable_slots(user_id, guild_id)
         if slot not in unstable:
@@ -3602,30 +3602,30 @@ class Database:
         self,
         user_id: int,
         guild_id: int,
+        *,
+        current_hp: float,
         max_hp: float,
-    ) -> bool:
+    ) -> tuple[float, str | None]:
         from items import HP_POTION_HEAL, HP_POTION_IDS, get_item
 
         item_id, threshold_pct = await self.get_auto_potion_settings(user_id, guild_id)
         if not item_id or threshold_pct <= 0 or item_id not in HP_POTION_IDS:
-            return False
-        if get_item(item_id) is None:
-            return False
-        state = await self.get_combat_state(user_id, guild_id)
-        if state is None:
-            return False
-        hp, cur_max = state
-        if cur_max <= 0:
-            return False
-        if int((hp / cur_max) * 100) > threshold_pct:
-            return False
+            return current_hp, None
+        potion = get_item(item_id)
+        if potion is None:
+            return current_hp, None
+        if max_hp <= 0:
+            return current_hp, None
+        if int((current_hp / max_hp) * 100) > threshold_pct:
+            return current_hp, None
         if await self.get_inventory_quantity(user_id, guild_id, item_id) <= 0:
-            return False
+            return current_hp, None
         if not await self.consume_inventory_item(user_id, guild_id, item_id):
-            return False
+            return current_hp, None
         heal_amount = float(HP_POTION_HEAL[item_id])
-        await self.heal_player(user_id, guild_id, heal_amount, max_hp)
-        return True
+        new_hp, _ = await self.heal_player(user_id, guild_id, heal_amount, max_hp)
+        note = f"🧪 **{potion.name}** auto-healed **{int(heal_amount)}** HP."
+        return new_hp, note
 
     async def record_heal(self, guild_id: int, healer_id: int, target_id: int) -> None:
         async with self._write_lock:

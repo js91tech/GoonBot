@@ -29,6 +29,14 @@ from utils.aspects import (
     roll_pct_for_threat,
 )
 from utils.avatars import build_avatar_embed_files, get_avatar
+from utils.boss_art import attach_boss_art
+from utils.boss_element_effects import element_hazard_text
+from utils.boss_mechanics import (
+    raider_damage_mult,
+    reward_mult_for_variant,
+    roll_counter_damage,
+)
+from utils.boss_ui import BossAttackResult, BossFightView, send_boss_fight_panel
 from utils.combat_engine import (
     attack_context_for_class,
     roll_jester_reflect,
@@ -37,7 +45,7 @@ from utils.combat_engine import (
 from utils.discord_api import safe_channel_send, safe_interaction_send
 from utils.gear_sets import SetBonus, detect_set_bonus
 from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
-from utils.loadout import PlayerLoadout, off_hand_crit_bonus, off_hand_power_bonus, parse_loadout
+from utils.loadout import PlayerLoadout, off_hand_crit_bonus, off_hand_power_bonus
 from utils.quests import record_quest_event
 from utils.skills import get_skill, spell_buff_from_skill
 from utils.spell_effects import combat_state_from_spell
@@ -50,15 +58,6 @@ from utils.summoner_penalty import (
     summoner_defense_retention,
     summoner_penalty_summary,
 )
-from utils.boss_art import attach_boss_art
-from utils.boss_element_effects import element_hazard_text, roll_element_proc
-from utils.boss_mechanics import (
-    compute_boss_hp,
-    raider_damage_mult,
-    reward_mult_for_variant,
-    roll_counter_damage,
-)
-from utils.boss_ui import BossAttackResult, BossFightView, send_boss_fight_panel
 
 BOSS_NAME = "Hannah"
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
@@ -630,6 +629,7 @@ class Boss(commands.Cog):
         defense_retention: float = 1.0,
         hp_ratio: float = 1.0,
     ) -> tuple[int, int, bool, str]:
+        variant_config = config.BOSS_VARIANTS[variant]
         raw_damage = roll_counter_damage(variant, hp_ratio=hp_ratio)
         critical = random.random() < float(variant_config["crit_chance"])
         if critical:
@@ -946,7 +946,7 @@ class Boss(commands.Cog):
                 return BossAttackResult(error=f"{dot_note} You are **downed**!")
 
         cooldown = await self.bot.db.boss_attack_cooldown_remaining(member.id, guild_id)
-        if cooldown > 0:
+        if cooldown is not None and cooldown > 0:
             return BossAttackResult(
                 error=f"Recovering — **{cooldown:.1f}s** until your next strike.",
             )
