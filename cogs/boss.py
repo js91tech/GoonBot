@@ -50,10 +50,19 @@ from utils.summoner_penalty import (
     summoner_defense_retention,
     summoner_penalty_summary,
 )
+from utils.boss_art import attach_boss_art
+from utils.boss_element_effects import element_hazard_text, roll_element_proc
+from utils.boss_mechanics import (
+    compute_boss_hp,
+    raider_damage_mult,
+    reward_mult_for_variant,
+    roll_counter_damage,
+)
 from utils.boss_ui import BossAttackResult, BossFightView, send_boss_fight_panel
 
 BOSS_NAME = "Hannah"
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
+BOSS_NAME_ZZ = config.BOSS_NAME_ZZ_WRATH
 COUNTER_HP_BONUS = 0.30
 COUNTER_MULTI_SECOND = 0.65
 COUNTER_MULTI_THIRD = 0.55
@@ -100,6 +109,8 @@ class Boss(commands.Cog):
         mirrored_variant: str | None = None,
     ) -> float:
         name = boss_name or BOSS_NAME
+        if variant == "zz_wrath":
+            name = BOSS_NAME_ZZ
         if variant == "tomass":
             mirror = mirrored_variant or "enraged"
             hp = await self._tomass_hp(guild_id, mirror)
@@ -186,10 +197,14 @@ class Boss(commands.Cog):
         rows: list[Any],
         variant: str,
     ) -> list[tuple[int, ShopItem]]:
-        if variant not in ("celestial", "mythic") or not rows:
+        if variant not in ("celestial", "mythic", "zz_wrath") or not rows:
             return []
         drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
         mythic_chance = await self.bot.db.get_config_value(guild_id, "boss_mythic_drop_chance")
+        if variant == "zz_wrath":
+            mythic_chance = min(1.0, mythic_chance * 2.5)
+        elif variant == "mythic":
+            mythic_chance = min(1.0, mythic_chance * 1.5)
         if random.random() >= mythic_chance * drop_mult:
             return []
         uid = Boss._weighted_random_damage_user(rows)
@@ -198,6 +213,24 @@ class Boss(commands.Cog):
         mythic = random.choice((MYTHIC_RAID_BLADE, MYTHIC_RAID_MAIL))
         await self.bot.db.grant_item(uid, guild_id, mythic.id)
         return [(uid, mythic)]
+
+
+    async def _roll_ultra_loot(
+        self,
+        guild_id: int,
+        rows: list[Any],
+    ) -> list[tuple[int, ShopItem]]:
+        if not rows:
+            return []
+        drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
+        if random.random() >= config.BOSS_ULTRA_DROP_CHANCE * drop_mult:
+            return []
+        uid = Boss._weighted_random_damage_user(rows)
+        if uid is None:
+            return []
+        epic = random.choice((MYTHIC_RAID_BLADE, MYTHIC_RAID_MAIL, BOSS_SLAYER_BLADE, BOSS_SLAYER_MAIL))
+        await self.bot.db.grant_item(uid, guild_id, epic.id)
+        return [(uid, epic)]
 
     async def _roll_aspect_loot(
         self,
@@ -240,7 +273,7 @@ class Boss(commands.Cog):
             logging.warning("Boss spawn embed skipped: no channel in guild %s", guild.id)
             return
         title = "Boss summoned!" if summoner_id is not None else "Boss raid incoming!"
-        boss_label = BOSS_NAME_TOMASS if variant == "tomass" else BOSS_NAME
+        boss_label = self._boss_display_name(variant)
         desc = f"A **{variant}** **{boss_label}** crashes the party—time to rally the raid!"
         embed = discord.Embed(
             title=title,
@@ -256,6 +289,9 @@ class Boss(commands.Cog):
         )
         if element:
             embed.add_field(name="Element", value=element.title(), inline=True)
+            hazard = element_hazard_text(element)
+            if hazard:
+                embed.add_field(name="Element hazard", value=hazard, inline=False)
         threat = config.BOSS_VARIANTS[variant]["threat"]
         embed.add_field(name="Threat tier", value=str(threat), inline=True)
         if summoner_id is not None:
@@ -269,22 +305,52 @@ class Boss(commands.Cog):
             value="Use **`/boss`** for the raid fight panel · `/heal` for downed allies",
             inline=False,
         )
-        decay_pct = int(round(config.BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE * 100))
-        embed.set_footer(
-            text=(
-                f"Bosses lose {decay_pct}% of their max HP each minute from battle fatigue—even "
-                "if nobody is attacking."
-            )
-        )
+        despawn = config.BOSS_VARIANTS.get(variant, {}).get("despawn_seconds")
+        footer_bits = ["Use `/boss` to fight · `/heal` for downed allies"]
+        if despawn:
+            mins = int(despawn // 60)
+            footer_bits.insert(0, f"Defeat within **{mins} minutes** or the boss retreats!")
+        embed.set_footer(text=" · ".join(footer_bits))
+        art = attach_boss_art(embed, variant)
+        files = [art] if art is not None else None
         gate = getattr(self.bot, "outbound_gate", None)
         sent = await safe_channel_send(
             channel,
             embed=embed,
+            files=files,
             allowed_mentions=discord.AllowedMentions.none(),
             gate=gate,
         )
         if sent is None:
             logging.warning("Boss spawn embed not sent in guild %s", guild.id)
+
+
+    async def _despawn_boss_timeout(self, guild: discord.Guild) -> None:
+        guild_id = guild.id
+        boss = await self.bot.db.get_active_boss(guild_id)
+        if boss is None:
+            return
+        variant = str(boss["variant"])
+        name = self._boss_display_name(variant, str(boss["name"]))
+        await self.bot.db.clear_boss(guild_id)
+        channel = await resolve_bot_announcement_channel(guild, self.bot.db)
+        if channel is None:
+            return
+        embed = discord.Embed(
+            title=f"{name} retreated!",
+            description="Time ran out—no nuggets or gear were awarded.",
+            color=discord.Color.dark_grey(),
+        )
+        art = attach_boss_art(embed, variant)
+        files = [art] if art is not None else None
+        gate = getattr(self.bot, "outbound_gate", None)
+        await safe_channel_send(
+            channel,
+            embed=embed,
+            files=files,
+            allowed_mentions=discord.AllowedMentions.none(),
+            gate=gate,
+        )
 
     async def _send_boss_defeat_embed(
         self,
@@ -301,7 +367,7 @@ class Boss(commands.Cog):
             logging.warning("Boss defeat embed skipped: no channel in guild %s", guild.id)
             return
         embed = discord.Embed(
-            title=f"{variant.title()} {BOSS_NAME} is down!",
+            title=f"{self._boss_display_name(variant)} is down!",
             description=summary,
             color=discord.Color.gold(),
         )
@@ -394,6 +460,7 @@ class Boss(commands.Cog):
         rows = await self.bot.db.list_boss_damage(guild_id)
         total_damage = sum(float(row["damage"]) for row in rows)
         max_hp = float(boss["max_hp"])
+        reward_mult = reward_mult_for_variant(variant)
 
         if total_damage <= 0:
             await self.bot.db.clear_boss(guild_id)
@@ -419,13 +486,15 @@ class Boss(commands.Cog):
         reward_lines = []
         for row in rows:
             user_id = int(row["user_id"])
-            reward = max_hp * (float(row["damage"]) / total_damage)
+            reward = max_hp * reward_mult * (float(row["damage"]) / total_damage)
             await self.bot.db.credit_wallet(user_id, guild_id, reward)
             name = self._display_name(guild, user_id)
             reward_lines.append(f"{name}: {fmt_amount(reward)}")
 
         loot_rows = await self._roll_boss_loot(guild_id, rows)
         loot_rows.extend(await self._roll_mythic_loot(guild_id, rows, variant))
+        if variant == "zz_wrath":
+            loot_rows.extend(await self._roll_ultra_loot(guild_id, rows))
         aspect_rows = await self._roll_aspect_loot(guild_id, rows, variant)
         gear_lines = [
             f"**{self._display_name(guild, uid)}** · **{item.name}** (`{item.id}`)"
@@ -439,11 +508,11 @@ class Boss(commands.Cog):
         await self.bot.db.clear_boss(guild_id)
 
         contributor_ids = [int(row["user_id"]) for row in rows]
-        mythic = variant == "mythic"
         await self.bot.db.increment_boss_kills_for_raid(
             guild_id,
             contributor_ids,
-            mythic=mythic,
+            mythic=variant == "mythic",
+            ultra=variant == "zz_wrath",
         )
 
         if killer_user_id is not None:
@@ -559,10 +628,9 @@ class Boss(commands.Cog):
         *,
         set_bonus: SetBonus | None = None,
         defense_retention: float = 1.0,
+        hp_ratio: float = 1.0,
     ) -> tuple[int, int, bool, str]:
-        variant_config = config.BOSS_VARIANTS[variant]
-        low, high = variant_config["counter_damage"]
-        raw_damage = random.randint(int(low), int(high))
+        raw_damage = roll_counter_damage(variant, hp_ratio=hp_ratio)
         critical = random.random() < float(variant_config["crit_chance"])
         if critical:
             raw_damage = int(raw_damage * 1.75)
@@ -578,6 +646,7 @@ class Boss(commands.Cog):
             "shadow": ("void-crushes", "shadow-rakes", "ambushes"),
             "celestial": ("meteor-crits", "starfalls onto", "supernovas"),
             "mythic": ("reality-tears", "cataclysm-strikes", "doom-crashes"),
+            "zz_wrath": ("void-claws", "doom-pounces", "apocalypse-screeches"),
             "tomass": ("ass-smacks", "cheek-claps", "thunder-cheeks"),
         }
         return damage, mitigated, critical, random.choice(moves.get(variant, moves["normal"]))
@@ -610,7 +679,9 @@ class Boss(commands.Cog):
         for guild in self.bot.guilds:
             if await self.bot.db.get_active_boss(guild.id) is not None:
                 continue
-            if random.random() < config.BOSS_AUTO_SPAWN_TOMASS_CHANCE:
+            if random.random() < config.BOSS_ULTRA_SPAWN_CHANCE:
+                variant = "zz_wrath"
+            elif random.random() < config.BOSS_AUTO_SPAWN_TOMASS_CHANCE:
                 mirror = random.choice(config.HANNAH_SPAWN_VARIANTS)
                 hp = await self._spawn_boss(
                     guild.id,
@@ -626,7 +697,8 @@ class Boss(commands.Cog):
                     element=elem,
                 )
                 continue
-            variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
+            else:
+                variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
             hp = await self._spawn_boss(guild.id, variant)
             boss_row = await self.bot.db.get_active_boss(guild.id)
             elem = str(boss_row["element"]) if boss_row else None
@@ -646,8 +718,21 @@ class Boss(commands.Cog):
             guild = self.bot.get_guild(guild_id)
             if guild is None:
                 continue
+            boss = await self.bot.db.get_active_boss(guild_id)
+            if boss is None:
+                continue
+            if self.bot.db.boss_has_expired(boss):
+                await self._despawn_boss_timeout(guild)
+                if pause > 0:
+                    await asyncio.sleep(pause)
+                continue
             boss = await self.bot.db.apply_boss_passive_decay(guild_id)
             if boss is None:
+                continue
+            if self.bot.db.boss_has_expired(boss):
+                await self._despawn_boss_timeout(guild)
+                if pause > 0:
+                    await asyncio.sleep(pause)
                 continue
             if float(boss["hp"]) > 0:
                 continue
@@ -758,6 +843,9 @@ class Boss(commands.Cog):
         element = boss_row["element"]
         if element:
             embed.add_field(name="Element", value=str(element).title(), inline=True)
+            hazard = element_hazard_text(str(element))
+            if hazard:
+                embed.add_field(name="Element hazard", value=hazard, inline=False)
         summoner_id = boss_summoner_id(boss_row)
         if summoner_id is not None:
             embed.add_field(
@@ -782,7 +870,39 @@ class Boss(commands.Cog):
                 value=fmt_amount(your_damage) if your_damage > 0 else "_None yet_",
                 inline=True,
             )
-        embed.set_footer(text="⚔️ Attack · Refresh · Raid LB · /cast and /heal supported")
+        try:
+            expires_at = boss_row["expires_at"]
+        except (KeyError, TypeError):
+            expires_at = None
+        if expires_at is not None:
+            remaining = max(0, int(float(expires_at) - time.time()))
+            embed.add_field(
+                name="Time limit",
+                value=f"**{remaining // 60}m {remaining % 60}s** remaining",
+                inline=True,
+            )
+        if member is not None:
+            debuffs = await self.bot.db.boss_raider_debuff_summary(guild_id, member.id)
+            if debuffs:
+                embed.add_field(name="Your status", value=debuffs, inline=False)
+            potion_id, threshold = await self.bot.db.get_auto_potion_settings(member.id, guild_id)
+            if potion_id and threshold > 0:
+                from items import get_item
+                potion = get_item(potion_id)
+                pname = potion.name if potion else potion_id
+                qty = await self.bot.db.get_inventory_quantity(member.id, guild_id, potion_id)
+                embed.add_field(
+                    name="Auto-heal",
+                    value=f"**{pname}** @ **{threshold}%** HP ({qty} left)",
+                    inline=False,
+                )
+            else:
+                embed.add_field(
+                    name="Auto-heal",
+                    value="_Off — tap 🧪 Auto-heal to configure_",
+                    inline=False,
+                )
+        embed.set_footer(text="⚔️ Attack (4s cd) · 🧪 Auto-heal · Refresh · Raid LB")
         return embed, None
 
     async def execute_boss_attack(
@@ -799,6 +919,37 @@ class Boss(commands.Cog):
         boss = await self.bot.db.get_active_boss(guild_id)
         if boss is None:
             return BossAttackResult(error="No boss is active right now.")
+        if self.bot.db.boss_has_expired(boss):
+            await self._despawn_boss_timeout(guild)
+            return BossAttackResult(error="The boss retreated—no rewards were awarded.")
+
+        dot_note = ""
+        player_max_hp = await self._max_hp(member.id, guild_id)
+        dot_result = await self.bot.db.process_boss_fire_dot(
+            member.id,
+            guild_id,
+            player_max_hp,
+        )
+        if dot_result is not None:
+            dot_hp, _, tick_damage, ticks_left = dot_result
+            dot_note = (
+                f"**Burning!** You take **{int(tick_damage)}** DoT "
+                f"({ticks_left} tick{'s' if ticks_left != 1 else ''} left)."
+            )
+            if dot_hp <= 0:
+                downed_seconds = await self.bot.db.get_config_value(guild_id, "boss_downed_seconds")
+                await self.bot.db.set_downed_until(
+                    member.id,
+                    guild_id,
+                    time.time() + downed_seconds,
+                )
+                return BossAttackResult(error=f"{dot_note} You are **downed**!")
+
+        cooldown = await self.bot.db.boss_attack_cooldown_remaining(member.id, guild_id)
+        if cooldown > 0:
+            return BossAttackResult(
+                error=f"Recovering — **{cooldown:.1f}s** until your next strike.",
+            )
 
         loadout = await self._loadout(member.id, guild_id)
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
@@ -853,6 +1004,25 @@ class Boss(commands.Cog):
         )
         if summoner_debuff:
             damage = apply_summoner_attack_debuff(damage)
+
+        raider_rows = await self.bot.db.list_boss_damage(guild_id)
+        raider_ids = {int(r["user_id"]) for r in raider_rows}
+        raider_ids.add(member.id)
+        distinct = len(raider_ids)
+        damage = max(1, int(damage * raider_damage_mult(distinct)))
+        fatigue_note = ""
+        boss_hp_now = float(boss["hp"])
+        boss_max_now = float(boss["max_hp"])
+        hp_ratio_now = boss_hp_now / boss_max_now if boss_max_now > 0 else 1.0
+        if distinct >= 2:
+            await self.bot.db.reset_boss_solo_streak(guild_id)
+        elif hp_ratio_now <= config.BOSS_ENRAGE_HP_THRESHOLD:
+            streak = await self.bot.db.increment_boss_solo_streak(guild_id)
+            if streak >= config.BOSS_RAID_FATIGUE_SOLO_ATTACKS:
+                damage = max(1, int(damage * config.BOSS_RAID_FATIGUE_DAMAGE_MULT))
+                fatigue_note = " · **Raid fatigue**"
+
+        await self.bot.db.record_boss_attack_time(member.id, guild_id)
         mana_gain = await self.bot.db.restore_mana_from_damage(member.id, guild_id, damage)
         heal_applied = 0.0
         updated = await self.bot.db.damage_boss(guild_id, member.id, damage)
@@ -899,9 +1069,12 @@ class Boss(commands.Cog):
         weapon_text = loadout.primary.name if loadout.primary is not None else "bare hands"
         if loadout.off_hand is not None:
             weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
+        hit_value = f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}{fatigue_note}"
+        if dot_note:
+            hit_value = f"{dot_note}\n{hit_value}"
         embed.add_field(
             name="Hit",
-            value=f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}",
+            value=hit_value,
             inline=True,
         )
         embed.add_field(name="Mana", value=f"+{mana_gain} from damage", inline=True)
@@ -1081,15 +1254,22 @@ class Boss(commands.Cog):
         await self.bot.db.sync_combat_hp(victim_id, guild_id, max_hp)
         summoner_victim = is_summoner_debuffed(boss_row, victim_id)
         defense_retention = summoner_defense_retention() if summoner_victim else 1.0
+        hp_ratio = float(boss_row["hp"]) / float(boss_row["max_hp"]) if float(boss_row["max_hp"]) > 0 else 1.0
         damage, mitigated, critical, move = self._counter_roll(
             variant,
             loadout.armor,
             set_bonus=set_bonus,
             defense_retention=defense_retention,
+            hp_ratio=hp_ratio,
         )
         if summoner_victim:
             damage = apply_summoner_counter_damage(damage)
         hp, max_hp = await self.bot.db.damage_player(victim_id, guild_id, damage, max_hp)
+        hp, potion_note = await self.bot.db.try_auto_potion_heal(
+            victim_id, guild_id, current_hp=hp, max_hp=max_hp,
+        )
+        element_note = await self._apply_element_counter_effect(guild_id, victim_id, boss_row)
+        potion_text = f" {potion_note}" if potion_note else ""
         armor_text = ""
         if loadout.armor is not None and mitigated > 0:
             pct = armor_mitigation_percent(loadout.armor.power)
@@ -1101,11 +1281,11 @@ class Boss(commands.Cog):
             await self.bot.db.set_downed_until(victim_id, guild_id, time.time() + downed_seconds)
             return (
                 f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
-                f"{crit_text}{armor_text} They are downed!"
+                f"{crit_text}{armor_text}{potion_text}{element_note} They are downed!"
             )
         return (
             f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
-            f"{crit_text}{armor_text} HP: {int(hp)}/{int(max_hp)}."
+            f"{crit_text}{armor_text}{potion_text}{element_note} HP: {int(hp)}/{int(max_hp)}."
         )
 
     @app_commands.command(name="raid-leaderboard", description="Top damage dealers on the active boss.")
