@@ -457,6 +457,24 @@ class Database:
         await self._migrate_bank_heist()
         await self._migrate_dungeon_tiers()
         await self._migrate_boss_rebalance()
+        await self._migrate_boss_element_status()
+
+    async def _migrate_boss_element_status(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS boss_raider_status (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                attack_slow_until REAL NOT NULL DEFAULT 0,
+                verdant_root_until REAL NOT NULL DEFAULT 0,
+                dot_ticks_remaining INTEGER NOT NULL DEFAULT 0,
+                dot_damage REAL NOT NULL DEFAULT 0,
+                dot_next_tick_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_boss_rebalance(self) -> None:
         session_cols = [
@@ -3292,6 +3310,14 @@ class Database:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
                 await self.conn.execute("DELETE FROM boss_sessions WHERE guild_id = ?", (guild_id,))
+                await self.conn.execute(
+                    "DELETE FROM boss_raider_status WHERE guild_id = ?",
+                    (guild_id,),
+                )
+                await self.conn.execute(
+                    "DELETE FROM boss_attack_cooldowns WHERE guild_id = ?",
+                    (guild_id,),
+                )
                 spawn_ts = time.time() if spawned_at is None else spawned_at
                 expires_at = boss_expires_at(spawn_ts, variant)
                 await self.conn.execute(
@@ -3438,6 +3464,8 @@ class Database:
         *,
         at: float | None = None,
     ) -> float | None:
+        from utils.boss_element_effects import extra_attack_cooldown_for_status
+
         now = time.time() if at is None else at
         cursor = await self.conn.execute(
             """
@@ -3453,7 +3481,18 @@ class Database:
         last_attack = float(row["last_attack"])
         if last_attack <= 0:
             return None
-        remaining = (last_attack + config.BOSS_ATTACK_COOLDOWN_SECONDS) - now
+
+        extra_cooldown = 0
+        status = await self.get_boss_raider_status(guild_id, user_id)
+        if status is not None:
+            extra_cooldown = extra_attack_cooldown_for_status(
+                float(status["attack_slow_until"]),
+                float(status["verdant_root_until"]),
+                now=now,
+            )
+
+        cooldown_seconds = config.BOSS_ATTACK_COOLDOWN_SECONDS + extra_cooldown
+        remaining = (last_attack + cooldown_seconds) - now
         return remaining if remaining > 0 else None
 
     async def record_boss_attack_time(
@@ -3599,9 +3638,195 @@ class Database:
             )
             await self.conn.commit()
 
+    async def get_boss_raider_status(
+        self,
+        guild_id: int,
+        user_id: int,
+    ) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT attack_slow_until, verdant_root_until,
+                   dot_ticks_remaining, dot_damage, dot_next_tick_at
+            FROM boss_raider_status
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        return await cursor.fetchone()
+
+    async def apply_boss_element_status(
+        self,
+        guild_id: int,
+        user_id: int,
+        *,
+        frost_slow_until: float | None = None,
+        verdant_root_until: float | None = None,
+        fire_burn: tuple[float, int, float] | None = None,
+    ) -> None:
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                SELECT attack_slow_until, verdant_root_until,
+                       dot_ticks_remaining, dot_damage, dot_next_tick_at
+                FROM boss_raider_status
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+            slow_until = float(row["attack_slow_until"]) if row is not None else 0.0
+            root_until = float(row["verdant_root_until"]) if row is not None else 0.0
+            dot_ticks = int(row["dot_ticks_remaining"]) if row is not None else 0
+            dot_damage = float(row["dot_damage"]) if row is not None else 0.0
+            dot_next = float(row["dot_next_tick_at"]) if row is not None else 0.0
+
+            if frost_slow_until is not None:
+                slow_until = max(slow_until, frost_slow_until)
+            if verdant_root_until is not None:
+                root_until = max(root_until, verdant_root_until)
+            if fire_burn is not None:
+                tick_damage, ticks, first_tick = fire_burn
+                dot_damage = tick_damage
+                dot_ticks = max(dot_ticks, ticks)
+                dot_next = min(dot_next, first_tick) if dot_next > 0 else first_tick
+
+            await self.conn.execute(
+                """
+                INSERT INTO boss_raider_status (
+                    guild_id, user_id, attack_slow_until, verdant_root_until,
+                    dot_ticks_remaining, dot_damage, dot_next_tick_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    attack_slow_until = excluded.attack_slow_until,
+                    verdant_root_until = excluded.verdant_root_until,
+                    dot_ticks_remaining = excluded.dot_ticks_remaining,
+                    dot_damage = excluded.dot_damage,
+                    dot_next_tick_at = excluded.dot_next_tick_at
+                """,
+                (
+                    guild_id,
+                    user_id,
+                    slow_until,
+                    root_until,
+                    dot_ticks,
+                    dot_damage,
+                    dot_next,
+                ),
+            )
+            await self.conn.commit()
+
+    async def drain_mana(self, user_id: int, guild_id: int, amount: int) -> int:
+        """Remove up to `amount` mana; returns mana actually drained."""
+        if amount <= 0:
+            return 0
+        async with self._write_lock:
+            row = await self._ensure_user_no_lock(user_id, guild_id)
+            row = await self._refresh_mana_unlocked(user_id, guild_id, row)
+            current = int(row["mana"])
+            drained = min(current, amount)
+            if drained <= 0:
+                return 0
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET mana = mana - ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (drained, user_id, guild_id),
+            )
+            await self.conn.commit()
+            return drained
+
+    async def process_boss_fire_dot(
+        self,
+        user_id: int,
+        guild_id: int,
+        max_hp: float,
+        *,
+        at: float | None = None,
+    ) -> tuple[float, float, float, int] | None:
+        """Apply a due burn tick. Returns (hp, max_hp, tick_damage, ticks_left) or None."""
+        now = time.time() if at is None else at
+        cursor = await self.conn.execute(
+            """
+            SELECT dot_ticks_remaining, dot_damage, dot_next_tick_at
+            FROM boss_raider_status
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        ticks_left = int(row["dot_ticks_remaining"])
+        tick_damage = float(row["dot_damage"])
+        next_at = float(row["dot_next_tick_at"])
+        if ticks_left <= 0 or tick_damage <= 0:
+            return None
+        if next_at > now:
+            return None
+
+        hp, max_hp = await self.damage_player(user_id, guild_id, tick_damage, max_hp)
+        ticks_left -= 1
+        next_tick = now + config.BOSS_FIRE_BURN_INTERVAL_SECONDS if ticks_left > 0 else 0.0
+
+        async with self._write_lock:
+            if ticks_left <= 0:
+                await self.conn.execute(
+                    """
+                    UPDATE boss_raider_status
+                    SET dot_ticks_remaining = 0, dot_damage = 0, dot_next_tick_at = 0
+                    WHERE guild_id = ? AND user_id = ?
+                    """,
+                    (guild_id, user_id),
+                )
+            else:
+                await self.conn.execute(
+                    """
+                    UPDATE boss_raider_status
+                    SET dot_ticks_remaining = ?, dot_next_tick_at = ?
+                    WHERE guild_id = ? AND user_id = ?
+                    """,
+                    (ticks_left, next_tick, guild_id, user_id),
+                )
+            await self.conn.commit()
+        return hp, max_hp, tick_damage, ticks_left
+
+    async def boss_raider_debuff_summary(
+        self,
+        guild_id: int,
+        user_id: int,
+        *,
+        at: float | None = None,
+    ) -> str | None:
+        now = time.time() if at is None else at
+        row = await self.get_boss_raider_status(guild_id, user_id)
+        if row is None:
+            return None
+        parts: list[str] = []
+        slow_until = float(row["attack_slow_until"])
+        root_until = float(row["verdant_root_until"])
+        dot_ticks = int(row["dot_ticks_remaining"])
+        if slow_until > now:
+            parts.append(f"❄️ Chilled ({int(slow_until - now)}s)")
+        if root_until > now:
+            parts.append(f"🌿 Rooted ({int(root_until - now)}s)")
+        if dot_ticks > 0:
+            parts.append(f"🔥 Burning ({dot_ticks} ticks)")
+        return " · ".join(parts) if parts else None
+
     async def clear_boss(self, guild_id: int) -> None:
         async with self._write_lock:
             await self.conn.execute("DELETE FROM boss_sessions WHERE guild_id = ?", (guild_id,))
+            await self.conn.execute(
+                "DELETE FROM boss_raider_status WHERE guild_id = ?",
+                (guild_id,),
+            )
+            await self.conn.execute(
+                "DELETE FROM boss_attack_cooldowns WHERE guild_id = ?",
+                (guild_id,),
+            )
             await self.conn.commit()
 
     async def clear_all_bosses(self) -> int:

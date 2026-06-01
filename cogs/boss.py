@@ -51,6 +51,7 @@ from utils.summoner_penalty import (
     summoner_penalty_summary,
 )
 from utils.boss_art import attach_boss_art
+from utils.boss_element_effects import element_hazard_text, roll_element_proc
 from utils.boss_mechanics import (
     compute_boss_hp,
     raider_damage_mult,
@@ -288,6 +289,9 @@ class Boss(commands.Cog):
         )
         if element:
             embed.add_field(name="Element", value=element.title(), inline=True)
+            hazard = element_hazard_text(element)
+            if hazard:
+                embed.add_field(name="Element hazard", value=hazard, inline=False)
         threat = config.BOSS_VARIANTS[variant]["threat"]
         embed.add_field(name="Threat tier", value=str(threat), inline=True)
         if summoner_id is not None:
@@ -839,6 +843,9 @@ class Boss(commands.Cog):
         element = boss_row["element"]
         if element:
             embed.add_field(name="Element", value=str(element).title(), inline=True)
+            hazard = element_hazard_text(str(element))
+            if hazard:
+                embed.add_field(name="Element hazard", value=hazard, inline=False)
         summoner_id = boss_summoner_id(boss_row)
         if summoner_id is not None:
             embed.add_field(
@@ -875,6 +882,9 @@ class Boss(commands.Cog):
                 inline=True,
             )
         if member is not None:
+            debuffs = await self.bot.db.boss_raider_debuff_summary(guild_id, member.id)
+            if debuffs:
+                embed.add_field(name="Your status", value=debuffs, inline=False)
             potion_id, threshold = await self.bot.db.get_auto_potion_settings(member.id, guild_id)
             if potion_id and threshold > 0:
                 from items import get_item
@@ -912,6 +922,28 @@ class Boss(commands.Cog):
         if self.bot.db.boss_has_expired(boss):
             await self._despawn_boss_timeout(guild)
             return BossAttackResult(error="The boss retreated—no rewards were awarded.")
+
+        dot_note = ""
+        player_max_hp = await self._max_hp(member.id, guild_id)
+        dot_result = await self.bot.db.process_boss_fire_dot(
+            member.id,
+            guild_id,
+            player_max_hp,
+        )
+        if dot_result is not None:
+            dot_hp, _, tick_damage, ticks_left = dot_result
+            dot_note = (
+                f"**Burning!** You take **{int(tick_damage)}** DoT "
+                f"({ticks_left} tick{'s' if ticks_left != 1 else ''} left)."
+            )
+            if dot_hp <= 0:
+                downed_seconds = await self.bot.db.get_config_value(guild_id, "boss_downed_seconds")
+                await self.bot.db.set_downed_until(
+                    member.id,
+                    guild_id,
+                    time.time() + downed_seconds,
+                )
+                return BossAttackResult(error=f"{dot_note} You are **downed**!")
 
         cooldown = await self.bot.db.boss_attack_cooldown_remaining(member.id, guild_id)
         if cooldown > 0:
@@ -1037,9 +1069,12 @@ class Boss(commands.Cog):
         weapon_text = loadout.primary.name if loadout.primary is not None else "bare hands"
         if loadout.off_hand is not None:
             weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
+        hit_value = f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}{fatigue_note}"
+        if dot_note:
+            hit_value = f"{dot_note}\n{hit_value}"
         embed.add_field(
             name="Hit",
-            value=f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}{fatigue_note}",
+            value=hit_value,
             inline=True,
         )
         embed.add_field(name="Mana", value=f"+{mana_gain} from damage", inline=True)
@@ -1233,6 +1268,7 @@ class Boss(commands.Cog):
         hp, potion_note = await self.bot.db.try_auto_potion_heal(
             victim_id, guild_id, current_hp=hp, max_hp=max_hp,
         )
+        element_note = await self._apply_element_counter_effect(guild_id, victim_id, boss_row)
         potion_text = f" {potion_note}" if potion_note else ""
         armor_text = ""
         if loadout.armor is not None and mitigated > 0:
@@ -1245,11 +1281,11 @@ class Boss(commands.Cog):
             await self.bot.db.set_downed_until(victim_id, guild_id, time.time() + downed_seconds)
             return (
                 f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
-                f"{crit_text}{armor_text}{potion_text} They are downed!"
+                f"{crit_text}{armor_text}{potion_text}{element_note} They are downed!"
             )
         return (
             f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
-            f"{crit_text}{armor_text}{potion_text} HP: {int(hp)}/{int(max_hp)}."
+            f"{crit_text}{armor_text}{potion_text}{element_note} HP: {int(hp)}/{int(max_hp)}."
         )
 
     @app_commands.command(name="raid-leaderboard", description="Top damage dealers on the active boss.")
