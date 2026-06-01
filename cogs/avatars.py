@@ -17,6 +17,7 @@ from utils.avatars import (
     custom_avatar_id,
     get_avatar,
     is_custom_avatar_id,
+    is_unique_default_avatar_id,
     is_valid_image_attachment,
     load_avatar_attachment_bytes,
 )
