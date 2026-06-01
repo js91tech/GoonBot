@@ -30,7 +30,7 @@ from utils.aspects import (
 )
 from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.boss_art import attach_boss_art
-from utils.boss_element_effects import element_hazard_text
+from utils.boss_element_effects import element_hazard_text, roll_element_proc
 from utils.boss_mechanics import (
     raider_damage_mult,
     reward_mult_for_variant,
@@ -1149,20 +1149,37 @@ class Boss(commands.Cog):
             await interaction.response.send_message("Members only.", ephemeral=True)
             return
 
-        result = await self.execute_boss_attack(
-            interaction.user,
-            interaction.guild,
-            interaction=interaction,
-        )
+        await interaction.response.defer(ephemeral=True)
+        try:
+            result = await self.execute_boss_attack(
+                interaction.user,
+                interaction.guild,
+                interaction=interaction,
+            )
+        except Exception:
+            logging.exception(
+                "Boss attack failed for user %s in guild %s",
+                interaction.user.id,
+                interaction.guild_id,
+            )
+            await interaction.followup.send(
+                "Attack failed — try again in a moment.",
+                ephemeral=True,
+            )
+            return
+
         if result.error:
-            await interaction.response.send_message(result.error, ephemeral=True)
+            await interaction.followup.send(result.error, ephemeral=True)
             return
         if result.defeated:
-            if result.embed is not None and interaction.response.is_done():
+            if result.embed is not None:
                 await interaction.followup.send(embed=result.embed, ephemeral=True)
             return
+        if result.embed is None:
+            await interaction.followup.send("Attack failed.", ephemeral=True)
+            return
         view = BossFightView(self, interaction.guild_id, interaction.user.id)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=result.embed,
             view=view,
             ephemeral=True,
@@ -1196,6 +1213,41 @@ class Boss(commands.Cog):
             await interaction.response.send_message(err or "No boss active.")
             return
         await interaction.response.send_message(embed=embed)
+
+    async def _apply_element_counter_effect(
+        self,
+        guild_id: int,
+        victim_id: int,
+        boss_row: Any,
+    ) -> str:
+        element = None
+        with contextlib.suppress(KeyError, TypeError):
+            element = str(boss_row["element"])
+        proc = roll_element_proc(element, now=time.time())
+        if not proc.note:
+            return ""
+
+        if (
+            proc.frost_slow_until is not None
+            or proc.verdant_root_until is not None
+            or proc.fire_burn is not None
+        ):
+            await self.bot.db.apply_boss_element_status(
+                guild_id,
+                victim_id,
+                frost_slow_until=proc.frost_slow_until,
+                verdant_root_until=proc.verdant_root_until,
+                fire_burn=proc.fire_burn,
+            )
+        if proc.storm_stun_seconds is not None:
+            await self.bot.db.set_downed_until(
+                victim_id,
+                guild_id,
+                time.time() + proc.storm_stun_seconds,
+            )
+        if proc.void_mana_drain is not None:
+            await self.bot.db.drain_mana(victim_id, guild_id, proc.void_mana_drain)
+        return proc.note
 
     async def _maybe_counterattack(self, guild_id: int, boss_row: Any) -> str:
         variant = str(boss_row["variant"])
