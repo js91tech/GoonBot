@@ -19,43 +19,34 @@ class ElementProcRoll:
     void_mana_drain: int | None = None
 
 
-_ELEMENT_HAZARDS: dict[str, str] = {
-    "frost": (
-        "❄️ **Frost** — counters may **slow** you (+{extra}s between attacks for {dur}s)."
-    ).format(
-        extra=config.BOSS_FROST_EXTRA_ATTACK_COOLDOWN,
-        dur=config.BOSS_FROST_SLOW_SECONDS,
-    ),
-    "fire": (
-        "🔥 **Fire** — counters may **burn** you ({chance:.0%} chance, "
-        "{ticks} ticks every {interval}s)."
-    ).format(
-        chance=config.BOSS_FIRE_BURN_PROC_CHANCE,
-        ticks=config.BOSS_FIRE_BURN_TICKS,
-        interval=config.BOSS_FIRE_BURN_INTERVAL_SECONDS,
-    ),
-    "storm": (
-        "⚡ **Storm** — counters may **stun** you for **{lo}–{hi}s**."
-    ).format(
-        lo=config.BOSS_STORM_STUN_SECONDS[0],
-        hi=config.BOSS_STORM_STUN_SECONDS[1],
-    ),
-    "void": (
-        "🌑 **Void** — counters may **drain mana** ({chance:.0%} chance)."
-    ).format(chance=config.BOSS_VOID_DRAIN_PROC_CHANCE),
-    "verdant": (
-        "🌿 **Verdant** — counters may **root** you (+{extra}s between attacks for {dur}s)."
-    ).format(
-        extra=config.BOSS_VERDANT_EXTRA_ATTACK_COOLDOWN,
-        dur=config.BOSS_VERDANT_ROOT_SECONDS,
-    ),
-}
+
+
+
+def _element_hazards() -> dict[str, str]:
+    return {
+        "frost": (
+            f"❄️ **Frost** — counters may **slow** you (+{config.BOSS_FROST_EXTRA_ATTACK_COOLDOWN}s between attacks for {config.BOSS_FROST_SLOW_SECONDS}s)."
+        ),
+        "fire": (
+            f"🔥 **Fire** — counters may **burn** you ({config.BOSS_FIRE_BURN_PROC_CHANCE:.0%} chance, "
+            f"{config.BOSS_FIRE_BURN_TICKS} ticks every {config.BOSS_FIRE_BURN_INTERVAL_SECONDS}s)."
+        ),
+        "storm": (
+            f"⚡ **Storm** — counters may **stun** you for **{config.BOSS_STORM_STUN_SECONDS[0]}–{config.BOSS_STORM_STUN_SECONDS[1]}s**."
+        ),
+        "void": (
+            f"🌑 **Void** — counters may **drain mana** ({config.BOSS_VOID_DRAIN_PROC_CHANCE:.0%} chance)."
+        ),
+        "verdant": (
+            f"🌿 **Verdant** — counters may **root** you (+{config.BOSS_VERDANT_EXTRA_ATTACK_COOLDOWN}s between attacks for {config.BOSS_VERDANT_ROOT_SECONDS}s)."
+        ),
+    }
 
 
 def element_hazard_text(element: str | None) -> str | None:
     if not element:
         return None
-    return _ELEMENT_HAZARDS.get(str(element).lower())
+    return _element_hazards().get(str(element).lower())
 
 
 def roll_element_proc(element: str | None, *, now: float) -> ElementProcRoll:

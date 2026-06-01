@@ -262,6 +262,11 @@ AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_API_URL = os.getenv("AI_API_URL", "https://api.openai.com/v1/chat/completions")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 AI_TIMEOUT_SECONDS = 8
+AVATAR_AI_GENERATION = os.getenv("AVATAR_AI_GENERATION", "true").lower() in ("1", "true", "yes")
+AVATAR_IMAGE_API_URL = os.getenv("AVATAR_IMAGE_API_URL", "")
+AVATAR_IMAGE_MODEL = os.getenv("AVATAR_IMAGE_MODEL", "dall-e-3")
+AVATAR_IMAGE_SIZE = os.getenv("AVATAR_IMAGE_SIZE", "1024x1024")
+AVATAR_AI_TIMEOUT_SECONDS = int(os.getenv("AVATAR_AI_TIMEOUT_SECONDS", "45"))
 
 TRIVIA_REWARD = 25.0
 TRIVIA_SECONDS = 30
