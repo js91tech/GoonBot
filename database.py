@@ -4196,7 +4196,7 @@ class Database:
             await self.conn.commit()
 
     async def _ensure_unique_default_avatar_unlocked(self, user_id: int, guild_id: int) -> str:
-        from utils.avatar_generate import ensure_default_avatar_assets
+        from utils.avatar_generate import ensure_default_avatar_assets_async
         from utils.avatars import DEFAULT_AVATAR_ID, unique_default_avatar_id
 
         await self._ensure_character_no_lock(user_id, guild_id)
@@ -4211,7 +4211,7 @@ class Database:
         if await cursor.fetchone() is not None:
             return aid
 
-        ensure_default_avatar_assets(user_id, guild_id)
+        await ensure_default_avatar_assets_async(user_id, guild_id)
         await self.conn.execute(
             """
             INSERT OR IGNORE INTO player_avatar_unlocks

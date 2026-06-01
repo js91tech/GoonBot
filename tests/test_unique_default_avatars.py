@@ -8,11 +8,12 @@ from pathlib import Path
 
 from database import Database
 from utils.avatar_generate import (
+    GENERATION_VERSION,
     default_assets_ready,
     ensure_default_avatar_assets,
-    traits_for_user,
     unique_default_avatar_id,
 )
+from utils.avatar_portrait import portrait_spec_for_user, render_portrait
 from utils.avatars import (
     build_victory_attachment,
     get_avatar,
@@ -31,10 +32,19 @@ class UniqueDefaultAvatarTests(unittest.TestCase):
         self.assertNotEqual(a, c)
         self.assertTrue(is_unique_default_avatar_id(a))
 
-    def test_traits_vary_by_user(self) -> None:
-        t1 = traits_for_user(1, 100)
-        t2 = traits_for_user(2, 100)
-        self.assertNotEqual(t1.accent, t2.accent)
+    def test_portrait_spec_has_archetype_and_hair(self) -> None:
+        spec = portrait_spec_for_user(1, 100)
+        self.assertIn(spec.archetype, (
+            "vanguard", "shadow", "arcanist", "medic", "gunslinger",
+            "berserker", "ranger", "fortune_hunter",
+        ))
+        self.assertTrue(spec.hair_style)
+
+    def test_portrait_is_high_resolution(self) -> None:
+        spec = portrait_spec_for_user(9, 8)
+        img = render_portrait(spec)
+        self.assertGreaterEqual(img.size[0], 512)
+        self.assertGreaterEqual(img.size[1], 512)
 
     def test_generate_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -44,8 +54,9 @@ class UniqueDefaultAvatarTests(unittest.TestCase):
             original = gen.DEFAULT_ASSETS_ROOT
             gen.DEFAULT_ASSETS_ROOT = root
             try:
-                ensure_default_avatar_assets(7, 88)
+                folder = ensure_default_avatar_assets(7, 88)
                 self.assertTrue(default_assets_ready(88, 7))
+                self.assertEqual(int((folder / ".generation").read_text()), GENERATION_VERSION)
                 aid = unique_default_avatar_id(7, 88)
                 files, name = build_victory_attachment(
                     aid,
@@ -54,6 +65,9 @@ class UniqueDefaultAvatarTests(unittest.TestCase):
                 )
                 self.assertEqual(len(files), 1)
                 self.assertIsNotNone(name)
+                portrait = portrait_path(aid, guild_id=88, user_id=7)
+                self.assertTrue(portrait.is_file())
+                self.assertGreater(portrait.stat().st_size, 8_000)
             finally:
                 gen.DEFAULT_ASSETS_ROOT = original
 
@@ -95,9 +109,9 @@ class UniqueDefaultDatabaseTests(unittest.IsolatedAsyncioTestCase):
         equipped = await self.db.get_equipped_avatar_id(self.user_id, self.guild_id)
         self.assertEqual(equipped, aid)
         self.assertEqual(resolve_equipped_avatar_id(equipped), aid)
-        self.assertTrue(
-            portrait_path(aid, guild_id=self.guild_id, user_id=self.user_id).is_file(),
-        )
+        portrait = portrait_path(aid, guild_id=self.guild_id, user_id=self.user_id)
+        self.assertTrue(portrait.is_file())
+        self.assertGreater(portrait.stat().st_size, 8_000)
 
 
 if __name__ == "__main__":
