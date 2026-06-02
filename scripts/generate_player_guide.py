@@ -138,7 +138,7 @@ def build() -> None:
     # 4 - Boss
     pdf.chapter_title("4. Boss raids (Hannah)")
     pdf.body(
-        "A boss spawns automatically about every 2 hours, or an admin can /summon. "
+        "A boss spawns automatically about every 30–45 minutes when none is active, or an admin can /summon. "
         "Everyone attacks together; rewards split by damage dealt."
     )
     pdf.bullet("/boss - HP bar and threat level")

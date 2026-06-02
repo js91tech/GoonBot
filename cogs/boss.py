@@ -32,6 +32,7 @@ from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.boss_art import attach_boss_art
 from utils.boss_element_effects import element_hazard_text, roll_element_proc
 from utils.boss_mechanics import (
+    compute_boss_hp,
     raider_damage_mult,
     reward_mult_for_variant,
     roll_counter_damage,
@@ -71,6 +72,7 @@ class Boss(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._boss_finish_lock = asyncio.Lock()
+        self._auto_spawn_due_at: dict[int, float] = {}
         self.auto_spawn.start()
         self.passive_boss_decay_tick.start()
 
@@ -81,22 +83,25 @@ class Boss(commands.Cog):
     async def _boss_hp(self, guild_id: int, variant: str) -> float:
         circulation = await self.bot.db.total_circulation(guild_id)
         scale_factor = await self.bot.db.get_config_value(guild_id, "boss_health_scale_factor")
-        scaled_hp = max(config.BOSS_MIN_HP, circulation * scale_factor)
-        base_hp = min(config.BOSS_HP_CAP, scaled_hp)
-        hp = base_hp * float(config.BOSS_VARIANTS[variant]["multiplier"])
-        hp *= await self.bot.db.get_boss_hp_multiplier(guild_id)
-        return hp
+        mult = await self.bot.db.get_boss_hp_multiplier(guild_id)
+        return compute_boss_hp(
+            circulation,
+            scale_factor,
+            variant,
+            hp_multiplier=mult,
+        )
 
     async def _tomass_hp(self, guild_id: int, mirrored_variant: str) -> float:
         circulation = await self.bot.db.total_circulation(guild_id)
         scale_factor = await self.bot.db.get_config_value(guild_id, "boss_health_scale_factor")
-        scaled_hp = max(config.BOSS_MIN_HP, circulation * scale_factor)
-        base_hp = min(config.BOSS_HP_CAP, scaled_hp)
-        mirror_mult = float(config.BOSS_VARIANTS[mirrored_variant]["multiplier"])
-        strength = float(config.BOSS_VARIANTS["tomass"]["mirrored_strength_mult"])
-        hp = base_hp * mirror_mult * strength
-        hp *= await self.bot.db.get_boss_hp_multiplier(guild_id)
-        return hp
+        mult = await self.bot.db.get_boss_hp_multiplier(guild_id)
+        return compute_boss_hp(
+            circulation,
+            scale_factor,
+            "tomass",
+            hp_multiplier=mult,
+            mirrored_variant=mirrored_variant,
+        )
 
     async def _spawn_boss(
         self,
@@ -422,6 +427,16 @@ class Boss(commands.Cog):
         member = guild.get_member(user_id)
         return member.display_name if member else f"User {user_id}"
 
+    @staticmethod
+    def _boss_display_name(variant: str, fallback: str | None = None) -> str:
+        if variant == "tomass":
+            return BOSS_NAME_TOMASS
+        if variant == "zz_wrath":
+            return BOSS_NAME_ZZ
+        if fallback:
+            return fallback
+        return BOSS_NAME
+
     async def _complete_boss_defeat(
         self,
         guild: discord.Guild,
@@ -674,35 +689,61 @@ class Boss(commands.Cog):
             count = 3
         return min(count, pool_size)
 
-    @tasks.loop(seconds=config.BOSS_AUTO_SPAWN_SECONDS)
+    def _schedule_next_auto_spawn(self, guild_id: int, *, now: float | None = None) -> None:
+        ts = time.time() if now is None else now
+        delay = random.randint(
+            config.BOSS_AUTO_SPAWN_MIN_SECONDS,
+            config.BOSS_AUTO_SPAWN_MAX_SECONDS,
+        )
+        self._auto_spawn_due_at[guild_id] = ts + delay
+
+    @tasks.loop(seconds=config.BOSS_AUTO_SPAWN_POLL_SECONDS)
     async def auto_spawn(self) -> None:
+        now = time.time()
         for guild in self.bot.guilds:
-            if await self.bot.db.get_active_boss(guild.id) is not None:
+            guild_id = guild.id
+            if guild_id not in self._auto_spawn_due_at:
+                self._schedule_next_auto_spawn(guild_id, now=now)
+            if now < self._auto_spawn_due_at[guild_id]:
                 continue
-            if random.random() < config.BOSS_ULTRA_SPAWN_CHANCE:
-                variant = "zz_wrath"
-            elif random.random() < config.BOSS_AUTO_SPAWN_TOMASS_CHANCE:
-                mirror = random.choice(config.HANNAH_SPAWN_VARIANTS)
-                hp = await self._spawn_boss(
-                    guild.id,
-                    "tomass",
-                    mirrored_variant=mirror,
-                )
-                boss_row = await self.bot.db.get_active_boss(guild.id)
-                elem = str(boss_row["element"]) if boss_row else None
-                await self._send_boss_spawn_embed(
-                    guild,
-                    variant="tomass",
-                    hp=hp,
-                    element=elem,
-                )
-                continue
+            self._schedule_next_auto_spawn(guild_id, now=now)
+            try:
+                await self._try_auto_spawn_guild(guild)
+            except Exception:
+                logging.exception("Auto boss spawn failed for guild %s", guild_id)
+
+    async def _try_auto_spawn_guild(self, guild: discord.Guild) -> None:
+        boss = await self.bot.db.get_active_boss(guild.id)
+        if boss is not None:
+            if self.bot.db.boss_has_expired(boss):
+                await self._despawn_boss_timeout(guild)
             else:
-                variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
-            hp = await self._spawn_boss(guild.id, variant)
+                return
+
+        if random.random() < config.BOSS_ULTRA_SPAWN_CHANCE:
+            variant = "zz_wrath"
+        elif random.random() < config.BOSS_AUTO_SPAWN_TOMASS_CHANCE:
+            mirror = random.choice(config.HANNAH_SPAWN_VARIANTS)
+            hp = await self._spawn_boss(
+                guild.id,
+                "tomass",
+                mirrored_variant=mirror,
+            )
             boss_row = await self.bot.db.get_active_boss(guild.id)
             elem = str(boss_row["element"]) if boss_row else None
-            await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, element=elem)
+            await self._send_boss_spawn_embed(
+                guild,
+                variant="tomass",
+                hp=hp,
+                element=elem,
+            )
+            return
+        else:
+            variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
+        hp = await self._spawn_boss(guild.id, variant)
+        boss_row = await self.bot.db.get_active_boss(guild.id)
+        elem = str(boss_row["element"]) if boss_row else None
+        await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, element=elem)
 
     @auto_spawn.before_loop
     async def before_auto_spawn(self) -> None:
