@@ -102,7 +102,10 @@ LAUNCH_GRANT_AMOUNT = 150.0
 LAUNCH_GRANT_WEAPON_ID = "training_stick"
 LAUNCH_GRANT_ARMOR_ID = "cardboard_shield"
 
-BOSS_AUTO_SPAWN_SECONDS = 2 * 60 * 60
+# Random auto-spawn window when no boss is active (checked every BOSS_AUTO_SPAWN_POLL_SECONDS).
+BOSS_AUTO_SPAWN_MIN_SECONDS = 30 * 60
+BOSS_AUTO_SPAWN_MAX_SECONDS = 45 * 60
+BOSS_AUTO_SPAWN_POLL_SECONDS = 60
 # Fraction of max HP removed per real-time minute while a boss is active (passive anti-stall).
 BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE = 0.01
 # How often to run the passive decay job (decay math still uses whole minutes).
@@ -178,8 +181,22 @@ BOSS_VARIANTS = {
     "normal": {"multiplier": 1.0, "counter_chance": 0.08, "threat": 1, "counter_damage": (10, 22), "crit_chance": 0.05},
     "enraged": {"multiplier": 1.5, "counter_chance": 0.12, "threat": 2, "counter_damage": (18, 36), "crit_chance": 0.08},
     "shadow": {"multiplier": 2.0, "counter_chance": 0.16, "threat": 3, "counter_damage": (30, 55), "crit_chance": 0.12},
-    "celestial": {"multiplier": 3.0, "counter_chance": 0.20, "threat": 4, "counter_damage": (45, 80), "crit_chance": 0.16},
-    "mythic": {"multiplier": 4.5, "counter_chance": 0.24, "threat": 5, "counter_damage": (60, 105), "crit_chance": 0.20},
+    "celestial": {
+        "multiplier": 3.0,
+        "counter_chance": 0.20,
+        "threat": 4,
+        "counter_damage": (45, 80),
+        "crit_chance": 0.16,
+        "despawn_seconds": BOSS_ULTRA_DESPAWN_SECONDS,
+    },
+    "mythic": {
+        "multiplier": 4.5,
+        "counter_chance": 0.24,
+        "threat": 5,
+        "counter_damage": (60, 105),
+        "crit_chance": 0.20,
+        "despawn_seconds": BOSS_MYTHIC_DESPAWN_SECONDS,
+    },
     "tomass": {
         "multiplier": 1.5 * 1.75,
         "counter_chance": 0.14,
@@ -189,6 +206,14 @@ BOSS_VARIANTS = {
         "heal_every_attacks": 3,
         "heal_amount_cap": 1000,
         "mirrored_strength_mult": 1.75,
+    },
+    "zz_wrath": {
+        "fixed_hp": 40_000.0,
+        "counter_chance": 0.28,
+        "threat": 6,
+        "counter_damage": (70, 120),
+        "crit_chance": 0.22,
+        "despawn_seconds": BOSS_ULTRA_DESPAWN_SECONDS,
     },
 }
 
