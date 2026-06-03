@@ -943,7 +943,7 @@ class Boss(commands.Cog):
                     value="_Off — tap 🧪 Auto-heal to configure_",
                     inline=False,
                 )
-        embed.set_footer(text="⚔️ Attack (4s cd) · 🧪 Auto-heal · Refresh · Raid LB")
+        embed.set_footer(text="⚔️ Attack (2–3s cd) · 🧪 Auto-heal · Refresh · Raid LB")
         return embed, None
 
     async def execute_boss_attack(
@@ -986,7 +986,7 @@ class Boss(commands.Cog):
                 )
                 return BossAttackResult(error=f"{dot_note} You are **downed**!")
 
-        cooldown = await self.bot.db.boss_attack_cooldown_remaining(member.id, guild_id)
+        cooldown = await self.bot.db.boss_attack_cooldown_remaining(guild_id, member.id)
         if cooldown is not None and cooldown > 0:
             return BossAttackResult(
                 error=f"Recovering — **{cooldown:.1f}s** until your next strike.",
@@ -1063,7 +1063,7 @@ class Boss(commands.Cog):
                 damage = max(1, int(damage * config.BOSS_RAID_FATIGUE_DAMAGE_MULT))
                 fatigue_note = " · **Raid fatigue**"
 
-        await self.bot.db.record_boss_attack_time(member.id, guild_id)
+        await self.bot.db.record_boss_attack_time(guild_id, member.id)
         mana_gain = await self.bot.db.restore_mana_from_damage(member.id, guild_id, damage)
         heal_applied = 0.0
         updated = await self.bot.db.damage_boss(guild_id, member.id, damage)
@@ -1264,7 +1264,9 @@ class Boss(commands.Cog):
         element = None
         with contextlib.suppress(KeyError, TypeError):
             element = str(boss_row["element"])
-        proc = roll_element_proc(element, now=time.time())
+        variant = str(boss_row["variant"])
+        threat = int(config.BOSS_VARIANTS.get(variant, {}).get("threat", 1))
+        proc = roll_element_proc(element, now=time.time(), threat=threat)
         if not proc.note:
             return ""
 
@@ -1279,6 +1281,7 @@ class Boss(commands.Cog):
                 frost_slow_until=proc.frost_slow_until,
                 verdant_root_until=proc.verdant_root_until,
                 fire_burn=proc.fire_burn,
+                debuff_attack_cooldown=proc.debuff_attack_cooldown,
             )
         if proc.storm_stun_seconds is not None:
             await self.bot.db.set_downed_until(
