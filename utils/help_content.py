@@ -27,7 +27,8 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Chaos modules",
-        "**/bounty** · **/bounty-board** · **/heist** · **/bank-heist** · **/hack** · **/trivia**\n"
+        "**/bounty** · **/bounty-board** · **/heist** · **/bank-heist** · **/hack** · **/transfer** · **/scourge-pass** · **/trivia**\n"
+        "Scourge Virus — hourly outbreak; warning GIF, then 7 min of infections on the top 5.\n"
         "**/hall-of-fame** · **/event** (admins)",
     ),
 )

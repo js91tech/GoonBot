@@ -321,6 +321,26 @@ class Database:
                 PRIMARY KEY (guild_id, user_id)
             );
 
+
+            CREATE TABLE IF NOT EXISTS scourge_pots (
+                guild_id BIGINT PRIMARY KEY,
+                holder_id BIGINT NOT NULL,
+                pass_count INTEGER NOT NULL DEFAULT 0 CHECK (pass_count >= 0),
+                started_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                penalty_amount REAL NOT NULL CHECK (penalty_amount > 0)
+            );
+
+            CREATE TABLE IF NOT EXISTS scourge_events (
+                guild_id BIGINT PRIMARY KEY,
+                channel_id BIGINT NOT NULL,
+                phase TEXT NOT NULL DEFAULT 'idle',
+                phase_ends_at REAL NOT NULL DEFAULT 0,
+                next_hourly_roll_at REAL NOT NULL DEFAULT 0,
+                infections_done INTEGER NOT NULL DEFAULT 0,
+                next_infection_at REAL NOT NULL DEFAULT 0
+            );
+
             CREATE TABLE IF NOT EXISTS boss_sessions (
                 guild_id BIGINT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -456,8 +476,38 @@ class Database:
         await self._migrate_personal_bank()
         await self._migrate_bank_heist()
         await self._migrate_dungeon_tiers()
+        await self._migrate_scourge_virus()
         await self._migrate_boss_rebalance()
         await self._migrate_boss_element_status()
+
+
+    async def _migrate_scourge_virus(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scourge_pots (
+                guild_id BIGINT PRIMARY KEY,
+                holder_id BIGINT NOT NULL,
+                pass_count INTEGER NOT NULL DEFAULT 0 CHECK (pass_count >= 0),
+                started_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                penalty_amount REAL NOT NULL CHECK (penalty_amount > 0)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scourge_events (
+                guild_id BIGINT PRIMARY KEY,
+                channel_id BIGINT NOT NULL,
+                phase TEXT NOT NULL DEFAULT 'idle',
+                phase_ends_at REAL NOT NULL DEFAULT 0,
+                next_hourly_roll_at REAL NOT NULL DEFAULT 0,
+                infections_done INTEGER NOT NULL DEFAULT 0,
+                next_infection_at REAL NOT NULL DEFAULT 0
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_boss_element_status(self) -> None:
         await self.conn.execute(
@@ -1359,6 +1409,13 @@ class Database:
                         "INTEGER NOT NULL DEFAULT 0"
                     ),
                 ),
+                (
+                    "scourge_event_enabled",
+                    (
+                        "ALTER TABLE guild_channels ADD COLUMN scourge_event_enabled "
+                        "INTEGER NOT NULL DEFAULT 1"
+                    ),
+                ),
             ):
                 cursor = await self.conn.execute(
                     """
@@ -1387,6 +1444,13 @@ class Database:
                 """
                 ALTER TABLE guild_channels
                 ADD COLUMN split_announcement_channels INTEGER NOT NULL DEFAULT 0
+                """,
+            )
+        if "scourge_event_enabled" not in cols:
+            await self.conn.execute(
+                """
+                ALTER TABLE guild_channels
+                ADD COLUMN scourge_event_enabled INTEGER NOT NULL DEFAULT 1
                 """,
             )
         await self.conn.commit()
@@ -1800,7 +1864,8 @@ class Database:
     async def _get_guild_channels_row(self, guild_id: int) -> Any | None:
         cursor = await self.conn.execute(
             """
-            SELECT main_channel_id, designated_channel_id, split_announcement_channels
+            SELECT main_channel_id, designated_channel_id, split_announcement_channels,
+                   scourge_event_enabled
             FROM guild_channels
             WHERE guild_id = ?
             """,
@@ -1826,6 +1891,12 @@ class Database:
             return False
         return bool(int(row["split_announcement_channels"]))
 
+    async def get_scourge_event_enabled(self, guild_id: int) -> bool:
+        row = await self._get_guild_channels_row(guild_id)
+        if row is None:
+            return True
+        return bool(int(row["scourge_event_enabled"]))
+
     async def get_guild_channel_settings(self, guild_id: int) -> dict[str, int | bool | None]:
         row = await self._get_guild_channels_row(guild_id)
         if row is None:
@@ -1833,6 +1904,7 @@ class Database:
                 "main_channel_id": None,
                 "designated_channel_id": None,
                 "split_announcement_channels": False,
+                "scourge_event_enabled": True,
             }
         return {
             "main_channel_id": (
@@ -1844,6 +1916,7 @@ class Database:
                 else None
             ),
             "split_announcement_channels": bool(int(row["split_announcement_channels"])),
+            "scourge_event_enabled": bool(int(row["scourge_event_enabled"])),
         }
 
     async def set_main_channel_id(self, guild_id: int, channel_id: int | None) -> None:
@@ -1918,6 +1991,40 @@ class Database:
                 await self._prune_guild_channels_row(guild_id)
             await self.conn.commit()
 
+    async def set_scourge_event_enabled(self, guild_id: int, enabled: bool) -> None:
+        async with self._write_lock:
+            if enabled:
+                await self.conn.execute(
+                    """
+                    INSERT INTO guild_channels (guild_id, scourge_event_enabled)
+                    VALUES (?, 1)
+                    ON CONFLICT(guild_id) DO UPDATE SET
+                        scourge_event_enabled = 1
+                    """,
+                    (guild_id,),
+                )
+            else:
+                await self.conn.execute(
+                    """
+                    INSERT INTO guild_channels (guild_id, scourge_event_enabled)
+                    VALUES (?, 0)
+                    ON CONFLICT(guild_id) DO UPDATE SET
+                        scourge_event_enabled = 0
+                    """,
+                    (guild_id,),
+                )
+                await self.conn.execute(
+                    "DELETE FROM scourge_pots WHERE guild_id = ?",
+                    (guild_id,),
+                )
+                await self.conn.execute(
+                    "DELETE FROM scourge_events WHERE guild_id = ?",
+                    (guild_id,),
+                )
+            await self.conn.commit()
+            if enabled:
+                await self._prune_guild_channels_row(guild_id)
+
     async def _prune_guild_channels_row(self, guild_id: int) -> None:
         """Remove empty guild_channels rows after partial clears."""
         await self.conn.execute(
@@ -1927,6 +2034,7 @@ class Database:
               AND main_channel_id IS NULL
               AND designated_channel_id IS NULL
               AND split_announcement_channels = 0
+              AND scourge_event_enabled = 1
             """,
             (guild_id,),
         )
@@ -3215,6 +3323,99 @@ class Database:
     async def clear_hacker_pot(self, guild_id: int) -> None:
         async with self._write_lock:
             await self.conn.execute("DELETE FROM hacker_pots WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+
+    async def debit_bank_up_to(
+        self,
+        user_id: int,
+        guild_id: int,
+        amount: float,
+    ) -> float:
+        if amount <= 0:
+            return 0.0
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT bank FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            bank = float(row["bank"]) if row is not None else 0.0
+            removed = min(bank, amount)
+            if removed > 0:
+                await self.conn.execute(
+                    "UPDATE users SET bank = bank - ? WHERE user_id = ? AND guild_id = ?",
+                    (removed, user_id, guild_id),
+                )
+            await self.conn.commit()
+            return removed
+
+    async def get_scourge_pot(self, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM scourge_pots WHERE guild_id = ?", (guild_id,),
+        )
+        return await cursor.fetchone()
+
+    async def set_scourge_pot(
+        self, guild_id: int, holder_id: int, pass_count: int,
+        started_at: float, expires_at: float, penalty_amount: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO scourge_pots (
+                    guild_id, holder_id, pass_count, started_at, expires_at, penalty_amount
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    holder_id=excluded.holder_id, pass_count=excluded.pass_count,
+                    started_at=excluded.started_at, expires_at=excluded.expires_at,
+                    penalty_amount=excluded.penalty_amount
+                """,
+                (guild_id, holder_id, pass_count, started_at, expires_at, penalty_amount),
+            )
+            await self.conn.commit()
+
+    async def clear_scourge_pot(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute("DELETE FROM scourge_pots WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+    async def clear_scourge_event(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM scourge_events WHERE guild_id = ?",
+                (guild_id,),
+            )
+            await self.conn.commit()
+
+    async def get_scourge_event(self, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM scourge_events WHERE guild_id = ?", (guild_id,),
+        )
+        return await cursor.fetchone()
+
+    async def upsert_scourge_event(
+        self, guild_id: int, channel_id: int, *, phase: str, phase_ends_at: float,
+        next_hourly_roll_at: float, infections_done: int = 0, next_infection_at: float = 0.0,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO scourge_events (
+                    guild_id, channel_id, phase, phase_ends_at,
+                    next_hourly_roll_at, infections_done, next_infection_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    channel_id=excluded.channel_id, phase=excluded.phase,
+                    phase_ends_at=excluded.phase_ends_at,
+                    next_hourly_roll_at=excluded.next_hourly_roll_at,
+                    infections_done=excluded.infections_done,
+                    next_infection_at=excluded.next_infection_at
+                """,
+                (guild_id, channel_id, phase, phase_ends_at, next_hourly_roll_at,
+                 infections_done, next_infection_at),
+            )
             await self.conn.commit()
 
     async def get_active_boss(self, guild_id: int) -> aiosqlite.Row | None:
