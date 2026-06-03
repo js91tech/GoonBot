@@ -333,7 +333,8 @@ class DashboardServer:
 
     @staticmethod
     def _session_value() -> str:
-        return hashlib.sha256(f"nuggetbot-dashboard:{config.DASHBOARD_TOKEN}".encode()).hexdigest()
+        secret = config.DASHBOARD_TOKEN.strip()
+        return hashlib.sha256(f"nuggetbot-dashboard:{secret}".encode()).hexdigest()
 
     async def _snapshots(self) -> list[dict[str, Any]]:
         snapshots = []
@@ -654,12 +655,6 @@ class DashboardServer:
         virus_text = "None" if virus is None else (
             f"Holder {virus['holder_id']} - {virus['seconds_left']}s left "
             f"(passes: {virus['pass_count']})"
-        )
-        channels = item["channels"]
-        scourge_text = (
-            "Enabled"
-            if channels.get("scourge_event_enabled", True)
-            else "Disabled (admin)"
         )
         custom_settings = item["custom_settings"]
         settings_text = ", ".join(html.escape(name) for name in custom_settings) if custom_settings else "None"
