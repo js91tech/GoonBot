@@ -1409,6 +1409,13 @@ class Database:
                         "INTEGER NOT NULL DEFAULT 0"
                     ),
                 ),
+                (
+                    "scourge_event_enabled",
+                    (
+                        "ALTER TABLE guild_channels ADD COLUMN scourge_event_enabled "
+                        "INTEGER NOT NULL DEFAULT 1"
+                    ),
+                ),
             ):
                 cursor = await self.conn.execute(
                     """
@@ -1437,6 +1444,13 @@ class Database:
                 """
                 ALTER TABLE guild_channels
                 ADD COLUMN split_announcement_channels INTEGER NOT NULL DEFAULT 0
+                """,
+            )
+        if "scourge_event_enabled" not in cols:
+            await self.conn.execute(
+                """
+                ALTER TABLE guild_channels
+                ADD COLUMN scourge_event_enabled INTEGER NOT NULL DEFAULT 1
                 """,
             )
         await self.conn.commit()
@@ -1850,7 +1864,8 @@ class Database:
     async def _get_guild_channels_row(self, guild_id: int) -> Any | None:
         cursor = await self.conn.execute(
             """
-            SELECT main_channel_id, designated_channel_id, split_announcement_channels
+            SELECT main_channel_id, designated_channel_id, split_announcement_channels,
+                   scourge_event_enabled
             FROM guild_channels
             WHERE guild_id = ?
             """,
@@ -1876,6 +1891,12 @@ class Database:
             return False
         return bool(int(row["split_announcement_channels"]))
 
+    async def get_scourge_event_enabled(self, guild_id: int) -> bool:
+        row = await self._get_guild_channels_row(guild_id)
+        if row is None:
+            return True
+        return bool(int(row["scourge_event_enabled"]))
+
     async def get_guild_channel_settings(self, guild_id: int) -> dict[str, int | bool | None]:
         row = await self._get_guild_channels_row(guild_id)
         if row is None:
@@ -1883,6 +1904,7 @@ class Database:
                 "main_channel_id": None,
                 "designated_channel_id": None,
                 "split_announcement_channels": False,
+                "scourge_event_enabled": True,
             }
         return {
             "main_channel_id": (
@@ -1894,6 +1916,7 @@ class Database:
                 else None
             ),
             "split_announcement_channels": bool(int(row["split_announcement_channels"])),
+            "scourge_event_enabled": bool(int(row["scourge_event_enabled"])),
         }
 
     async def set_main_channel_id(self, guild_id: int, channel_id: int | None) -> None:
@@ -1968,6 +1991,40 @@ class Database:
                 await self._prune_guild_channels_row(guild_id)
             await self.conn.commit()
 
+    async def set_scourge_event_enabled(self, guild_id: int, enabled: bool) -> None:
+        async with self._write_lock:
+            if enabled:
+                await self.conn.execute(
+                    """
+                    INSERT INTO guild_channels (guild_id, scourge_event_enabled)
+                    VALUES (?, 1)
+                    ON CONFLICT(guild_id) DO UPDATE SET
+                        scourge_event_enabled = 1
+                    """,
+                    (guild_id,),
+                )
+            else:
+                await self.conn.execute(
+                    """
+                    INSERT INTO guild_channels (guild_id, scourge_event_enabled)
+                    VALUES (?, 0)
+                    ON CONFLICT(guild_id) DO UPDATE SET
+                        scourge_event_enabled = 0
+                    """,
+                    (guild_id,),
+                )
+                await self.conn.execute(
+                    "DELETE FROM scourge_pots WHERE guild_id = ?",
+                    (guild_id,),
+                )
+                await self.conn.execute(
+                    "DELETE FROM scourge_events WHERE guild_id = ?",
+                    (guild_id,),
+                )
+            await self.conn.commit()
+            if enabled:
+                await self._prune_guild_channels_row(guild_id)
+
     async def _prune_guild_channels_row(self, guild_id: int) -> None:
         """Remove empty guild_channels rows after partial clears."""
         await self.conn.execute(
@@ -1977,6 +2034,7 @@ class Database:
               AND main_channel_id IS NULL
               AND designated_channel_id IS NULL
               AND split_announcement_channels = 0
+              AND scourge_event_enabled = 1
             """,
             (guild_id,),
         )
@@ -3321,6 +3379,14 @@ class Database:
     async def clear_scourge_pot(self, guild_id: int) -> None:
         async with self._write_lock:
             await self.conn.execute("DELETE FROM scourge_pots WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+    async def clear_scourge_event(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM scourge_events WHERE guild_id = ?",
+                (guild_id,),
+            )
             await self.conn.commit()
 
     async def get_scourge_event(self, guild_id: int) -> aiosqlite.Row | None:

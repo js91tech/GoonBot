@@ -58,6 +58,18 @@ class ScourgeDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.db.get_scourge_pot(self.guild_id))
 
 
+    async def test_scourge_event_enabled_defaults_on(self) -> None:
+        self.assertTrue(await self.db.get_scourge_event_enabled(self.guild_id))
+        settings = await self.db.get_guild_channel_settings(self.guild_id)
+        self.assertTrue(settings["scourge_event_enabled"])
+
+    async def test_scourge_event_enabled_toggle(self) -> None:
+        await self.db.set_scourge_event_enabled(self.guild_id, False)
+        self.assertFalse(await self.db.get_scourge_event_enabled(self.guild_id))
+        await self.db.set_scourge_event_enabled(self.guild_id, True)
+        self.assertTrue(await self.db.get_scourge_event_enabled(self.guild_id))
+
+
 class ScourgeCogTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -112,6 +124,31 @@ class ScourgeCogTests(unittest.IsolatedAsyncioTestCase):
         assert row is not None
         self.assertEqual(str(row["phase"]), "warning")
         send_warning.assert_awaited()
+
+
+    async def test_tick_skipped_when_disabled(self) -> None:
+        channel = MagicMock()
+        channel.id = 555
+        send_warning = AsyncMock()
+        self.cog._send_warning = send_warning
+        await self.db.set_scourge_event_enabled(self.guild_id, False)
+        with patch(
+            "cogs.scourge.resolve_bot_announcement_channel",
+            new_callable=AsyncMock,
+            return_value=channel,
+        ):
+            now = time.time()
+            await self.db.upsert_scourge_event(
+                self.guild_id,
+                channel.id,
+                phase="idle",
+                phase_ends_at=0.0,
+                next_hourly_roll_at=now - 1,
+            )
+            await self.cog._tick_guild(self.guild)
+        row = await self.db.get_scourge_event(self.guild_id)
+        self.assertIsNone(row)
+        send_warning.assert_not_awaited()
 
     def test_penalty_in_range(self) -> None:
         for _ in range(20):

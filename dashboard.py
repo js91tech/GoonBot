@@ -655,6 +655,12 @@ class DashboardServer:
             f"Holder {virus['holder_id']} - {virus['seconds_left']}s left "
             f"(passes: {virus['pass_count']})"
         )
+        channels = item["channels"]
+        scourge_text = (
+            "Enabled"
+            if channels.get("scourge_event_enabled", True)
+            else "Disabled (admin)"
+        )
         custom_settings = item["custom_settings"]
         settings_text = ", ".join(html.escape(name) for name in custom_settings) if custom_settings else "None"
         channels = item["channels"]

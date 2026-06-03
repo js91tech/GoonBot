@@ -58,6 +58,14 @@ class Scourge(commands.Cog):
             self._scourge_timer(guild_id, channel_id),
         )
 
+
+    async def _shutdown_scourge(self, guild_id: int) -> None:
+        old = self._timers.pop(guild_id, None)
+        if old is not None:
+            old.cancel()
+        await self.bot.db.clear_scourge_pot(guild_id)
+        await self.bot.db.clear_scourge_event(guild_id)
+
     async def _scourge_timer(self, guild_id: int, channel_id: int) -> None:
         try:
             pot = await self.bot.db.get_scourge_pot(guild_id)
@@ -282,6 +290,12 @@ class Scourge(commands.Cog):
         await self._infect_user(guild, channel_id, random.choice(guild_members))
 
     async def _tick_guild(self, guild: discord.Guild) -> None:
+        if not await self.bot.db.get_scourge_event_enabled(guild.id):
+            row = await self.bot.db.get_scourge_event(guild.id)
+            pot = await self.bot.db.get_scourge_pot(guild.id)
+            if row is not None or pot is not None or guild.id in self._timers:
+                await self._shutdown_scourge(guild.id)
+            return
         channel = await resolve_bot_announcement_channel(guild, self.bot.db)
         if channel is None:
             return
@@ -402,6 +416,12 @@ class Scourge(commands.Cog):
     async def scourge_pass(self, interaction: discord.Interaction, target: discord.Member) -> None:
         if interaction.guild_id is None or interaction.channel_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        if not await self.bot.db.get_scourge_event_enabled(interaction.guild_id):
+            await interaction.response.send_message(
+                "The Scourge Virus world event is disabled for this server.",
+                ephemeral=True,
+            )
             return
         target_err = pvp_target_error(target, interaction.user.id)
         if target_err:
