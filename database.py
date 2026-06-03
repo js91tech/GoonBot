@@ -5364,7 +5364,15 @@ class Database:
         return [(str(row["item_id"]), int(row["equipped_count"])) for row in await cursor.fetchall()]
 
     _PROGRESS_LEADERBOARD_COLUMNS = frozenset(
-        {"bosses_killed", "heists_won", "heals_given", "mythic_kills", "crafts_done", "prestige_level"}
+        {
+            "bosses_killed",
+            "heists_won",
+            "heals_given",
+            "mythic_kills",
+            "crafts_done",
+            "prestige_level",
+            "duel_wins",
+        }
     )
 
     async def progress_leaderboard(
