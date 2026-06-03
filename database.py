@@ -321,6 +321,26 @@ class Database:
                 PRIMARY KEY (guild_id, user_id)
             );
 
+
+            CREATE TABLE IF NOT EXISTS scourge_pots (
+                guild_id BIGINT PRIMARY KEY,
+                holder_id BIGINT NOT NULL,
+                pass_count INTEGER NOT NULL DEFAULT 0 CHECK (pass_count >= 0),
+                started_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                penalty_amount REAL NOT NULL CHECK (penalty_amount > 0)
+            );
+
+            CREATE TABLE IF NOT EXISTS scourge_events (
+                guild_id BIGINT PRIMARY KEY,
+                channel_id BIGINT NOT NULL,
+                phase TEXT NOT NULL DEFAULT 'idle',
+                phase_ends_at REAL NOT NULL DEFAULT 0,
+                next_hourly_roll_at REAL NOT NULL DEFAULT 0,
+                infections_done INTEGER NOT NULL DEFAULT 0,
+                next_infection_at REAL NOT NULL DEFAULT 0
+            );
+
             CREATE TABLE IF NOT EXISTS boss_sessions (
                 guild_id BIGINT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -456,8 +476,38 @@ class Database:
         await self._migrate_personal_bank()
         await self._migrate_bank_heist()
         await self._migrate_dungeon_tiers()
+        await self._migrate_scourge_virus()
         await self._migrate_boss_rebalance()
         await self._migrate_boss_element_status()
+
+
+    async def _migrate_scourge_virus(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scourge_pots (
+                guild_id BIGINT PRIMARY KEY,
+                holder_id BIGINT NOT NULL,
+                pass_count INTEGER NOT NULL DEFAULT 0 CHECK (pass_count >= 0),
+                started_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                penalty_amount REAL NOT NULL CHECK (penalty_amount > 0)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scourge_events (
+                guild_id BIGINT PRIMARY KEY,
+                channel_id BIGINT NOT NULL,
+                phase TEXT NOT NULL DEFAULT 'idle',
+                phase_ends_at REAL NOT NULL DEFAULT 0,
+                next_hourly_roll_at REAL NOT NULL DEFAULT 0,
+                infections_done INTEGER NOT NULL DEFAULT 0,
+                next_infection_at REAL NOT NULL DEFAULT 0
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_boss_element_status(self) -> None:
         await self.conn.execute(
@@ -3215,6 +3265,91 @@ class Database:
     async def clear_hacker_pot(self, guild_id: int) -> None:
         async with self._write_lock:
             await self.conn.execute("DELETE FROM hacker_pots WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+
+    async def debit_bank_up_to(
+        self,
+        user_id: int,
+        guild_id: int,
+        amount: float,
+    ) -> float:
+        if amount <= 0:
+            return 0.0
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT bank FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            bank = float(row["bank"]) if row is not None else 0.0
+            removed = min(bank, amount)
+            if removed > 0:
+                await self.conn.execute(
+                    "UPDATE users SET bank = bank - ? WHERE user_id = ? AND guild_id = ?",
+                    (removed, user_id, guild_id),
+                )
+            await self.conn.commit()
+            return removed
+
+    async def get_scourge_pot(self, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM scourge_pots WHERE guild_id = ?", (guild_id,),
+        )
+        return await cursor.fetchone()
+
+    async def set_scourge_pot(
+        self, guild_id: int, holder_id: int, pass_count: int,
+        started_at: float, expires_at: float, penalty_amount: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO scourge_pots (
+                    guild_id, holder_id, pass_count, started_at, expires_at, penalty_amount
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    holder_id=excluded.holder_id, pass_count=excluded.pass_count,
+                    started_at=excluded.started_at, expires_at=excluded.expires_at,
+                    penalty_amount=excluded.penalty_amount
+                """,
+                (guild_id, holder_id, pass_count, started_at, expires_at, penalty_amount),
+            )
+            await self.conn.commit()
+
+    async def clear_scourge_pot(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute("DELETE FROM scourge_pots WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+    async def get_scourge_event(self, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM scourge_events WHERE guild_id = ?", (guild_id,),
+        )
+        return await cursor.fetchone()
+
+    async def upsert_scourge_event(
+        self, guild_id: int, channel_id: int, *, phase: str, phase_ends_at: float,
+        next_hourly_roll_at: float, infections_done: int = 0, next_infection_at: float = 0.0,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO scourge_events (
+                    guild_id, channel_id, phase, phase_ends_at,
+                    next_hourly_roll_at, infections_done, next_infection_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    channel_id=excluded.channel_id, phase=excluded.phase,
+                    phase_ends_at=excluded.phase_ends_at,
+                    next_hourly_roll_at=excluded.next_hourly_roll_at,
+                    infections_done=excluded.infections_done,
+                    next_infection_at=excluded.next_infection_at
+                """,
+                (guild_id, channel_id, phase, phase_ends_at, next_hourly_roll_at,
+                 infections_done, next_infection_at),
+            )
             await self.conn.commit()
 
     async def get_active_boss(self, guild_id: int) -> aiosqlite.Row | None:
