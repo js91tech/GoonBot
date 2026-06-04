@@ -9,6 +9,12 @@ def threat_for_variant(variant: str) -> int:
     return int(config.BOSS_VARIANTS.get(variant, {}).get("threat", 1))
 
 
+def boss_raid_damage_retention(variant: str) -> float:
+    """Fraction of rolled damage applied vs this boss variant."""
+    threat = threat_for_variant(variant)
+    return config.BOSS_RAID_DAMAGE_RETENTION_BY_THREAT.get(threat, 1.0)
+
+
 def compute_boss_hp(
     circulation: float,
     scale_factor: float,
@@ -36,6 +42,7 @@ def compute_boss_hp(
         scaled_hp = max(config.BOSS_MIN_HP, circulation * scale_factor)
         base_hp = min(config.BOSS_HP_CAP, scaled_hp)
         hp = base_hp * float(variant_cfg["multiplier"])
+        hp *= float(variant_cfg.get("hp_bonus", 1.0))
         threat = threat_for_variant(variant)
         hp *= 1.0 + (threat - 1) * config.BOSS_THREAT_HP_BONUS_PER_TIER
     return hp * hp_multiplier

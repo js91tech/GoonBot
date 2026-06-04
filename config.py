@@ -151,15 +151,24 @@ DISCORD_LOGIN_BACKOFF_SECONDS: tuple[int, ...] = (60, 120, 300, 600, 900)
 BOSS_MIN_HP = 500.0
 BOSS_CIRCULATION_HP_FACTOR = 0.02
 BOSS_HP_CAP = 40_000.0
-BOSS_THREAT_HP_BONUS_PER_TIER = 0.10
-BOSS_MYTHIC_DESPAWN_SECONDS = 8 * 60
+BOSS_THREAT_HP_BONUS_PER_TIER = 0.12
+BOSS_MYTHIC_DESPAWN_SECONDS = 10 * 60
 BOSS_ULTRA_DESPAWN_SECONDS = 10 * 60
 BOSS_ULTRA_SPAWN_CHANCE = 0.15
-BOSS_ATTACK_COOLDOWN_MIN_SECONDS = 2
-BOSS_ATTACK_COOLDOWN_MAX_SECONDS = 3
+BOSS_ATTACK_COOLDOWN_MIN_SECONDS = 4
+BOSS_ATTACK_COOLDOWN_MAX_SECONDS = 5
 # Legacy default when a row has no stored per-attack cooldown.
 BOSS_ATTACK_COOLDOWN_SECONDS = BOSS_ATTACK_COOLDOWN_MAX_SECONDS
 BOSS_RAIDER_DAMAGE_MULT: dict[int, float] = {1: 0.65, 2: 0.80, 3: 0.95}
+# Player damage dealt to the boss scales down on higher threat tiers.
+BOSS_RAID_DAMAGE_RETENTION_BY_THREAT: dict[int, float] = {
+    1: 1.00,
+    2: 1.00,
+    3: 0.96,
+    4: 0.91,
+    5: 0.88,
+    6: 0.82,
+}
 BOSS_RAID_FATIGUE_SOLO_ATTACKS = 10
 BOSS_RAID_FATIGUE_DAMAGE_MULT = 0.75
 BOSS_ENRAGE_HP_THRESHOLD = 0.25
@@ -213,7 +222,8 @@ BOSS_VARIANTS = {
         "despawn_seconds": BOSS_ULTRA_DESPAWN_SECONDS,
     },
     "mythic": {
-        "multiplier": 4.5,
+        "multiplier": 5.25,
+        "hp_bonus": 1.15,
         "counter_chance": 0.24,
         "threat": 5,
         "counter_damage": (60, 105),
