@@ -32,7 +32,7 @@ from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.boss_art import attach_boss_art
 from utils.boss_element_effects import element_hazard_text, roll_element_proc
 from utils.boss_mechanics import (
-    boss_raid_damage_retention,
+    boss_raid_damage_bonus,
     compute_boss_hp,
     raider_damage_mult,
     reward_mult_for_variant,
@@ -944,7 +944,7 @@ class Boss(commands.Cog):
                     value="_Off — tap 🧪 Auto-heal to configure_",
                     inline=False,
                 )
-        embed.set_footer(text="⚔️ Attack (4–5s cd) · 🧪 Auto-heal · Refresh · Raid LB")
+        embed.set_footer(text="⚔️ Attack (2–3s cd) · 🧪 Auto-heal · Refresh · Raid LB")
         return embed, None
 
     async def execute_boss_attack(
@@ -1053,7 +1053,7 @@ class Boss(commands.Cog):
         distinct = len(raider_ids)
         damage = max(1, int(damage * raider_damage_mult(distinct)))
         variant = str(boss["variant"])
-        damage = max(1, int(damage * boss_raid_damage_retention(variant)))
+        damage = max(1, int(damage * boss_raid_damage_bonus(variant)))
         fatigue_note = ""
         boss_hp_now = float(boss["hp"])
         boss_max_now = float(boss["max_hp"])

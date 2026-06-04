@@ -491,7 +491,7 @@ class Database:
                     "cooldown_seconds",
                     (
                         "ALTER TABLE boss_attack_cooldowns ADD COLUMN cooldown_seconds "
-                        "REAL NOT NULL DEFAULT 5"
+                        "REAL NOT NULL DEFAULT 3"
                     ),
                 ),
                 (
@@ -523,7 +523,7 @@ class Database:
             (
                 "boss_attack_cooldowns",
                 "cooldown_seconds",
-                "ALTER TABLE boss_attack_cooldowns ADD COLUMN cooldown_seconds REAL NOT NULL DEFAULT 5",
+                "ALTER TABLE boss_attack_cooldowns ADD COLUMN cooldown_seconds REAL NOT NULL DEFAULT 3",
             ),
             (
                 "boss_raider_status",
