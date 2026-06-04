@@ -9,6 +9,12 @@ def threat_for_variant(variant: str) -> int:
     return int(config.BOSS_VARIANTS.get(variant, {}).get("threat", 1))
 
 
+def boss_raid_damage_bonus(variant: str) -> float:
+    """Multiplier on raid damage vs high-threat bosses (mythic kill pacing)."""
+    threat = threat_for_variant(variant)
+    return config.BOSS_RAID_DAMAGE_BONUS_BY_THREAT.get(threat, 1.0)
+
+
 def compute_boss_hp(
     circulation: float,
     scale_factor: float,
