@@ -35,7 +35,7 @@ class Attributes(commands.Cog):
         interaction: discord.Interaction,
         user: discord.Member | None = None,
         stat: str | None = None,
-        points: app_commands.Range[int, 1, 50] | None = None,
+        points: app_commands.Range[int, 1, 25] | None = None,
     ) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
@@ -44,6 +44,8 @@ class Attributes(commands.Cog):
         target = user or interaction.user
         guild_id = interaction.guild_id
         row = await self.bot.db.get_user_character(target.id, guild_id)
+        progress = await self.bot.db.get_user_progress(target.id, guild_id)
+        prestige_level = int(progress["prestige_level"])
         attrs = CharacterAttributes.from_row(row)
         class_xp = int(row["class_xp"])
 
@@ -64,11 +66,13 @@ class Attributes(commands.Cog):
                 await interaction.response.send_message(message, ephemeral=True)
                 return
             row = await self.bot.db.get_user_character(interaction.user.id, guild_id)
+            progress = await self.bot.db.get_user_progress(interaction.user.id, guild_id)
+            prestige_level = int(progress["prestige_level"])
             attrs = CharacterAttributes.from_row(row)
             class_xp = int(row["class_xp"])
             embed = discord.Embed(
                 title="Attributes updated",
-                description=f"{message}\n\n{format_attributes_block(attrs, class_xp=class_xp)}",
+                description=f"{message}\n\n{format_attributes_block(attrs, class_xp=class_xp, prestige_level=prestige_level)}",
                 color=discord.Color.green(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -81,21 +85,29 @@ class Attributes(commands.Cog):
             )
             return
 
-        unspent = unspent_attribute_points(attrs, class_xp)
+        unspent = unspent_attribute_points(attrs, class_xp, prestige_level)
         help_line = ""
         if target.id == interaction.user.id and unspent > 0:
             help_line = (
                 f"\n\nAllocate with `/attributes stat:agility points:{min(unspent, 5)}` "
                 f"(AGI reduces stun/root/chill)."
             )
+        from utils.character_attributes import attribute_point_cap
+
+        pool_cap = attribute_point_cap(prestige_level)
         stat_guide = (
             "**STR** — damage · **DEX** — crit · **AGI** — debuff resist "
             "· **DEF** — mitigation & burn/void resist · **VIT** — max HP\n"
-            f"Earn **1 point per 100 class XP** from duels and boss raids."
+            f"First **20** points come quickly from class XP; later points cost more. "
+            f"Pool cap **{pool_cap}** (+**5** per prestige, **100** at prestige 10). "
+            f"Each stat caps at **25**."
         )
         embed = discord.Embed(
             title=f"{target.display_name}'s Attributes",
-            description=format_attributes_block(attrs, class_xp=class_xp) + help_line,
+            description=format_attributes_block(
+                attrs, class_xp=class_xp, prestige_level=prestige_level,
+            )
+            + help_line,
             color=discord.Color.blurple(),
         )
         embed.add_field(

@@ -61,7 +61,7 @@ class CharacterAttributes:
                 return config.ATTR_BASE_VALUE
             if raw is None:
                 return config.ATTR_BASE_VALUE
-            return int(raw)
+            return min(config.ATTR_MAX_VALUE, int(raw))
 
         return cls(
             strength=_get("stat_str"),
@@ -72,13 +72,69 @@ class CharacterAttributes:
         )
 
 
-def total_attribute_points_earned(class_xp: int) -> int:
-    earned = class_xp // config.ATTR_XP_PER_POINT
-    return min(config.ATTR_MAX_TOTAL_POINTS, earned)
+def attribute_point_cap(prestige_level: int) -> int:
+    """Total allocatable points; prestige 0 = 50, prestige 10 = 100."""
+    return config.ATTR_BASE_TOTAL_POINTS + prestige_level * config.ATTR_POINTS_PER_PRESTIGE
 
 
-def unspent_attribute_points(attrs: CharacterAttributes, class_xp: int) -> int:
-    return max(0, total_attribute_points_earned(class_xp) - attrs.points_spent())
+def xp_required_for_attribute_points(point_count: int) -> int:
+    """Cumulative class XP to earn N attribute points (first 20 are cheaper)."""
+    if point_count <= 0:
+        return 0
+    fast = min(point_count, config.ATTR_FAST_POINT_COUNT)
+    slow = max(0, point_count - config.ATTR_FAST_POINT_COUNT)
+    return (
+        fast * config.ATTR_XP_PER_FAST_POINT
+        + slow * config.ATTR_XP_PER_SLOW_POINT
+    )
+
+
+def attribute_points_from_class_xp(class_xp: int) -> int:
+    """How many points class XP has earned (ignores prestige cap)."""
+    max_points = attribute_point_cap(config.PRESTIGE_MAX_LEVEL)
+    lo, hi = 0, max_points
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if xp_required_for_attribute_points(mid) <= class_xp:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+def total_attribute_points_available(class_xp: int, prestige_level: int) -> int:
+    """Earned points limited by current prestige pool cap."""
+    earned = attribute_points_from_class_xp(class_xp)
+    return min(earned, attribute_point_cap(prestige_level))
+
+
+def unspent_attribute_points(
+    attrs: CharacterAttributes,
+    class_xp: int,
+    prestige_level: int,
+) -> int:
+    return max(
+        0,
+        total_attribute_points_available(class_xp, prestige_level) - attrs.points_spent(),
+    )
+
+
+def xp_until_next_attribute_point(
+    class_xp: int,
+    prestige_level: int,
+    attrs: CharacterAttributes,
+) -> int | None:
+    """Class XP still needed for the next point, or None if capped."""
+    cap = attribute_point_cap(prestige_level)
+    earned = attribute_points_from_class_xp(class_xp)
+    if attrs.points_spent() >= cap:
+        return None
+    if earned > attrs.points_spent() and total_attribute_points_available(class_xp, prestige_level) > attrs.points_spent():
+        return 0
+    next_point = earned + 1
+    if next_point > cap:
+        return None
+    return max(0, xp_required_for_attribute_points(next_point) - class_xp)
 
 
 def _bonus_points(value: int) -> int:
@@ -166,17 +222,29 @@ def apply_debuff_attack_cooldown(cooldown: float, resistance: DebuffResistance) 
     return max(2.0, cooldown * resistance.debuff_attack_cd_mult)
 
 
-def format_attributes_block(attrs: CharacterAttributes, *, class_xp: int) -> str:
-    unspent = unspent_attribute_points(attrs, class_xp)
-    earned = total_attribute_points_earned(class_xp)
+def format_attributes_block(
+    attrs: CharacterAttributes,
+    *,
+    class_xp: int,
+    prestige_level: int = 0,
+) -> str:
+    cap = attribute_point_cap(prestige_level)
+    available = total_attribute_points_available(class_xp, prestige_level)
+    unspent = unspent_attribute_points(attrs, class_xp, prestige_level)
     lines = [
-        f"**{STAT_EMOJI[name]} {STAT_LABELS[name]}** **{attrs.value(name)}**"
+        f"**{STAT_EMOJI[name]} {STAT_LABELS[name]}** **{attrs.value(name)}** / **{config.ATTR_MAX_VALUE}**"
         for name in STAT_KEYS
     ]
     lines.append(
-        f"Points: **{attrs.points_spent()}/{earned}** spent"
+        f"Pool: **{attrs.points_spent()}/{available}** allocated"
+        f" (prestige cap **{cap}**)"
         + (f" · **{unspent}** unspent" if unspent else "")
     )
+    xp_left = xp_until_next_attribute_point(class_xp, prestige_level, attrs)
+    if xp_left is not None and xp_left > 0:
+        lines.append(f"Next point in **{xp_left}** class XP")
+    elif available >= cap and attribute_points_from_class_xp(class_xp) >= cap:
+        lines.append("Prestige up to raise your attribute point cap (+5 per level).")
     combat = combat_bonuses_from_attributes(attrs)
     resist = debuff_resistance_from_attributes(attrs)
     effect_lines = []

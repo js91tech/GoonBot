@@ -320,10 +320,16 @@ class Shop(commands.Cog):
         from utils.combat_engine import max_hp_from_armor
 
         class_id = await self.bot.db.get_class_id(target.id, guild_id)
+        progress = await self.bot.db.get_user_progress(target.id, guild_id)
+        prestige = int(progress["prestige_level"])
         char_row = await self.bot.db.get_user_character(target.id, guild_id)
         attrs = CharacterAttributes.from_row(char_row)
         attr_bonuses = combat_bonuses_from_attributes(attrs)
-        attributes_block = format_attributes_block(attrs, class_xp=int(char_row["class_xp"]))
+        attributes_block = format_attributes_block(
+            attrs,
+            class_xp=int(char_row["class_xp"]),
+            prestige_level=prestige,
+        )
         max_hp = float(
             max_hp_from_armor(
                 loadout.armor,
@@ -335,8 +341,6 @@ class Shop(commands.Cog):
         combat = await self.bot.db.get_combat_state(target.id, guild_id)
         current_hp = combat[0] if combat is not None else max_hp
 
-        progress = await self.bot.db.get_user_progress(target.id, guild_id)
-        prestige = int(progress["prestige_level"])
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
         cls = get_class(class_id)
         combat_stats = compute_combat_stats(

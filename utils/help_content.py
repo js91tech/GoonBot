@@ -24,7 +24,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "Character",
         "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar** (upload custom)\n"
         "**/use** — raid potion, energy drink, duel scroll, **Jail Key**, **Pick Key** · **/gift** — chia seeds\n"
-        "**/attributes** — STR/DEX/AGI/DEF/VIT (AGI cuts stun/root/chill; earn points from class XP)\n"
+        "**/attributes** — STR/DEX/AGI/DEF/VIT (fast first 20 pts; +5 pool cap/prestige; 25/stat max)\n"
         "**/profile** · **/stats** · **/quests** · **/achievements** · **/fix** (unstable gear)",
     ),
     (

@@ -5037,6 +5037,7 @@ class Database:
         from utils.character_attributes import (
             STAT_COLUMNS,
             CharacterAttributes,
+            attribute_point_cap,
             normalize_stat_name,
             unspent_attribute_points,
         )
@@ -5048,6 +5049,16 @@ class Database:
             return False, "Unknown stat. Use **strength**, **dexterity**, **agility**, **defense**, or **vitality**."
         async with self._write_lock:
             await self._ensure_character_no_lock(user_id, guild_id)
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            prestige_cursor = await self.conn.execute(
+                """
+                SELECT prestige_level FROM user_progress
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            prestige_row = await prestige_cursor.fetchone()
+            prestige_level = int(prestige_row["prestige_level"]) if prestige_row else 0
             cursor = await self.conn.execute(
                 "SELECT * FROM user_character WHERE user_id = ? AND guild_id = ?",
                 (user_id, guild_id),
@@ -5057,12 +5068,18 @@ class Database:
                 return False, "Character not found."
             attrs = CharacterAttributes.from_row(row)
             class_xp = int(row["class_xp"] or 0)
-            available = unspent_attribute_points(attrs, class_xp)
+            available = unspent_attribute_points(attrs, class_xp, prestige_level)
             if points > available:
+                pool_cap = attribute_point_cap(prestige_level)
+                hint = (
+                    f"Prestige up to raise your pool cap (currently **{pool_cap}**)."
+                    if attrs.points_spent() >= pool_cap
+                    or available >= pool_cap
+                    else "Earn more class XP from duels and boss raids."
+                )
                 return (
                     False,
-                    f"Only **{available}** unspent point{'s' if available != 1 else ''} "
-                    f"(earn more from class XP: duels, boss raids).",
+                    f"Only **{available}** unspent point{'s' if available != 1 else ''} — {hint}",
                 )
             col = STAT_COLUMNS[normalized]
             current = attrs.value(normalized)
