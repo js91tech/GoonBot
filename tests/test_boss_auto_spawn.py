@@ -50,13 +50,16 @@ class BossAutoSpawnTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(boss["variant"]), "zz_wrath")
         self.assertGreater(float(boss["hp"]), 0)
 
-    async def test_spawn_scheduled_in_30_to_45_minutes(self) -> None:
+    async def test_spawn_scheduled_every_40_minutes(self) -> None:
         now = time.time()
         self.cog._schedule_next_auto_spawn(self.guild_id, now=now)
         due = self.cog._auto_spawn_due_at[self.guild_id]
         delay = due - now
-        self.assertGreaterEqual(delay, config.BOSS_AUTO_SPAWN_MIN_SECONDS)
-        self.assertLessEqual(delay, config.BOSS_AUTO_SPAWN_MAX_SECONDS)
+        self.assertAlmostEqual(delay, config.BOSS_AUTO_SPAWN_MIN_SECONDS, delta=1.0)
+        self.assertEqual(
+            config.BOSS_AUTO_SPAWN_MIN_SECONDS,
+            config.BOSS_AUTO_SPAWN_MAX_SECONDS,
+        )
 
     async def test_skips_when_boss_active(self) -> None:
         await self.db.replace_boss(self.guild_id, "Hannah", "normal", 5000.0)

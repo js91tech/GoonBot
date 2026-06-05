@@ -47,8 +47,7 @@ class Scourge(commands.Cog):
 
     @staticmethod
     def _schedule_next_hourly(now: float) -> float:
-        lo, hi = config.SCOURGE_HOURLY_JITTER_SECONDS
-        return now + random.randint(lo, hi)
+        return now + config.SCOURGE_INTERVAL_SECONDS
 
     def _replace_timer(self, guild_id: int, channel_id: int) -> None:
         old = self._timers.pop(guild_id, None)
@@ -123,6 +122,8 @@ class Scourge(commands.Cog):
         holder_id = int(pot["holder_id"])
         penalty = float(pot["penalty_amount"])
         removed = await self.bot.db.debit_bank_up_to(holder_id, guild_id, penalty)
+        if removed > 0:
+            await self.bot.db.credit_house_pot(guild_id, removed)
         await self.bot.db.clear_scourge_pot(guild_id)
 
         channel = self.bot.get_channel(channel_id)
@@ -317,15 +318,6 @@ class Scourge(commands.Cog):
 
         if phase == "idle":
             if now < next_hourly:
-                return
-            if random.random() >= config.SCOURGE_HOURLY_TRIGGER_CHANCE:
-                await self.bot.db.upsert_scourge_event(
-                    guild.id,
-                    channel_id,
-                    phase="idle",
-                    phase_ends_at=0.0,
-                    next_hourly_roll_at=self._schedule_next_hourly(now),
-                )
                 return
             await self.bot.db.upsert_scourge_event(
                 guild.id,

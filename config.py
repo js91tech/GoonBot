@@ -80,6 +80,20 @@ BANK_HEIST_TIERS: dict[int, dict[str, float]] = {
 }
 GEAR_FIX_COST_FRACTION = 0.80
 
+# Personal bank bodyguards (defend against /bank-heist).
+BODYGUARD_MAX_TOTAL = 5
+BODYGUARD_TIERS: dict[int, dict[str, float | str]] = {
+    1: {"name": "Rookie", "cost": 10_000.0, "defense": 0.06},
+    2: {"name": "Veteran", "cost": 25_000.0, "defense": 0.10},
+    3: {"name": "Elite", "cost": 60_000.0, "defense": 0.16},
+}
+BODYGUARD_REFERENCE_POWER = 400
+BODYGUARD_HEIST_TIER_TARGET: dict[int, float] = {1: 0.80, 2: 0.75, 3: 0.60}
+BODYGUARD_NO_GEAR_FLOOR = 0.05
+BODYGUARD_MAX_GEAR_NO_GUARDS = 0.95
+
+PICK_KEY_ESCAPE_CHANCE = 0.15
+
 # Bot Discord accounts can use commands and be PvP targets (passive chat/VC income stays off).
 ALLOW_BOT_PLAYERS = True
 ALLOW_BOT_PASSIVE_INCOME = False
@@ -91,10 +105,9 @@ HACK_TRANSFER_SECONDS = 60
 HACK_COOLDOWN_SECONDS = 5 * 60
 
 
-# Scourge virus world event (~hourly warning + 7-minute outbreak).
+# Scourge virus world event (fixed interval + 7-minute outbreak).
 SCOURGE_VIRUS_NAME = "Scourge Virus"
-SCOURGE_HOURLY_TRIGGER_CHANCE = 0.70
-SCOURGE_HOURLY_JITTER_SECONDS = (50 * 60, 70 * 60)
+SCOURGE_INTERVAL_SECONDS = 90 * 60
 SCOURGE_WARNING_SECONDS = 90
 SCOURGE_ACTIVE_SECONDS = 7 * 60
 SCOURGE_INFECTION_INTERVAL_SECONDS = 60
@@ -122,9 +135,9 @@ LAUNCH_GRANT_AMOUNT = 150.0
 LAUNCH_GRANT_WEAPON_ID = "training_stick"
 LAUNCH_GRANT_ARMOR_ID = "cardboard_shield"
 
-# Random auto-spawn window when no boss is active (checked every BOSS_AUTO_SPAWN_POLL_SECONDS).
-BOSS_AUTO_SPAWN_MIN_SECONDS = 30 * 60
-BOSS_AUTO_SPAWN_MAX_SECONDS = 45 * 60
+# Fixed auto-spawn interval when no boss is active (checked every BOSS_AUTO_SPAWN_POLL_SECONDS).
+BOSS_AUTO_SPAWN_MIN_SECONDS = 40 * 60
+BOSS_AUTO_SPAWN_MAX_SECONDS = 40 * 60
 BOSS_AUTO_SPAWN_POLL_SECONDS = 60
 # Fraction of max HP removed per real-time minute while a boss is active (passive anti-stall).
 BOSS_PASSIVE_HP_DECAY_FRACTION_PER_MINUTE = 0.01

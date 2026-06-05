@@ -58,7 +58,7 @@ class Profile(commands.Cog):
         if heist_left > 0:
             cooldown_lines.append(f"Heist: **{int(heist_left // 60)}m**")
         if float(user_row["arrested_until"]) > now:
-            cooldown_lines.append("**Arrested**")
+            cooldown_lines.append("**Arrested** — use **Jail Key** or **Pick Key**")
         if float(user_row["downed_until"]) > now:
             cooldown_lines.append("**Downed**")
 

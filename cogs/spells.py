@@ -13,9 +13,8 @@ from utils.skills import (
     get_skill,
     skill_available,
     skills_for_class,
-    spell_buff_from_skill,
 )
-from utils.spell_effects import combat_state_from_spell
+from utils.spell_cast import cast_skill_for_user
 
 
 class Spells(commands.Cog):
@@ -136,100 +135,20 @@ class Spells(commands.Cog):
             await interaction.response.send_message("Choose a class with `/class-choose` first.", ephemeral=True)
             return
 
-        skill_def = get_skill(skill)
-        if skill_def is None or not skill_available(skill_def, class_id):
-            await interaction.response.send_message(
-                "Unknown or locked skill. Use `/skills` for valid ids.",
-                ephemeral=True,
-            )
-            return
-
-        ok, err = await self.bot.db.spend_mana(
+        result = await cast_skill_for_user(
+            self.bot.db,
             interaction.user.id,
             interaction.guild_id,
-            skill_def.mana_cost,
+            skill,
+            class_id=class_id,
         )
-        if not ok:
-            snap = await self.bot.db.get_mana_snapshot(interaction.user.id, interaction.guild_id)
+        if not result.ok:
             await interaction.response.send_message(
-                f"Not enough mana. Need **{skill_def.mana_cost}**, you have **{snap.current}/{snap.cap}**.",
+                result.error or "Could not cast skill.",
                 ephemeral=True,
             )
             return
-
-        state = combat_state_from_spell(spell_buff_from_skill(skill_def))
-        extra_lines: list[str] = []
-
-        if state.heal_self_fraction > 0:
-            from utils.classes import get_modifiers
-            from utils.combat_engine import max_hp_from_armor
-            from utils.loadout import parse_loadout
-
-            equipment = await self.bot.db.get_equipment(interaction.user.id, interaction.guild_id)
-            loadout = parse_loadout(equipment)
-            max_hp = float(
-                max_hp_from_armor(loadout.armor, class_modifiers=get_modifiers(class_id))
-            )
-            heal = max(1, int(max_hp * state.heal_self_fraction))
-            await self.bot.db.heal_player(
-                interaction.user.id,
-                interaction.guild_id,
-                float(heal),
-                max_hp,
-            )
-            extra_lines.append(f"Restored **{heal}** HP.")
-
-        if state.heal_ally_fraction > 0:
-            await self.bot.db.set_pending_spell(
-                interaction.user.id,
-                interaction.guild_id,
-                skill_def.skill_id,
-            )
-            extra_lines.append(
-                f"**{skill_def.name}** ready — your next `/heal` pays **+{int(state.heal_ally_fraction * 100)}%** bonus reward."
-            )
-
-        if state.income_bonus > 0:
-            await self.bot.db.credit_wallet(
-                interaction.user.id,
-                interaction.guild_id,
-                state.income_bonus,
-            )
-            extra_lines.append(f"Gained **{fmt_amount(state.income_bonus)}** nuggets.")
-
-        if state.heist_bonus > 0:
-            await self.bot.db.add_heist_spell_bonus(
-                interaction.user.id,
-                interaction.guild_id,
-                state.heist_bonus,
-            )
-            extra_lines.append(
-                f"Next heist gains **+{int(state.heist_bonus * 100)}%** success chance."
-            )
-
-        if (
-            (state.damage_mult > 1.0 or state.fortify_mult < 1.0 or state.extra_crit > 0)
-            and state.heal_ally_fraction <= 0
-            and state.heal_self_fraction <= 0
-        ):
-            await self.bot.db.set_pending_spell(
-                interaction.user.id,
-                interaction.guild_id,
-                skill_def.skill_id,
-            )
-            extra_lines.append(
-                f"**{skill_def.name}** charged — use `/attack` or `/duel` within "
-                f"{config.PENDING_SPELL_SECONDS}s."
-            )
-
-        snap = await self.bot.db.get_mana_snapshot(interaction.user.id, interaction.guild_id)
-        desc = (
-            f"{skill_def.emoji} **{skill_def.name}** cast (−{skill_def.mana_cost} mana).\n"
-            f"Mana: **{snap.current}/{snap.cap}**"
-        )
-        if extra_lines:
-            desc += "\n" + "\n".join(extra_lines)
-        await interaction.response.send_message(desc, ephemeral=True)
+        await interaction.response.send_message(result.message, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

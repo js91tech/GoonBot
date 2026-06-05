@@ -25,7 +25,7 @@ def build_wallet_embed(
     embed.add_field(name="Pocket", value=fmt_amount(wallet), inline=True)
     embed.add_field(name="Bank", value=fmt_amount(bank), inline=True)
     embed.add_field(name="Net worth", value=fmt_amount(net), inline=True)
-    embed.set_footer(text="Bank can be hit by /bank-heist · Pocket is spendable & stealable")
+    embed.set_footer(text="Bank can be hit by /bank-heist · Hire bodyguards to defend your vault")
     return embed
 
 
@@ -174,3 +174,10 @@ class WalletView(discord.ui.View):
         assert isinstance(member, discord.Member)
         embed = build_wallet_embed(member, wallet=wallet, bank=bank)
         await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Bodyguards", style=discord.ButtonStyle.secondary, row=1)
+    async def bodyguards_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        from utils.bodyguard_ui import send_bodyguard_panel
+
+        await send_bodyguard_panel(interaction, self.cog)

@@ -480,7 +480,30 @@ class Database:
         await self._migrate_boss_rebalance()
         await self._migrate_boss_element_status()
         await self._migrate_boss_attack_pacing()
+        await self._migrate_jail_bodyguards_house()
 
+
+    async def _migrate_jail_bodyguards_house(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_bodyguards (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                tier INTEGER NOT NULL CHECK (tier IN (1, 2, 3)),
+                quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+                PRIMARY KEY (guild_id, user_id, tier)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guild_house_pot (
+                guild_id BIGINT PRIMARY KEY,
+                balance REAL NOT NULL DEFAULT 0 CHECK (balance >= 0)
+            )
+            """,
+        )
+        await self.conn.commit()
 
     async def _migrate_boss_attack_pacing(self) -> None:
         """Per-attack cooldown + elemental debuff pacing columns."""
@@ -3166,6 +3189,9 @@ class Database:
             )
             await self.conn.commit()
 
+    async def clear_arrested(self, user_id: int, guild_id: int) -> None:
+        await self.set_arrested_until(user_id, guild_id, 0.0)
+
     async def set_downed_until(self, user_id: int, guild_id: int, timestamp: float) -> None:
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
@@ -3187,10 +3213,122 @@ class Database:
         row = await self.get_user(user_id, guild_id)
         return float(row["downed_until"]) > (time.time() if at is None else at)
 
+    async def list_downed_users(self, guild_id: int, at: float | None = None) -> list[int]:
+        now = time.time() if at is None else at
+        cursor = await self.conn.execute(
+            """
+            SELECT user_id FROM users
+            WHERE guild_id = ? AND downed_until > ?
+            ORDER BY downed_until DESC
+            """,
+            (guild_id, now),
+        )
+        rows = await cursor.fetchall()
+        return [int(row["user_id"]) for row in rows]
+
     async def is_restricted(self, user_id: int, guild_id: int, at: float | None = None) -> bool:
         now = time.time() if at is None else at
         row = await self.get_user(user_id, guild_id)
         return float(row["arrested_until"]) > now or float(row["downed_until"]) > now
+
+    async def get_bodyguards(self, user_id: int, guild_id: int) -> dict[int, int]:
+        cursor = await self.conn.execute(
+            """
+            SELECT tier, quantity FROM user_bodyguards
+            WHERE guild_id = ? AND user_id = ? AND quantity > 0
+            """,
+            (guild_id, user_id),
+        )
+        rows = await cursor.fetchall()
+        return {int(row["tier"]): int(row["quantity"]) for row in rows}
+
+    async def hire_bodyguard(self, user_id: int, guild_id: int, tier: int) -> str | None:
+        import config
+
+        spec = config.BODYGUARD_TIERS.get(tier)
+        if spec is None:
+            return "invalid_tier"
+        cost = float(spec["cost"])
+        guards = await self.get_bodyguards(user_id, guild_id)
+        total = sum(guards.values())
+        if total >= config.BODYGUARD_MAX_TOTAL:
+            return "max_guards"
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            if row is None or float(row["wallet"]) < cost:
+                await self.conn.commit()
+                return "insufficient_funds"
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET wallet = wallet - ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (cost, user_id, guild_id),
+            )
+            qty = guards.get(tier, 0) + 1
+            await self.conn.execute(
+                """
+                INSERT INTO user_bodyguards (guild_id, user_id, tier, quantity)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, tier) DO UPDATE SET
+                    quantity = excluded.quantity
+                """,
+                (guild_id, user_id, tier, qty),
+            )
+            await self.conn.commit()
+        return None
+
+    async def get_house_pot(self, guild_id: int) -> float:
+        cursor = await self.conn.execute(
+            "SELECT balance FROM guild_house_pot WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        return float(row["balance"]) if row is not None else 0.0
+
+    async def credit_house_pot(self, guild_id: int, amount: float) -> None:
+        if amount <= 0:
+            return
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO guild_house_pot (guild_id, balance)
+                VALUES (?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    balance = guild_house_pot.balance + excluded.balance
+                """,
+                (guild_id, amount),
+            )
+            await self.conn.commit()
+
+    async def debit_house_pot(self, guild_id: int, amount: float) -> float:
+        if amount <= 0:
+            return 0.0
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT balance FROM guild_house_pot WHERE guild_id = ?",
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+            available = float(row["balance"]) if row is not None else 0.0
+            taken = min(amount, available)
+            if taken <= 0:
+                return 0.0
+            new_balance = available - taken
+            if row is None:
+                return 0.0
+            await self.conn.execute(
+                "UPDATE guild_house_pot SET balance = ? WHERE guild_id = ?",
+                (new_balance, guild_id),
+            )
+            await self.conn.commit()
+            return taken
 
     async def leaderboard(self, guild_id: int, limit: int = 10) -> list[aiosqlite.Row]:
         cursor = await self.conn.execute(

@@ -944,7 +944,34 @@ class Boss(commands.Cog):
                     value="_Off — tap 🧪 Auto-heal to configure_",
                     inline=False,
                 )
-        embed.set_footer(text="⚔️ Attack (2–3s cd) · 🧪 Auto-heal · Refresh · Raid LB")
+            snap = await self.bot.db.get_mana_snapshot(member.id, guild_id)
+            from utils.mana import mana_bar
+
+            embed.add_field(
+                name="Mana",
+                value=f"`{mana_bar(snap.current, snap.cap)}` **{snap.current}/{snap.cap}**",
+                inline=False,
+            )
+            pending_spell = await self.bot.db.get_pending_spell_id(member.id, guild_id)
+            buff_lines: list[str] = []
+            if pending_spell:
+                skill = get_skill(pending_spell)
+                name = skill.name if skill is not None else pending_spell
+                buff_lines.append(f"✨ **{name}** ready on next attack")
+            char_row = await self.bot.db.get_user_character(member.id, guild_id)
+            pending_item = char_row["pending_consumable"] if char_row else None
+            expires = float(char_row["pending_consumable_expires"] or 0) if char_row else 0.0
+            if pending_item and expires > time.time():
+                from items import get_item as gi
+
+                item = gi(str(pending_item))
+                iname = item.name if item is not None else str(pending_item)
+                buff_lines.append(f"💊 **{iname}** ready on next attack")
+            if buff_lines:
+                embed.add_field(name="Active buffs", value="\n".join(buff_lines), inline=False)
+        embed.set_footer(
+            text="⚔️ Attack · ✨ Cast · 💊 Items · ❤️ Heal · 🧪 Auto-heal · Refresh · Raid LB",
+        )
         return embed, None
 
     async def execute_boss_attack(
@@ -1421,69 +1448,67 @@ class Boss(commands.Cog):
         embed.set_footer(text="Rewards scale with your damage share when the boss falls")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="heal", description="Revive a downed teammate.")
-    @app_commands.describe(target="Downed user to heal")
-    @app_commands.guild_only()
-    async def heal(self, interaction: discord.Interaction, target: discord.Member) -> None:
-        if interaction.guild_id is None:
-            await interaction.response.send_message(guild_only_message(), ephemeral=True)
-            return
+    async def execute_field_heal(
+        self,
+        healer: discord.Member,
+        target: discord.Member,
+        guild: discord.Guild,
+    ) -> tuple[discord.Embed | None, str | None]:
+        guild_id = guild.id
         if target.bot and not config.ALLOW_BOT_PLAYERS:
-            await interaction.response.send_message("Bots do not need healing.", ephemeral=True)
-            return
-        if not await self.bot.db.is_downed(target.id, interaction.guild_id):
-            await interaction.response.send_message("That user is not downed.", ephemeral=True)
-            return
+            return None, "Bots do not need healing."
+        if not await self.bot.db.is_downed(target.id, guild_id):
+            return None, "That user is not downed."
 
-        await self.bot.db.set_downed_until(target.id, interaction.guild_id, 0)
+        await self.bot.db.set_downed_until(target.id, guild_id, 0)
         await self.bot.db.restore_player_hp(
             target.id,
-            interaction.guild_id,
-            await self._max_hp(target.id, interaction.guild_id),
+            guild_id,
+            await self._max_hp(target.id, guild_id),
         )
-        await self.bot.db.record_heal(interaction.guild_id, interaction.user.id, target.id)
-        await self.bot.db.increment_progress(
-            interaction.user.id,
-            interaction.guild_id,
-            heals_given=1,
-        )
-        self_heal = target.id == interaction.user.id
+        await self.bot.db.record_heal(guild_id, healer.id, target.id)
+        await self.bot.db.increment_progress(healer.id, guild_id, heals_given=1)
+        self_heal = target.id == healer.id
         heal_reward = config.HEALER_SELF_REWARD if self_heal else config.HEALER_ALLY_REWARD
-        bless_id = await self.bot.db.consume_pending_spell(
-            interaction.user.id,
-            interaction.guild_id,
-        )
+        bless_id = await self.bot.db.consume_pending_spell(healer.id, guild_id)
         if bless_id:
             bless = get_skill(bless_id)
             if bless is not None and bless.effect == "heal_ally":
                 heal_reward *= 1.0 + bless.magnitude
-        await self.bot.db.credit_wallet(
-            interaction.user.id,
-            interaction.guild_id,
-            heal_reward,
-        )
-        await record_quest_event(
-            self.bot.db,
-            interaction.guild_id,
-            interaction.user.id,
-            "boss_heal",
-        )
+        await self.bot.db.credit_wallet(healer.id, guild_id, heal_reward)
+        await record_quest_event(self.bot.db, guild_id, healer.id, "boss_heal")
         if self_heal:
-            description = f"{interaction.user.mention} got back up."
+            description = f"{healer.mention} got back up."
             title = "Self revive"
         else:
-            description = f"{interaction.user.mention} revived {target.mention}."
+            description = f"{healer.mention} revived {target.mention}."
             title = "Field medic"
         embed = discord.Embed(
             title=title,
             description=description,
             color=discord.Color.green(),
         )
-        embed.add_field(
-            name="Reward",
-            value=f"+{fmt_amount(heal_reward)}",
-            inline=True,
+        embed.add_field(name="Reward", value=f"+{fmt_amount(heal_reward)}", inline=True)
+        return embed, None
+
+    @app_commands.command(name="heal", description="Revive a downed teammate.")
+    @app_commands.describe(target="Downed user to heal")
+    @app_commands.guild_only()
+    async def heal(self, interaction: discord.Interaction, target: discord.Member) -> None:
+        if interaction.guild_id is None or interaction.guild is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Members only.", ephemeral=True)
+            return
+        embed, err = await self.execute_field_heal(
+            interaction.user,
+            target,
+            interaction.guild,
         )
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
+            return
         await interaction.response.send_message(
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
