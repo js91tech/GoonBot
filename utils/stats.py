@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import config
 from items import ShopItem, armor_mitigation_percent, is_damage_dealer
+from utils.character_attributes import AttributeCombatBonuses
 from utils.gear_sets import SetBonus
 from utils.loadout import off_hand_crit_bonus, off_hand_power_bonus
 
@@ -48,10 +49,13 @@ def compute_combat_stats(
     current_hp: float | None = None,
     prestige_level: int = 0,
     set_bonus: SetBonus | None = None,
+    attr_bonuses: AttributeCombatBonuses | None = None,
 ) -> CombatStats:
+    attr = attr_bonuses or AttributeCombatBonuses()
     armor_bonus = armor.hp_bonus if armor is not None else 0
-    max_hp = config.PLAYER_BASE_HP + armor_bonus
+    max_hp = config.PLAYER_BASE_HP + armor_bonus + attr.hp_bonus
     damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
+    damage_mult *= attr.damage_mult
     bonus_power = off_hand_power_bonus(off_hand)
     if weapon is None:
         damage_min = int(config.BOSS_UNARMED_MIN * damage_mult)
@@ -67,11 +71,14 @@ def compute_combat_stats(
             + off_hand_crit_bonus(off_hand)
         )
         crit_rate += prestige_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
+        crit_rate += attr.extra_crit
         crit_pct = int(round(crit_rate * 100))
     crit_damage_max = int(damage_max * config.PLAYER_ATTACK_CRIT_MULTIPLIER)
     mitigation = armor_mitigation_percent(armor.power) if armor is not None else 0
     if set_bonus is not None and armor is not None:
         mitigation = min(90, mitigation + int(round(set_bonus.mitigation_bonus * 100)))
+    if attr.mitigation_bonus > 0:
+        mitigation = min(90, mitigation + int(round(attr.mitigation_bonus * 100)))
     hp_display = int(current_hp) if current_hp is not None else None
     return CombatStats(
         max_hp=max_hp,
@@ -91,6 +98,7 @@ def format_combat_stats_block(
     set_bonus: SetBonus | None = None,
     prestige_level: int = 0,
     off_hand: ShopItem | None = None,
+    attributes_block: str | None = None,
 ) -> str:
     hp_line = f"**{stats.max_hp}** max HP"
     if stats.current_hp is not None:
@@ -118,4 +126,6 @@ def format_combat_stats_block(
             f"Off-hand **{off_hand.name}** (+{dmg_pct}% of its power to damage, "
             f"+{crit_pct}% of its crit)"
         )
+    if attributes_block:
+        lines.append(attributes_block)
     return "\n".join(lines)

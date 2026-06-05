@@ -32,6 +32,10 @@ from utils.aspects import (
 from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.boss_art import attach_boss_art, attach_boss_moment_art, moment_for_move
 from utils.boss_element_effects import element_hazard_text, roll_element_proc
+from utils.character_attributes import (
+    combat_bonuses_from_attributes,
+    debuff_resistance_from_attributes,
+)
 from utils.boss_mechanics import (
     boss_raid_damage_bonus,
     compute_boss_hp,
@@ -648,7 +652,15 @@ class Boss(commands.Cog):
 
         loadout = await self._loadout(user_id, guild_id)
         class_id = await self.bot.db.get_class_id(user_id, guild_id)
-        return float(max_hp_from_armor(loadout.armor, class_modifiers=get_modifiers(class_id)))
+        attrs = await self.bot.db.get_character_attributes(user_id, guild_id)
+        attr_bonuses = combat_bonuses_from_attributes(attrs)
+        return float(
+            max_hp_from_armor(
+                loadout.armor,
+                class_modifiers=get_modifiers(class_id),
+                attr_hp_bonus=attr_bonuses.hp_bonus,
+            )
+        )
 
     @staticmethod
     def _attack_roll(
@@ -690,15 +702,17 @@ class Boss(commands.Cog):
         *,
         set_bonus: SetBonus | None = None,
         defense_retention: float = 1.0,
+        attr_mitigation_bonus: float = 0.0,
     ) -> tuple[int, int]:
-        if armor is None:
-            return raw_damage, 0
-        armor_power = armor.power * max(0.0, defense_retention)
-        mitigated = int(raw_damage * armor_power / (armor_power + 100))
-        if set_bonus is not None:
-            mitigated += int(raw_damage * set_bonus.mitigation_bonus)
-        mitigated = min(raw_damage - 1, mitigated)
-        return max(1, raw_damage - mitigated), mitigated
+        from utils.combat_engine import apply_armor_mitigation
+
+        return apply_armor_mitigation(
+            raw_damage,
+            armor,
+            set_bonus=set_bonus,
+            defense_retention=defense_retention,
+            attr_mitigation_bonus=attr_mitigation_bonus,
+        )
 
     @staticmethod
     def _counter_roll(
@@ -708,6 +722,7 @@ class Boss(commands.Cog):
         set_bonus: SetBonus | None = None,
         defense_retention: float = 1.0,
         hp_ratio: float = 1.0,
+        attr_mitigation_bonus: float = 0.0,
     ) -> tuple[int, int, bool, str]:
         variant_config = config.BOSS_VARIANTS[variant]
         raw_damage = roll_counter_damage(variant, hp_ratio=hp_ratio)
@@ -719,6 +734,7 @@ class Boss(commands.Cog):
             armor,
             set_bonus=set_bonus,
             defense_retention=defense_retention,
+            attr_mitigation_bonus=attr_mitigation_bonus,
         )
         moves = {
             "normal": ("backhands", "shoulder-checks", "bonks"),
@@ -1121,6 +1137,13 @@ class Boss(commands.Cog):
             boss_element=boss_element,
             for_boss=True,
         )
+        attrs = await self.bot.db.get_character_attributes(member.id, guild_id)
+        attr_bonuses = combat_bonuses_from_attributes(attrs)
+        ctx = replace(
+            ctx,
+            damage_mult=ctx.damage_mult * attr_bonuses.damage_mult,
+            extra_crit=ctx.extra_crit + attr_bonuses.extra_crit,
+        )
         bonuses = await self.bot.db.get_equipped_aspect_bonuses(member.id, guild_id)
         aspect_note = ""
         rows = await self.bot.db.list_equipped_aspect_rows(member.id, guild_id)
@@ -1389,7 +1412,14 @@ class Boss(commands.Cog):
             element = str(boss_row["element"])
         variant = str(boss_row["variant"])
         threat = int(config.BOSS_VARIANTS.get(variant, {}).get("threat", 1))
-        proc = roll_element_proc(element, now=time.time(), threat=threat)
+        attrs = await self.bot.db.get_character_attributes(victim_id, guild_id)
+        resistance = debuff_resistance_from_attributes(attrs)
+        proc = roll_element_proc(
+            element,
+            now=time.time(),
+            threat=threat,
+            resistance=resistance,
+        )
         if not proc.note:
             return ""
 
@@ -1485,6 +1515,8 @@ class Boss(commands.Cog):
         await self.bot.db.sync_combat_hp(victim_id, guild_id, max_hp)
         summoner_victim = is_summoner_debuffed(boss_row, victim_id)
         defense_retention = summoner_defense_retention() if summoner_victim else 1.0
+        attrs = await self.bot.db.get_character_attributes(victim_id, guild_id)
+        attr_bonuses = combat_bonuses_from_attributes(attrs)
         hp_ratio = float(boss_row["hp"]) / float(boss_row["max_hp"]) if float(boss_row["max_hp"]) > 0 else 1.0
         damage, mitigated, critical, move = self._counter_roll(
             variant,
@@ -1492,6 +1524,7 @@ class Boss(commands.Cog):
             set_bonus=set_bonus,
             defense_retention=defense_retention,
             hp_ratio=hp_ratio,
+            attr_mitigation_bonus=attr_bonuses.mitigation_bonus,
         )
         if summoner_victim:
             damage = apply_summoner_counter_damage(damage)
