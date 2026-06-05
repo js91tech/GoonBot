@@ -4,6 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from utils.attributes_ui import send_attributes_panel
 from utils.character_attributes import (
     STAT_EMOJI,
     STAT_KEYS,
@@ -11,6 +12,8 @@ from utils.character_attributes import (
     CharacterAttributes,
     format_attributes_block,
     normalize_stat_name,
+    stat_cap_for_prestige,
+    total_point_pool_cap,
     unspent_attribute_points,
 )
 from utils.helpers import guild_only_message
@@ -27,7 +30,7 @@ class Attributes(commands.Cog):
     @app_commands.describe(
         user="Player to inspect (defaults to you).",
         stat="Stat to raise: strength, dexterity, agility, defense, or vitality.",
-        points="How many points to allocate (omit to view only).",
+        points="How many points to allocate (omit to open the panel).",
     )
     @app_commands.guild_only()
     async def attributes(
@@ -42,12 +45,9 @@ class Attributes(commands.Cog):
             return
 
         target = user or interaction.user
-        guild_id = interaction.guild_id
-        row = await self.bot.db.get_user_character(target.id, guild_id)
-        progress = await self.bot.db.get_user_progress(target.id, guild_id)
-        prestige_level = int(progress["prestige_level"])
-        attrs = CharacterAttributes.from_row(row)
-        class_xp = int(row["class_xp"])
+        if not isinstance(target, discord.Member):
+            await interaction.response.send_message("Member not found.", ephemeral=True)
+            return
 
         if stat is not None and points is not None:
             if target.id != interaction.user.id:
@@ -58,77 +58,24 @@ class Attributes(commands.Cog):
                 return
             ok, message = await self.bot.db.allocate_attribute_points(
                 interaction.user.id,
-                guild_id,
+                interaction.guild_id,
                 stat,
                 points,
             )
             if not ok:
                 await interaction.response.send_message(message, ephemeral=True)
                 return
-            row = await self.bot.db.get_user_character(interaction.user.id, guild_id)
-            progress = await self.bot.db.get_user_progress(interaction.user.id, guild_id)
-            prestige_level = int(progress["prestige_level"])
-            attrs = CharacterAttributes.from_row(row)
-            class_xp = int(row["class_xp"])
-            embed = discord.Embed(
-                title="Attributes updated",
-                description=f"{message}\n\n{format_attributes_block(attrs, class_xp=class_xp, prestige_level=prestige_level)}",
-                color=discord.Color.green(),
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await send_attributes_panel(interaction, self, target=interaction.user)
             return
 
         if stat is not None or points is not None:
             await interaction.response.send_message(
-                "Provide both **stat** and **points** to allocate, or omit both to view.",
+                "Provide both **stat** and **points** to allocate via command, or omit both for the panel.",
                 ephemeral=True,
             )
             return
 
-        unspent = unspent_attribute_points(attrs, class_xp, prestige_level)
-        help_line = ""
-        if target.id == interaction.user.id and unspent > 0:
-            help_line = (
-                f"\n\nAllocate with `/attributes stat:agility points:{min(unspent, 5)}` "
-                f"(AGI reduces stun/root/chill)."
-            )
-        from utils.character_attributes import stat_cap_for_prestige, total_point_pool_cap
-
-        stat_cap = stat_cap_for_prestige(prestige_level)
-        pool_cap = total_point_pool_cap(prestige_level)
-        stat_guide = (
-            "**STR** — damage · **DEX** — crit · **AGI** — debuff resist "
-            "· **DEF** — mitigation & burn/void resist · **VIT** — max HP\n"
-            f"All stats start at **0**. Spend up to **{pool_cap}** total points "
-            f"(**50** + **5**/prestige; **100** at P10). Each stat caps at **{stat_cap}** "
-            f"(**15** + **1**/prestige). First **20** earned points are fast from class XP."
-        )
-        embed = discord.Embed(
-            title=f"{target.display_name}'s Attributes",
-            description=format_attributes_block(
-                attrs, class_xp=class_xp, prestige_level=prestige_level,
-            )
-            + help_line,
-            color=discord.Color.blurple(),
-        )
-        embed.add_field(
-            name="What each stat does",
-            value=stat_guide,
-            inline=False,
-        )
-        embed.add_field(
-            name="Stats",
-            value=" · ".join(
-                f"{STAT_EMOJI[name]} {STAT_LABELS[name]}" for name in STAT_KEYS
-            ),
-            inline=False,
-        )
-        if normalize_stat_name(stat or "") is None and stat:
-            embed.set_footer(text=f"Unknown stat '{stat}'. Try agility, defense, vitality, etc.")
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=target.id != interaction.user.id,
-        )
+        await send_attributes_panel(interaction, self, target=target)
 
 
 async def setup(bot: commands.Bot) -> None:

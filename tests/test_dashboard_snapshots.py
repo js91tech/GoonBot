@@ -42,6 +42,7 @@ class DashboardSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("NuggetBot Control Room", html)
         self.assertIn('value="freaky_nikki"', html)
         self.assertIn("Freaky Nikki", html)
+        self.assertIn("Reset all attribute stats", html)
 
     async def test_hall_of_fame_includes_duel_wins(self) -> None:
         hall = await self.db.hall_of_fame_snapshot(self.guild_id, limit=3)

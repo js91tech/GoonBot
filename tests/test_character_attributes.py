@@ -115,6 +115,14 @@ class CharacterAttributeDatabaseTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(ok)
 
+    async def test_reset_guild_attributes(self) -> None:
+        await self.db.add_class_xp(self.user_id, self.guild_id, 500)
+        await self.db.allocate_attribute_points(self.user_id, self.guild_id, "agility", 3)
+        count = await self.db.reset_guild_character_attributes(self.guild_id)
+        self.assertGreaterEqual(count, 0)
+        attrs = await self.db.get_character_attributes(self.user_id, self.guild_id)
+        self.assertEqual(attrs.total_points(), 0)
+
     async def test_allocate_respects_prestige_stat_cap(self) -> None:
         await self.db.add_class_xp(self.user_id, self.guild_id, 99999)
         for i in range(15):

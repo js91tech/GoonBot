@@ -5056,7 +5056,37 @@ class Database:
         from utils.character_attributes import CharacterAttributes
 
         row = await self.get_user_character(user_id, guild_id)
-        return CharacterAttributes.from_row(row)
+        progress = await self.get_user_progress(user_id, guild_id)
+        prestige_level = int(progress["prestige_level"])
+        return CharacterAttributes.from_row(row, prestige_level=prestige_level)
+
+    async def reset_guild_character_attributes(self, guild_id: int) -> int:
+        """Zero all attribute stats for every character in a guild."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE user_character
+                SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+                WHERE guild_id = ?
+                """,
+                (guild_id,),
+            )
+            await self.conn.commit()
+            return int(cursor.rowcount or 0)
+
+    async def reset_user_character_attributes(self, user_id: int, guild_id: int) -> bool:
+        """Zero one player's attribute stats."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE user_character
+                SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+            return int(cursor.rowcount or 0) > 0
 
     async def allocate_attribute_points(
         self,
