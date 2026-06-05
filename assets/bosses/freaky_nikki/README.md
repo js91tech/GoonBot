@@ -11,7 +11,7 @@ Viral gifs from the 2026 horror film **Obsession** (Nikki / Inde Navarrette), so
 | `twist.gif` | Counter: psyche-twists | [RdRLJl1jsxie5N7qX1](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-RdRLJl1jsxie5N7qX1) |
 | `slap.gif` | Counter: freak-out-slaps | [fJHbyksRyJQGZ8GiVF](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-fJHbyksRyJQGZ8GiVF) |
 | `down.gif` | Counter downs a raider (outdoor night stalk) | [H6njy0GZN1iZOuJd5E](https://giphy.com/gifs/obsession-inde-navarrette-movie-H6njy0GZN1iZOuJd5E) |
-| `defeat.gif` | Boss defeated — "Why won't you love me?" | [Gef86gVIpkX7DjvK4C](https://giphy.com/gifs/obsession-movie-Gef86gVIpkX7DjvK4C) |
+| `defeat.gif` | Boss defeated — "Why can't you love me?" | [Tenor](https://tenor.com/view/obsession-obsession-sad-obsession-sad-face-nikki-nikki-obsession-gif-6796048820694687605) |
 
 Discord embeds accept **GIF** or **PNG**. Replace any file to swap moments.
 
