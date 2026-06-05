@@ -11,11 +11,11 @@ from database import Database
 from utils.character_attributes import (
     CharacterAttributes,
     apply_cc_duration,
-    attribute_point_cap,
     attribute_points_from_class_xp,
     combat_bonuses_from_attributes,
     debuff_resistance_from_attributes,
-    total_attribute_points_available,
+    max_total_attribute_points,
+    stat_cap_for_prestige,
     unspent_attribute_points,
     xp_required_for_attribute_points,
 )
@@ -23,9 +23,13 @@ from utils.boss_element_effects import roll_element_proc
 
 
 class CharacterAttributeUtilTests(unittest.TestCase):
-    def test_prestige_point_cap(self) -> None:
-        self.assertEqual(attribute_point_cap(0), 50)
-        self.assertEqual(attribute_point_cap(10), 100)
+    def test_stat_cap_scales_with_prestige(self) -> None:
+        self.assertEqual(stat_cap_for_prestige(0), 15)
+        self.assertEqual(stat_cap_for_prestige(10), 25)
+
+    def test_max_total_points_at_prestige(self) -> None:
+        self.assertEqual(max_total_attribute_points(0), 75)
+        self.assertEqual(max_total_attribute_points(10), 125)
 
     def test_fast_then_slow_xp_curve(self) -> None:
         self.assertEqual(xp_required_for_attribute_points(20), 20 * config.ATTR_XP_PER_FAST_POINT)
@@ -39,19 +43,14 @@ class CharacterAttributeUtilTests(unittest.TestCase):
         self.assertGreater(xp_for_21, config.ATTR_XP_PER_FAST_POINT)
         self.assertEqual(attribute_points_from_class_xp(xp_for_20), 20)
 
-    def test_prestige_limits_available_points(self) -> None:
-        lots_of_xp = xp_required_for_attribute_points(100)
-        self.assertEqual(total_attribute_points_available(lots_of_xp, 0), 50)
-        self.assertEqual(total_attribute_points_available(lots_of_xp, 10), 100)
-
     def test_unspent_points(self) -> None:
-        attrs = CharacterAttributes(agility=15)
+        attrs = CharacterAttributes(agility=5)
         xp = xp_required_for_attribute_points(10)
         self.assertEqual(unspent_attribute_points(attrs, xp, 0), 5)
 
     def test_agi_reduces_cc_duration(self) -> None:
         base_attrs = CharacterAttributes()
-        high_agi = CharacterAttributes(agility=25)
+        high_agi = CharacterAttributes(agility=15)
         base_resist = debuff_resistance_from_attributes(base_attrs)
         high_resist = debuff_resistance_from_attributes(high_agi)
         self.assertLess(high_resist.cc_duration_mult, base_resist.cc_duration_mult)
@@ -60,14 +59,14 @@ class CharacterAttributeUtilTests(unittest.TestCase):
         self.assertGreaterEqual(reduced, config.ATTR_MIN_DEBUFF_SECONDS)
 
     def test_def_boosts_mitigation_and_dot_resist(self) -> None:
-        attrs = CharacterAttributes(defense=22)
+        attrs = CharacterAttributes(defense=12)
         combat = combat_bonuses_from_attributes(attrs)
         resist = debuff_resistance_from_attributes(attrs)
         self.assertGreater(combat.mitigation_bonus, 0.0)
         self.assertLess(resist.dot_damage_mult, 1.0)
 
     def test_str_and_vit_combat_bonuses(self) -> None:
-        attrs = CharacterAttributes(strength=20, vitality=25)
+        attrs = CharacterAttributes(strength=10, vitality=15)
         combat = combat_bonuses_from_attributes(attrs)
         self.assertGreater(combat.damage_mult, 1.0)
         self.assertGreater(combat.hp_bonus, 0)
@@ -87,6 +86,11 @@ class CharacterAttributeDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
         self.tmp.cleanup()
 
+    async def test_new_characters_start_at_zero(self) -> None:
+        await self.db.get_user_character(self.user_id, self.guild_id)
+        attrs = await self.db.get_character_attributes(self.user_id, self.guild_id)
+        self.assertEqual(attrs.total_points(), 0)
+
     async def test_allocate_attribute_points(self) -> None:
         await self.db.add_class_xp(self.user_id, self.guild_id, 500)
         ok, msg = await self.db.allocate_attribute_points(
@@ -94,7 +98,7 @@ class CharacterAttributeDatabaseTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(ok, msg)
         attrs = await self.db.get_character_attributes(self.user_id, self.guild_id)
-        self.assertEqual(attrs.agility, config.ATTR_BASE_VALUE + 3)
+        self.assertEqual(attrs.agility, 3)
 
     async def test_allocate_rejects_over_stat_cap(self) -> None:
         await self.db.add_class_xp(self.user_id, self.guild_id, 5000)
@@ -102,31 +106,30 @@ class CharacterAttributeDatabaseTests(unittest.IsolatedAsyncioTestCase):
             self.user_id,
             self.guild_id,
             "agility",
-            config.ATTR_MAX_VALUE,
+            16,
         )
         self.assertFalse(ok)
 
-    async def test_allocate_respects_prestige_pool_cap(self) -> None:
+    async def test_allocate_respects_prestige_stat_cap(self) -> None:
         await self.db.add_class_xp(self.user_id, self.guild_id, 99999)
-        stats = ("strength", "dexterity", "agility", "defense", "vitality")
-        spent = 0
-        while spent < 60:
-            stat = stats[spent % len(stats)]
-            ok, _ = await self.db.allocate_attribute_points(
-                self.user_id, self.guild_id, stat, 1,
+        for i in range(15):
+            ok, msg = await self.db.allocate_attribute_points(
+                self.user_id, self.guild_id, "strength", 1,
             )
-            if not ok:
-                break
-            spent += 1
+            self.assertTrue(ok, f"allocation {i + 1} failed: {msg}")
+        ok, _ = await self.db.allocate_attribute_points(
+            self.user_id, self.guild_id, "strength", 1,
+        )
+        self.assertFalse(ok)
         attrs = await self.db.get_character_attributes(self.user_id, self.guild_id)
-        self.assertEqual(attrs.points_spent(), 50)
+        self.assertEqual(attrs.strength, 15)
 
 
 class BossDebuffResistanceTests(unittest.TestCase):
     @patch("utils.boss_element_effects.random.random", return_value=0.0)
     @patch("utils.boss_element_effects.roll_debuff_duration_for_threat", return_value=20.0)
     def test_high_agi_shortens_storm_stun(self, _duration: object, _random: object) -> None:
-        high_agi = debuff_resistance_from_attributes(CharacterAttributes(agility=25))
+        high_agi = debuff_resistance_from_attributes(CharacterAttributes(agility=15))
         proc = roll_element_proc("storm", now=100.0, threat=6, resistance=high_agi)
         assert proc.storm_stun_seconds is not None
         self.assertLess(proc.storm_stun_seconds, 20.0)

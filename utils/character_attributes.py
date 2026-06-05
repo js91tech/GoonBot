@@ -48,12 +48,21 @@ class CharacterAttributes:
     def value(self, name: AttributeName) -> int:
         return getattr(self, name)
 
+    def total_points(self) -> int:
+        return sum(self.value(name) for name in STAT_KEYS)
+
+    # Back-compat alias
     def points_spent(self) -> int:
-        base = config.ATTR_BASE_VALUE
-        return sum(max(0, self.value(name) - base) for name in STAT_KEYS)
+        return self.total_points()
 
     @classmethod
-    def from_row(cls, row) -> CharacterAttributes:
+    def from_row(cls, row, *, prestige_level: int | None = None) -> CharacterAttributes:
+        cap = (
+            stat_cap_for_prestige(prestige_level)
+            if prestige_level is not None
+            else stat_cap_for_prestige(config.PRESTIGE_MAX_LEVEL)
+        )
+
         def _get(col: str) -> int:
             try:
                 raw = row[col]
@@ -61,7 +70,7 @@ class CharacterAttributes:
                 return config.ATTR_BASE_VALUE
             if raw is None:
                 return config.ATTR_BASE_VALUE
-            return min(config.ATTR_MAX_VALUE, int(raw))
+            return max(0, min(cap, int(raw)))
 
         return cls(
             strength=_get("stat_str"),
@@ -72,9 +81,14 @@ class CharacterAttributes:
         )
 
 
-def attribute_point_cap(prestige_level: int) -> int:
-    """Total allocatable points; prestige 0 = 50, prestige 10 = 100."""
-    return config.ATTR_BASE_TOTAL_POINTS + prestige_level * config.ATTR_POINTS_PER_PRESTIGE
+def stat_cap_for_prestige(prestige_level: int) -> int:
+    """Per-stat cap: 15 at prestige 0, +1 per prestige (25 at prestige 10)."""
+    return config.ATTR_STAT_CAP_BASE + prestige_level * config.ATTR_STAT_CAP_PER_PRESTIGE
+
+
+def max_total_attribute_points(prestige_level: int) -> int:
+    """Maximum points allocatable across all stats at a given prestige."""
+    return len(STAT_KEYS) * stat_cap_for_prestige(prestige_level)
 
 
 def xp_required_for_attribute_points(point_count: int) -> int:
@@ -90,8 +104,8 @@ def xp_required_for_attribute_points(point_count: int) -> int:
 
 
 def attribute_points_from_class_xp(class_xp: int) -> int:
-    """How many points class XP has earned (ignores prestige cap)."""
-    max_points = attribute_point_cap(config.PRESTIGE_MAX_LEVEL)
+    """How many points class XP has earned."""
+    max_points = max_total_attribute_points(config.PRESTIGE_MAX_LEVEL)
     lo, hi = 0, max_points
     while lo < hi:
         mid = (lo + hi + 1) // 2
@@ -102,21 +116,14 @@ def attribute_points_from_class_xp(class_xp: int) -> int:
     return lo
 
 
-def total_attribute_points_available(class_xp: int, prestige_level: int) -> int:
-    """Earned points limited by current prestige pool cap."""
-    earned = attribute_points_from_class_xp(class_xp)
-    return min(earned, attribute_point_cap(prestige_level))
-
-
 def unspent_attribute_points(
     attrs: CharacterAttributes,
     class_xp: int,
     prestige_level: int,
 ) -> int:
-    return max(
-        0,
-        total_attribute_points_available(class_xp, prestige_level) - attrs.points_spent(),
-    )
+    earned = attribute_points_from_class_xp(class_xp)
+    allocatable = min(earned, max_total_attribute_points(prestige_level))
+    return max(0, allocatable - attrs.total_points())
 
 
 def xp_until_next_attribute_point(
@@ -124,21 +131,18 @@ def xp_until_next_attribute_point(
     prestige_level: int,
     attrs: CharacterAttributes,
 ) -> int | None:
-    """Class XP still needed for the next point, or None if capped."""
-    cap = attribute_point_cap(prestige_level)
-    earned = attribute_points_from_class_xp(class_xp)
-    if attrs.points_spent() >= cap:
+    """Class XP still needed for the next point, or None if fully allocated."""
+    max_alloc = max_total_attribute_points(prestige_level)
+    if attrs.total_points() >= max_alloc:
         return None
-    if earned > attrs.points_spent() and total_attribute_points_available(class_xp, prestige_level) > attrs.points_spent():
+    earned = attribute_points_from_class_xp(class_xp)
+    allocatable = min(earned, max_alloc)
+    if allocatable > attrs.total_points():
         return 0
     next_point = earned + 1
-    if next_point > cap:
+    if next_point > max_alloc:
         return None
     return max(0, xp_required_for_attribute_points(next_point) - class_xp)
-
-
-def _bonus_points(value: int) -> int:
-    return max(0, value - config.ATTR_BASE_VALUE)
 
 
 @dataclass(frozen=True)
@@ -163,21 +167,16 @@ class DebuffResistance:
 
 
 def combat_bonuses_from_attributes(attrs: CharacterAttributes) -> AttributeCombatBonuses:
-    str_bonus = _bonus_points(attrs.strength)
-    dex_bonus = _bonus_points(attrs.dexterity)
-    def_bonus = _bonus_points(attrs.defense)
-    vit_bonus = _bonus_points(attrs.vitality)
-
-    damage_mult = 1.0 + str_bonus * config.ATTR_STR_DAMAGE_PCT
+    damage_mult = 1.0 + attrs.strength * config.ATTR_STR_DAMAGE_PCT
     extra_crit = min(
         config.ATTR_MAX_DEX_CRIT_BONUS,
-        dex_bonus * config.ATTR_DEX_CRIT_PCT,
+        attrs.dexterity * config.ATTR_DEX_CRIT_PCT,
     )
     mitigation_bonus = min(
         config.ATTR_MAX_DEF_MITIGATION_BONUS,
-        def_bonus * config.ATTR_DEF_MITIGATION_PCT,
+        attrs.defense * config.ATTR_DEF_MITIGATION_PCT,
     )
-    hp_bonus = vit_bonus * config.ATTR_VIT_HP_PER_POINT
+    hp_bonus = attrs.vitality * config.ATTR_VIT_HP_PER_POINT
     return AttributeCombatBonuses(
         damage_mult=damage_mult,
         extra_crit=extra_crit,
@@ -187,21 +186,18 @@ def combat_bonuses_from_attributes(attrs: CharacterAttributes) -> AttributeComba
 
 
 def debuff_resistance_from_attributes(attrs: CharacterAttributes) -> DebuffResistance:
-    agi_bonus = _bonus_points(attrs.agility)
-    def_bonus = _bonus_points(attrs.defense)
-
     cc_duration_reduction = min(
         config.ATTR_MAX_CC_DURATION_REDUCTION,
-        agi_bonus * config.ATTR_AGI_CC_DURATION_PCT,
+        attrs.agility * config.ATTR_AGI_CC_DURATION_PCT,
     )
     cc_proc_resist = min(
         config.ATTR_MAX_CC_PROC_RESIST,
-        agi_bonus * config.ATTR_AGI_CC_PROC_RESIST_PCT,
+        attrs.agility * config.ATTR_AGI_CC_PROC_RESIST_PCT,
     )
-    attack_cd_reduction = min(0.35, agi_bonus * config.ATTR_AGI_ATTACK_CD_PCT)
+    attack_cd_reduction = min(0.35, attrs.agility * config.ATTR_AGI_ATTACK_CD_PCT)
     dot_resist = min(
         config.ATTR_MAX_DOT_RESIST,
-        def_bonus * config.ATTR_DEF_DOT_RESIST_PCT,
+        attrs.defense * config.ATTR_DEF_DOT_RESIST_PCT,
     )
 
     return DebuffResistance(
@@ -228,23 +224,24 @@ def format_attributes_block(
     class_xp: int,
     prestige_level: int = 0,
 ) -> str:
-    cap = attribute_point_cap(prestige_level)
-    available = total_attribute_points_available(class_xp, prestige_level)
+    stat_cap = stat_cap_for_prestige(prestige_level)
+    earned = attribute_points_from_class_xp(class_xp)
+    max_alloc = max_total_attribute_points(prestige_level)
+    allocatable = min(earned, max_alloc)
     unspent = unspent_attribute_points(attrs, class_xp, prestige_level)
     lines = [
-        f"**{STAT_EMOJI[name]} {STAT_LABELS[name]}** **{attrs.value(name)}** / **{config.ATTR_MAX_VALUE}**"
+        f"**{STAT_EMOJI[name]} {STAT_LABELS[name]}** **{attrs.value(name)}** / **{stat_cap}**"
         for name in STAT_KEYS
     ]
     lines.append(
-        f"Pool: **{attrs.points_spent()}/{available}** allocated"
-        f" (prestige cap **{cap}**)"
+        f"Allocated: **{attrs.total_points()}/{allocatable}**"
         + (f" · **{unspent}** unspent" if unspent else "")
     )
     xp_left = xp_until_next_attribute_point(class_xp, prestige_level, attrs)
     if xp_left is not None and xp_left > 0:
         lines.append(f"Next point in **{xp_left}** class XP")
-    elif available >= cap and attribute_points_from_class_xp(class_xp) >= cap:
-        lines.append("Prestige up to raise your attribute point cap (+5 per level).")
+    elif attrs.total_points() >= max_alloc:
+        lines.append("Prestige up to raise per-stat caps (+1 each per level).")
     combat = combat_bonuses_from_attributes(attrs)
     resist = debuff_resistance_from_attributes(attrs)
     effect_lines = []
