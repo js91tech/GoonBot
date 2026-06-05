@@ -5,7 +5,7 @@ import contextlib
 import logging
 import random
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 import discord
@@ -21,6 +21,7 @@ from items import (
     MYTHIC_RAID_MAIL,
     ShopItem,
     armor_mitigation_percent,
+    get_item,
 )
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.aspects import (
@@ -29,7 +30,7 @@ from utils.aspects import (
     roll_pct_for_threat,
 )
 from utils.avatars import build_avatar_embed_files, get_avatar
-from utils.boss_art import attach_boss_art
+from utils.boss_art import attach_boss_art, attach_boss_moment_art, moment_for_move
 from utils.boss_element_effects import element_hazard_text, roll_element_proc
 from utils.boss_mechanics import (
     boss_raid_damage_bonus,
@@ -64,9 +65,17 @@ from utils.summoner_penalty import (
 BOSS_NAME = "Hannah"
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
 BOSS_NAME_ZZ = config.BOSS_NAME_ZZ_WRATH
+BOSS_NAME_FREAKY_NIKKI = config.BOSS_NAME_FREAKY_NIKKI
 COUNTER_HP_BONUS = 0.30
 COUNTER_MULTI_SECOND = 0.65
 COUNTER_MULTI_THIRD = 0.55
+
+
+@dataclass
+class CounterattackResult:
+    text: str = ""
+    downed: bool = False
+    move: str | None = None
 
 
 class Boss(commands.Cog):
@@ -116,6 +125,8 @@ class Boss(commands.Cog):
         name = boss_name or BOSS_NAME
         if variant == "zz_wrath":
             name = BOSS_NAME_ZZ
+        elif variant == "freaky_nikki":
+            name = BOSS_NAME_FREAKY_NIKKI
         if variant == "tomass":
             mirror = mirrored_variant or "enraged"
             hp = await self._tomass_hp(guild_id, mirror)
@@ -264,6 +275,29 @@ class Boss(commands.Cog):
         label = f"**{defn.name}** ({roll_pct:g}%)"
         return [(uid, label)]
 
+    async def _grant_freaky_nikki_bonuses(
+        self,
+        guild: discord.Guild,
+        guild_id: int,
+        contributor_ids: list[int],
+    ) -> list[str]:
+        lines: list[str] = []
+        for user_id in contributor_ids:
+            scrap_count = random.randint(*config.FREAKY_NIKKI_SCRAP_RANGE)
+            for _ in range(scrap_count):
+                await self.bot.db.grant_item(user_id, guild_id, "alchemy_scrap")
+            parts = [f"+{scrap_count} scrap"]
+            if random.random() < config.FREAKY_NIKKI_CONSUMABLE_CHANCE:
+                item_id = random.choice(config.FREAKY_NIKKI_CONSUMABLE_POOL)
+                qty = random.randint(*config.FREAKY_NIKKI_CONSUMABLE_QTY_RANGE)
+                for _ in range(qty):
+                    await self.bot.db.grant_item(user_id, guild_id, item_id)
+                item = get_item(item_id)
+                item_name = item.name if item is not None else item_id
+                parts.append(f"{item_name} ×{qty}")
+            lines.append(f"{self._display_name(guild, user_id)}: {', '.join(parts)}")
+        return lines
+
     async def _send_boss_spawn_embed(
         self,
         guild: discord.Guild,
@@ -366,6 +400,7 @@ class Boss(commands.Cog):
         gear_lines: list[str],
         summary: str,
         killer_user_id: int | None = None,
+        stash_lines: list[str] | None = None,
     ) -> None:
         channel = await resolve_bot_announcement_channel(guild, self.bot.db)
         if channel is None:
@@ -391,7 +426,17 @@ class Boss(commands.Cog):
                 value="\n".join(gear_lines[:12]),
                 inline=False,
             )
+        if stash_lines:
+            body = "\n".join(stash_lines[:12])
+            if len(stash_lines) > 12:
+                body += f"\n...+{len(stash_lines) - 12} more"
+            embed.add_field(
+                name="Freaky Nikki's stash",
+                value=body,
+                inline=False,
+            )
         files: list[discord.File] = []
+        victory_name: str | None = None
         if killer_user_id is not None:
             avatar_id = await self.bot.db.get_equipped_avatar_id(killer_user_id, guild.id)
             defn = get_avatar(avatar_id)
@@ -413,6 +458,14 @@ class Boss(commands.Cog):
                 embed.set_image(url=f"attachment://{victory_name}")
             if portrait_name:
                 embed.set_thumbnail(url=f"attachment://{portrait_name}")
+        if variant == "freaky_nikki":
+            nikki_art = attach_boss_moment_art(embed, variant, "defeat")
+            if nikki_art is not None:
+                files.append(nikki_art)
+                if victory_name:
+                    embed.set_thumbnail(url=f"attachment://{nikki_art.filename}")
+                else:
+                    embed.set_image(url=f"attachment://{nikki_art.filename}")
         gate = getattr(self.bot, "outbound_gate", None)
         sent = await safe_channel_send(
             channel,
@@ -434,6 +487,8 @@ class Boss(commands.Cog):
             return BOSS_NAME_TOMASS
         if variant == "zz_wrath":
             return BOSS_NAME_ZZ
+        if variant == "freaky_nikki":
+            return BOSS_NAME_FREAKY_NIKKI
         if fallback:
             return fallback
         return BOSS_NAME
@@ -523,6 +578,14 @@ class Boss(commands.Cog):
         await self.bot.db.clear_boss(guild_id)
 
         contributor_ids = [int(row["user_id"]) for row in rows]
+        stash_lines: list[str] = []
+        if variant == "freaky_nikki":
+            stash_lines = await self._grant_freaky_nikki_bonuses(
+                guild,
+                guild_id,
+                contributor_ids,
+            )
+
         await self.bot.db.increment_boss_kills_for_raid(
             guild_id,
             contributor_ids,
@@ -544,6 +607,7 @@ class Boss(commands.Cog):
             gear_lines=gear_lines,
             summary=summary,
             killer_user_id=killer_user_id,
+            stash_lines=stash_lines or None,
         )
 
         if interaction is not None and not interaction.response.is_done():
@@ -664,6 +728,13 @@ class Boss(commands.Cog):
             "mythic": ("reality-tears", "cataclysm-strikes", "doom-crashes"),
             "zz_wrath": ("void-claws", "doom-pounces", "apocalypse-screeches"),
             "tomass": ("ass-smacks", "cheek-claps", "thunder-cheeks"),
+            "freaky_nikki": (
+                "obsessive-stares at",
+                "unhinged-whispers to",
+                "restraining-grabs",
+                "psyche-twists",
+                "freak-out-slaps",
+            ),
         }
         return damage, mitigated, critical, random.choice(moves.get(variant, moves["normal"]))
 
@@ -721,27 +792,31 @@ class Boss(commands.Cog):
             else:
                 return
 
-        if random.random() < config.BOSS_ULTRA_SPAWN_CHANCE:
+        roll = random.random()
+        ultra = config.BOSS_ULTRA_SPAWN_CHANCE
+        nikki = config.BOSS_AUTO_SPAWN_FREAKY_NIKKI_CHANCE
+        tomass = config.BOSS_AUTO_SPAWN_TOMASS_CHANCE
+        if roll < ultra:
             variant = "zz_wrath"
-        elif random.random() < config.BOSS_AUTO_SPAWN_TOMASS_CHANCE:
-            mirror = random.choice(config.HANNAH_SPAWN_VARIANTS)
-            hp = await self._spawn_boss(
-                guild.id,
-                "tomass",
-                mirrored_variant=mirror,
-            )
-            boss_row = await self.bot.db.get_active_boss(guild.id)
-            elem = str(boss_row["element"]) if boss_row else None
-            await self._send_boss_spawn_embed(
-                guild,
-                variant="tomass",
-                hp=hp,
-                element=elem,
-            )
-            return
+            mirrored_variant = None
+        elif roll < ultra + nikki:
+            variant = "freaky_nikki"
+            mirrored_variant = None
+        elif roll < ultra + nikki + tomass:
+            variant = "tomass"
+            mirrored_variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
         else:
             variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
-        hp = await self._spawn_boss(guild.id, variant)
+            mirrored_variant = None
+
+        if variant == "tomass":
+            hp = await self._spawn_boss(
+                guild.id,
+                variant,
+                mirrored_variant=mirrored_variant,
+            )
+        else:
+            hp = await self._spawn_boss(guild.id, variant)
         boss_row = await self.bot.db.get_active_boss(guild.id)
         elem = str(boss_row["element"]) if boss_row else None
         await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, element=elem)
@@ -798,6 +873,7 @@ class Boss(commands.Cog):
         boss=[
             app_commands.Choice(name="Hannah (enraged)", value="hannah_enraged"),
             app_commands.Choice(name="TomAss (enraged mirror ×1.75)", value="tomass"),
+            app_commands.Choice(name="Freaky Nikki", value="freaky_nikki"),
         ],
     )
     @app_commands.guild_only()
@@ -833,6 +909,14 @@ class Boss(commands.Cog):
             )
             label = BOSS_NAME_TOMASS
             spawn_variant = "tomass"
+        elif boss == "freaky_nikki":
+            spawn_variant = "freaky_nikki"
+            hp = await self._spawn_boss(
+                interaction.guild_id,
+                spawn_variant,
+                summoner_id=interaction.user.id,
+            )
+            label = BOSS_NAME_FREAKY_NIKKI
         else:
             spawn_variant = "enraged"
             hp = await self._spawn_boss(
@@ -1128,7 +1212,8 @@ class Boss(commands.Cog):
         if phase_pct is not None:
             phase_note = f"\n**Phase {phase_pct}%** — {BOSS_NAME} enrages!"
 
-        counter_text = await self._maybe_counterattack(guild_id, updated)
+        counter_result = await self._maybe_counterattack(guild_id, updated)
+        counter_text = counter_result.text
 
         bar = hp_bar(boss_hp, boss_max)
         pct = int(round(100 * boss_hp / boss_max)) if boss_max > 0 else 0
@@ -1200,7 +1285,14 @@ class Boss(commands.Cog):
             embed.set_footer(text=f"{set_bonus.name} set bonus active · Press ⚔️ Attack again")
         else:
             embed.set_footer(text="Press ⚔️ Attack again · Refresh for live HP")
-        return BossAttackResult(embed=embed)
+
+        attack_files: list[discord.File] | None = None
+        if variant == "freaky_nikki" and counter_text:
+            moment = "down" if counter_result.downed else moment_for_move(counter_result.move or "")
+            art = attach_boss_moment_art(embed, variant, moment)
+            if art is not None:
+                attack_files = [art]
+        return BossAttackResult(embed=embed, files=attack_files)
 
     @app_commands.command(name="boss", description="Open the boss raid fight panel.")
     @app_commands.guild_only()
@@ -1253,6 +1345,7 @@ class Boss(commands.Cog):
         await interaction.followup.send(
             embed=result.embed,
             view=view,
+            files=result.files or discord.utils.MISSING,
             ephemeral=True,
         )
 
@@ -1323,25 +1416,35 @@ class Boss(commands.Cog):
             await self.bot.db.drain_mana(victim_id, guild_id, proc.void_mana_drain)
         return proc.note
 
-    async def _maybe_counterattack(self, guild_id: int, boss_row: Any) -> str:
+    async def _maybe_counterattack(self, guild_id: int, boss_row: Any) -> CounterattackResult:
         variant = str(boss_row["variant"])
         hp = float(boss_row["hp"])
         max_hp = float(boss_row["max_hp"])
         if random.random() >= self._counter_chance(variant, hp, max_hp):
-            return ""
+            return CounterattackResult()
 
         damage_rows = await self.bot.db.list_boss_damage(guild_id)
         if not damage_rows:
-            return ""
+            return CounterattackResult()
 
         attacker_ids = list({int(row["user_id"]) for row in damage_rows})
         target_count = self._counter_target_count(len(attacker_ids), hp, max_hp)
         victims = random.sample(attacker_ids, target_count)
-        parts = [
-            await self._counterattack_text(guild_id, victim_id, variant, boss_row=boss_row)
-            for victim_id in victims
-        ]
-        return "".join(parts)
+        parts: list[str] = []
+        any_downed = False
+        last_move: str | None = None
+        for victim_id in victims:
+            text, downed, move = await self._counterattack_text(
+                guild_id,
+                victim_id,
+                variant,
+                boss_row=boss_row,
+            )
+            parts.append(text)
+            any_downed = any_downed or downed
+            if move is not None:
+                last_move = move
+        return CounterattackResult("".join(parts), any_downed, last_move)
 
     async def _counterattack_text(
         self,
@@ -1350,7 +1453,7 @@ class Boss(commands.Cog):
         variant: str,
         *,
         boss_row: Any,
-    ) -> str:
+    ) -> tuple[str, bool, str | None]:
         await self.bot.db.ensure_jester_class(victim_id, guild_id)
         victim_class = await self.bot.db.get_class_id(victim_id, guild_id)
         reflect = roll_jester_reflect(victim_class)
@@ -1372,7 +1475,9 @@ class Boss(commands.Cog):
                 downed_note = f" <@{unlucky}> is instantly downed!"
             steal_note = f" **{fmt_amount(steal)}** stolen!" if steal > 0 else ""
             return (
-                f"\n**who me?** <@{victim_id}> deflects {boss_name}'s counter!{downed_note}{steal_note}"
+                f"\n**who me?** <@{victim_id}> deflects {boss_name}'s counter!{downed_note}{steal_note}",
+                bool(raiders),
+                None,
             )
         loadout = await self._loadout(victim_id, guild_id)
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
@@ -1402,16 +1507,21 @@ class Boss(commands.Cog):
             armor_text = f" {loadout.armor.name} mitigates {mitigated} ({pct}%)."
         crit_text = " Critical blow!" if critical else ""
         threat = int(config.BOSS_VARIANTS[variant]["threat"])
+        boss_name = str(boss_row["name"])
         if hp <= 0:
             downed_seconds = await self.bot.db.get_config_value(guild_id, "boss_downed_seconds")
             await self.bot.db.set_downed_until(victim_id, guild_id, time.time() + downed_seconds)
             return (
-                f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
-                f"{crit_text}{armor_text}{potion_text}{element_note} They are downed!"
+                f"\nThreat {threat} {boss_name} {move} <@{victim_id}> for {damage} damage."
+                f"{crit_text}{armor_text}{potion_text}{element_note} They are downed!",
+                True,
+                move,
             )
         return (
-            f"\nThreat {threat} {BOSS_NAME} {move} <@{victim_id}> for {damage} damage."
-            f"{crit_text}{armor_text}{potion_text}{element_note} HP: {int(hp)}/{int(max_hp)}."
+            f"\nThreat {threat} {boss_name} {move} <@{victim_id}> for {damage} damage."
+            f"{crit_text}{armor_text}{potion_text}{element_note} HP: {int(hp)}/{int(max_hp)}.",
+            False,
+            move,
         )
 
     @app_commands.command(name="raid-leaderboard", description="Top damage dealers on the active boss.")

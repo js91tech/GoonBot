@@ -33,6 +33,7 @@ class BossAttackResult:
     embed: discord.Embed | None = None
     defeated: bool = False
     error: str | None = None
+    files: list[discord.File] | None = None
 
 
 class AutoPotionSettingsView(discord.ui.View):
@@ -175,7 +176,10 @@ class BossFightView(discord.ui.View):
         if result.embed is None:
             await interaction.followup.send("Attack failed.", ephemeral=True)
             return
-        await interaction.edit_original_response(embed=result.embed, view=self)
+        kwargs: dict = {"embed": result.embed, "view": self}
+        if result.files:
+            kwargs["attachments"] = result.files
+        await interaction.edit_original_response(**kwargs)
 
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=0)
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
