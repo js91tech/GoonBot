@@ -481,7 +481,43 @@ class Database:
         await self._migrate_boss_element_status()
         await self._migrate_boss_attack_pacing()
         await self._migrate_jail_bodyguards_house()
+        await self._migrate_character_attributes()
 
+
+    async def _migrate_character_attributes(self) -> None:
+        import config
+
+        base = config.ATTR_BASE_VALUE
+        cols = [
+            ("stat_str", f"INTEGER NOT NULL DEFAULT {base}"),
+            ("stat_dex", f"INTEGER NOT NULL DEFAULT {base}"),
+            ("stat_agi", f"INTEGER NOT NULL DEFAULT {base}"),
+            ("stat_def", f"INTEGER NOT NULL DEFAULT {base}"),
+            ("stat_vit", f"INTEGER NOT NULL DEFAULT {base}"),
+        ]
+        if self.is_postgres:
+            for col, typedef in cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_character' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
 
     async def _migrate_jail_bodyguards_house(self) -> None:
         await self.conn.execute(
@@ -4984,6 +5020,70 @@ class Database:
             await self.conn.commit()
         row = await self.get_user_character(user_id, guild_id)
         return int(row["class_xp"])
+
+    async def get_character_attributes(self, user_id: int, guild_id: int):
+        from utils.character_attributes import CharacterAttributes
+
+        row = await self.get_user_character(user_id, guild_id)
+        return CharacterAttributes.from_row(row)
+
+    async def allocate_attribute_points(
+        self,
+        user_id: int,
+        guild_id: int,
+        stat_name: str,
+        points: int,
+    ) -> tuple[bool, str]:
+        from utils.character_attributes import (
+            STAT_COLUMNS,
+            CharacterAttributes,
+            normalize_stat_name,
+            unspent_attribute_points,
+        )
+
+        if points <= 0:
+            return False, "Allocate at least **1** point."
+        normalized = normalize_stat_name(stat_name)
+        if normalized is None:
+            return False, "Unknown stat. Use **strength**, **dexterity**, **agility**, **defense**, or **vitality**."
+        async with self._write_lock:
+            await self._ensure_character_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT * FROM user_character WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return False, "Character not found."
+            attrs = CharacterAttributes.from_row(row)
+            class_xp = int(row["class_xp"] or 0)
+            available = unspent_attribute_points(attrs, class_xp)
+            if points > available:
+                return (
+                    False,
+                    f"Only **{available}** unspent point{'s' if available != 1 else ''} "
+                    f"(earn more from class XP: duels, boss raids).",
+                )
+            col = STAT_COLUMNS[normalized]
+            current = attrs.value(normalized)
+            import config
+
+            if current + points > config.ATTR_MAX_VALUE:
+                return (
+                    False,
+                    f"**{normalized.title()}** cannot exceed **{config.ATTR_MAX_VALUE}** "
+                    f"(currently **{current}**).",
+                )
+            await self.conn.execute(
+                f"""
+                UPDATE user_character
+                SET {col} = {col} + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (points, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return True, f"+**{points}** {normalized.title()} (now **{current + points}**)."
 
     async def record_master_root(self, user_id: int, guild_id: int, starter_root: str) -> None:
         roots = await self.get_master_roots(user_id, guild_id)

@@ -311,8 +311,25 @@ class Shop(commands.Cog):
         unstable = await self.bot.db.list_unstable_slots(target.id, guild_id)
         raw_equipment = await self.bot.db.get_equipment(target.id, guild_id)
 
+        from utils.character_attributes import (
+            CharacterAttributes,
+            combat_bonuses_from_attributes,
+            format_attributes_block,
+        )
+        from utils.classes import format_modifiers_summary, get_class, get_modifiers
+        from utils.combat_engine import max_hp_from_armor
+
+        class_id = await self.bot.db.get_class_id(target.id, guild_id)
+        char_row = await self.bot.db.get_user_character(target.id, guild_id)
+        attrs = CharacterAttributes.from_row(char_row)
+        attr_bonuses = combat_bonuses_from_attributes(attrs)
+        attributes_block = format_attributes_block(attrs, class_xp=int(char_row["class_xp"]))
         max_hp = float(
-            config.PLAYER_BASE_HP + (loadout.armor.hp_bonus if loadout.armor is not None else 0)
+            max_hp_from_armor(
+                loadout.armor,
+                class_modifiers=get_modifiers(class_id),
+                attr_hp_bonus=attr_bonuses.hp_bonus,
+            )
         )
         await self.bot.db.sync_combat_hp(target.id, guild_id, max_hp)
         combat = await self.bot.db.get_combat_state(target.id, guild_id)
@@ -321,9 +338,6 @@ class Shop(commands.Cog):
         progress = await self.bot.db.get_user_progress(target.id, guild_id)
         prestige = int(progress["prestige_level"])
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
-        from utils.classes import format_modifiers_summary, get_class
-
-        class_id = await self.bot.db.get_class_id(target.id, guild_id)
         cls = get_class(class_id)
         combat_stats = compute_combat_stats(
             loadout.primary,
@@ -332,6 +346,7 @@ class Shop(commands.Cog):
             current_hp=current_hp,
             prestige_level=prestige,
             set_bonus=set_bonus,
+            attr_bonuses=attr_bonuses,
         )
         class_blurb = ""
         if cls is not None:
@@ -360,6 +375,7 @@ class Shop(commands.Cog):
                 set_bonus=set_bonus,
                 prestige_level=prestige,
                 off_hand=loadout.off_hand,
+                attributes_block=attributes_block,
             )
             + class_blurb
             + aspect_blurb,

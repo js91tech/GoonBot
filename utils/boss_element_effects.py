@@ -5,6 +5,11 @@ import random
 from dataclasses import dataclass
 
 import config
+from utils.character_attributes import (
+    DebuffResistance,
+    apply_cc_duration,
+    apply_debuff_attack_cooldown,
+)
 
 
 @dataclass(frozen=True)
@@ -76,15 +81,22 @@ def element_hazard_text(element: str | None) -> str | None:
     return _element_hazards().get(str(element).lower())
 
 
-def roll_element_proc(element: str | None, *, now: float, threat: int = 1) -> ElementProcRoll:
+def roll_element_proc(
+    element: str | None,
+    *,
+    now: float,
+    threat: int = 1,
+    resistance: DebuffResistance | None = None,
+) -> ElementProcRoll:
     """Roll whether a boss counter applies an elemental rider effect."""
     if not element:
         return ElementProcRoll()
+    resist = resistance or DebuffResistance()
     elem = str(element).lower()
-    debuff_cd = roll_debuff_attack_cooldown()
+    debuff_cd = apply_debuff_attack_cooldown(roll_debuff_attack_cooldown(), resist)
 
-    if elem == "frost" and random.random() < config.BOSS_FROST_PROC_CHANCE:
-        duration = roll_debuff_duration_for_threat(threat)
+    if elem == "frost" and random.random() < config.BOSS_FROST_PROC_CHANCE * resist.cc_proc_mult:
+        duration = apply_cc_duration(roll_debuff_duration_for_threat(threat), resist)
         until = now + duration
         return ElementProcRoll(
             note=(
@@ -95,10 +107,11 @@ def roll_element_proc(element: str | None, *, now: float, threat: int = 1) -> El
             debuff_attack_cooldown=debuff_cd,
         )
 
-    if elem == "fire" and random.random() < config.BOSS_FIRE_BURN_PROC_CHANCE:
+    if elem == "fire" and random.random() < config.BOSS_FIRE_BURN_PROC_CHANCE * resist.cc_proc_mult:
         tick_damage = float(
             random.randint(config.BOSS_FIRE_BURN_DAMAGE[0], config.BOSS_FIRE_BURN_DAMAGE[1]),
         )
+        tick_damage = max(1.0, tick_damage * resist.dot_damage_mult)
         ticks = config.BOSS_FIRE_BURN_TICKS
         first_tick = now + config.BOSS_FIRE_BURN_INTERVAL_SECONDS
         return ElementProcRoll(
@@ -106,23 +119,23 @@ def roll_element_proc(element: str | None, *, now: float, threat: int = 1) -> El
             fire_burn=(tick_damage, ticks, first_tick),
         )
 
-    if elem == "storm" and random.random() < config.BOSS_STORM_STUN_PROC_CHANCE:
-        stun_seconds = roll_debuff_duration_for_threat(threat)
+    if elem == "storm" and random.random() < config.BOSS_STORM_STUN_PROC_CHANCE * resist.cc_proc_mult:
+        stun_seconds = apply_cc_duration(roll_debuff_duration_for_threat(threat), resist)
         return ElementProcRoll(
             note=f" ⚡ **Stunned!** Down for **{int(stun_seconds)}s**.",
             storm_stun_seconds=stun_seconds,
         )
 
-    if elem == "void" and random.random() < config.BOSS_VOID_DRAIN_PROC_CHANCE:
+    if elem == "void" and random.random() < config.BOSS_VOID_DRAIN_PROC_CHANCE * resist.cc_proc_mult:
         lo, hi = config.BOSS_VOID_MANA_DRAIN
-        drain = random.randint(lo, hi)
+        drain = max(1, int(random.randint(lo, hi) * resist.void_drain_mult))
         return ElementProcRoll(
             note=f" 🌑 **Void tear!** **{drain}** mana drained.",
             void_mana_drain=drain,
         )
 
-    if elem == "verdant" and random.random() < config.BOSS_VERDANT_ROOT_PROC_CHANCE:
-        duration = roll_debuff_duration_for_threat(threat)
+    if elem == "verdant" and random.random() < config.BOSS_VERDANT_ROOT_PROC_CHANCE * resist.cc_proc_mult:
+        duration = apply_cc_duration(roll_debuff_duration_for_threat(threat), resist)
         until = now + duration
         return ElementProcRoll(
             note=(

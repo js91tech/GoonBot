@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import config
 from items import ShopItem
 from utils.aspects import AspectBonuses, AspectInstance, bonuses_from_instance
+from utils.character_attributes import AttributeCombatBonuses
 from utils.combat_engine import (
     AttackContext,
     apply_armor_mitigation,
@@ -35,6 +36,7 @@ class DuelFighter:
     spell_offense_used: bool = False
     spell_defense_used: bool = False
     aspect_bonuses: AspectBonuses | None = None
+    attr_bonuses: AttributeCombatBonuses | None = None
     trap_bomb_count: int = 0
     consumable_boost: float = 1.0
     consumable_boost_used: bool = False
@@ -73,6 +75,7 @@ def fighter_from_equipment(
     class_modifiers=None,
     aspect_instance: AspectInstance | None = None,
     aspect_bonuses: AspectBonuses | None = None,
+    attr_bonuses: AttributeCombatBonuses | None = None,
     trap_bomb_count: int = 0,
     unstable_slots: set[str] | None = None,
 ) -> DuelFighter:
@@ -86,7 +89,11 @@ def fighter_from_equipment(
         ab = bonuses_from_instance(aspect_instance)
     if ab is None:
         ab = AspectBonuses()
-    max_hp = max_hp_from_armor(loadout.armor, class_modifiers=mods) + ab.hp_bonus
+    attr = attr_bonuses or AttributeCombatBonuses()
+    max_hp = (
+        max_hp_from_armor(loadout.armor, class_modifiers=mods, attr_hp_bonus=attr.hp_bonus)
+        + ab.hp_bonus
+    )
     has_aspect = ab != AspectBonuses()
     return DuelFighter(
         user_id=user_id,
@@ -100,6 +107,7 @@ def fighter_from_equipment(
         max_hp=max_hp,
         hp=max_hp,
         aspect_bonuses=ab if has_aspect else None,
+        attr_bonuses=attr if attr != AttributeCombatBonuses() else None,
         trap_bomb_count=trap_bomb_count,
     )
 
@@ -135,6 +143,9 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
     ctx = _attack_context(attacker, defender)
     damage_mult = ctx.damage_mult
     extra_crit = ctx.extra_crit
+    if attacker.attr_bonuses is not None:
+        damage_mult *= attacker.attr_bonuses.damage_mult
+        extra_crit += attacker.attr_bonuses.extra_crit
     if attacker.aspect_bonuses is not None:
         ab = attacker.aspect_bonuses
         damage_mult *= ab.damage_mult * ab.boss_damage_mult
@@ -175,12 +186,14 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         fortify_mult = defender.spell_state.fortify_mult
         defender.spell_defense_used = True
     mitigated_raw = max(1, int(raw * fortify_mult)) if fortify_mult < 1.0 else raw
+    attr_mit = defender.attr_bonuses.mitigation_bonus if defender.attr_bonuses else 0.0
     extra_mit = defender.aspect_bonuses.mitigation_bonus if defender.aspect_bonuses else 0.0
     damage, mitigated = apply_armor_mitigation(
         mitigated_raw,
         defender.armor,
         set_bonus=defender.set_bonus,
         class_modifiers=get_modifiers(defender.class_id),
+        attr_mitigation_bonus=attr_mit,
     )
     if extra_mit > 0:
         reduced = max(1, int(damage * (1.0 - extra_mit)))

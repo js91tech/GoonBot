@@ -31,6 +31,7 @@ COGS = (
     "cogs.duels",
     "cogs.jobs",
     "cogs.classes",
+    "cogs.attributes",
     "cogs.spells",
     "cogs.avatars",
     "cogs.help",

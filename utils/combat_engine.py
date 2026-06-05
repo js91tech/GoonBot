@@ -86,8 +86,12 @@ def apply_armor_mitigation(
     set_bonus: SetBonus | None = None,
     class_modifiers: ClassModifiers | None = None,
     defense_retention: float = 1.0,
+    attr_mitigation_bonus: float = 0.0,
 ) -> tuple[int, int]:
     if armor is None:
+        mitigated = int(raw_damage * attr_mitigation_bonus)
+        if mitigated > 0:
+            return max(1, raw_damage - min(raw_damage - 1, mitigated)), mitigated
         return raw_damage, 0
     armor_power = armor.power * max(0.0, defense_retention)
     if class_modifiers is not None:
@@ -95,6 +99,8 @@ def apply_armor_mitigation(
     mitigated = int(raw_damage * armor_power / (armor_power + 100))
     if set_bonus is not None:
         mitigated += int(raw_damage * set_bonus.mitigation_bonus)
+    if attr_mitigation_bonus > 0:
+        mitigated += int(raw_damage * attr_mitigation_bonus)
     mitigated = min(raw_damage - 1, mitigated)
     return max(1, raw_damage - mitigated), mitigated
 
@@ -103,9 +109,10 @@ def max_hp_from_armor(
     armor: ShopItem | None,
     *,
     class_modifiers: ClassModifiers | None = None,
+    attr_hp_bonus: int = 0,
 ) -> int:
     bonus = armor.hp_bonus if armor is not None else 0
-    base = config.PLAYER_BASE_HP + bonus
+    base = config.PLAYER_BASE_HP + bonus + attr_hp_bonus
     if class_modifiers is not None:
         base = int(base * class_modifiers.max_hp_mult)
     return base

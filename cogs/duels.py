@@ -208,6 +208,12 @@ class Duels(commands.Cog):
 
         attacker_bonuses = await self.bot.db.get_equipped_aspect_bonuses(attacker.id, guild_id)
         defender_bonuses = await self.bot.db.get_equipped_aspect_bonuses(opponent.id, guild_id)
+        from utils.character_attributes import combat_bonuses_from_attributes
+
+        attacker_attrs = await self.bot.db.get_character_attributes(attacker.id, guild_id)
+        defender_attrs = await self.bot.db.get_character_attributes(opponent.id, guild_id)
+        attacker_attr_bonuses = combat_bonuses_from_attributes(attacker_attrs)
+        defender_attr_bonuses = combat_bonuses_from_attributes(defender_attrs)
         attacker_bombs = await self.bot.db.get_inventory_quantity(
             attacker.id, guild_id, TRAP_BOMB_ITEM_ID
         )
@@ -224,6 +230,7 @@ class Duels(commands.Cog):
             prestige_level=int(attacker_progress["prestige_level"]),
             class_id=attacker_class,
             aspect_bonuses=attacker_bonuses,
+            attr_bonuses=attacker_attr_bonuses,
             trap_bomb_count=attacker_bombs,
             unstable_slots=attacker_unstable,
         )
@@ -234,6 +241,7 @@ class Duels(commands.Cog):
             prestige_level=int(defender_progress["prestige_level"]),
             class_id=defender_class,
             aspect_bonuses=defender_bonuses,
+            attr_bonuses=defender_attr_bonuses,
             trap_bomb_count=defender_bombs,
             unstable_slots=defender_unstable,
         )
