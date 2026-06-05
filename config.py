@@ -284,6 +284,17 @@ FREAKY_NIKKI_CONSUMABLE_QTY_RANGE = (1, 2)
 FREAKY_NIKKI_ART_URLS: dict[str, str] = {}
 BOSS_AUTO_SPAWN_TOMASS_CHANCE = 0.03
 HANNAH_SPAWN_VARIANTS: tuple[str, ...] = ("normal", "enraged", "shadow", "celestial", "mythic")
+# Dashboard summon dropdown — special bosses first, then Hannah tiers.
+BOSS_DASHBOARD_VARIANT_ORDER: tuple[str, ...] = (
+    "freaky_nikki",
+    "zz_wrath",
+    "tomass",
+    "mythic",
+    "celestial",
+    "shadow",
+    "enraged",
+    "normal",
+)
 
 BOSS_ELEMENTS: tuple[str, ...] = ("fire", "frost", "storm", "void", "verdant")
 BOSS_ELEMENT_STRONG_BONUS = 0.12

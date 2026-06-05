@@ -90,3 +90,27 @@ def boss_expires_at(spawn_ts: float, variant: str) -> float | None:
     if despawn is None:
         return None
     return spawn_ts + float(despawn)
+
+
+def boss_variant_dashboard_label(variant: str) -> str:
+    special = {
+        "freaky_nikki": config.BOSS_NAME_FREAKY_NIKKI,
+        "tomass": config.BOSS_NAME_TOMASS,
+        "zz_wrath": config.BOSS_NAME_ZZ_WRATH,
+    }
+    if variant in special:
+        return special[variant]
+    return f"Hannah ({variant.title()})"
+
+
+def dashboard_boss_variants() -> list[tuple[str, str]]:
+    """Return (variant_key, display_label) pairs for the dashboard summon dropdown."""
+    ordered = [
+        variant
+        for variant in config.BOSS_DASHBOARD_VARIANT_ORDER
+        if variant in config.BOSS_VARIANTS
+    ]
+    for variant in config.BOSS_VARIANTS:
+        if variant not in ordered:
+            ordered.append(variant)
+    return [(variant, boss_variant_dashboard_label(variant)) for variant in ordered]
