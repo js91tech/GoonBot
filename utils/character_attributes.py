@@ -86,9 +86,17 @@ def stat_cap_for_prestige(prestige_level: int) -> int:
     return config.ATTR_STAT_CAP_BASE + prestige_level * config.ATTR_STAT_CAP_PER_PRESTIGE
 
 
+def total_point_pool_cap(prestige_level: int) -> int:
+    """Total points spendable across all stats: 50 at P0, +5/prestige (100 at P10)."""
+    return (
+        config.ATTR_BASE_TOTAL_POINTS
+        + prestige_level * config.ATTR_TOTAL_POINTS_PER_PRESTIGE
+    )
+
+
 def max_total_attribute_points(prestige_level: int) -> int:
-    """Maximum points allocatable across all stats at a given prestige."""
-    return len(STAT_KEYS) * stat_cap_for_prestige(prestige_level)
+    """Alias for total spendable pool (not per-stat max × 5)."""
+    return total_point_pool_cap(prestige_level)
 
 
 def xp_required_for_attribute_points(point_count: int) -> int:
@@ -105,7 +113,7 @@ def xp_required_for_attribute_points(point_count: int) -> int:
 
 def attribute_points_from_class_xp(class_xp: int) -> int:
     """How many points class XP has earned."""
-    max_points = max_total_attribute_points(config.PRESTIGE_MAX_LEVEL)
+    max_points = total_point_pool_cap(config.PRESTIGE_MAX_LEVEL)
     lo, hi = 0, max_points
     while lo < hi:
         mid = (lo + hi + 1) // 2
@@ -122,7 +130,7 @@ def unspent_attribute_points(
     prestige_level: int,
 ) -> int:
     earned = attribute_points_from_class_xp(class_xp)
-    allocatable = min(earned, max_total_attribute_points(prestige_level))
+    allocatable = min(earned, total_point_pool_cap(prestige_level))
     return max(0, allocatable - attrs.total_points())
 
 
@@ -132,15 +140,15 @@ def xp_until_next_attribute_point(
     attrs: CharacterAttributes,
 ) -> int | None:
     """Class XP still needed for the next point, or None if fully allocated."""
-    max_alloc = max_total_attribute_points(prestige_level)
-    if attrs.total_points() >= max_alloc:
+    pool_cap = total_point_pool_cap(prestige_level)
+    if attrs.total_points() >= pool_cap:
         return None
     earned = attribute_points_from_class_xp(class_xp)
-    allocatable = min(earned, max_alloc)
+    allocatable = min(earned, pool_cap)
     if allocatable > attrs.total_points():
         return 0
     next_point = earned + 1
-    if next_point > max_alloc:
+    if next_point > pool_cap:
         return None
     return max(0, xp_required_for_attribute_points(next_point) - class_xp)
 
@@ -225,23 +233,24 @@ def format_attributes_block(
     prestige_level: int = 0,
 ) -> str:
     stat_cap = stat_cap_for_prestige(prestige_level)
+    pool_cap = total_point_pool_cap(prestige_level)
     earned = attribute_points_from_class_xp(class_xp)
-    max_alloc = max_total_attribute_points(prestige_level)
-    allocatable = min(earned, max_alloc)
+    allocatable = min(earned, pool_cap)
     unspent = unspent_attribute_points(attrs, class_xp, prestige_level)
     lines = [
         f"**{STAT_EMOJI[name]} {STAT_LABELS[name]}** **{attrs.value(name)}** / **{stat_cap}**"
         for name in STAT_KEYS
     ]
     lines.append(
-        f"Allocated: **{attrs.total_points()}/{allocatable}**"
+        f"Pool: **{attrs.total_points()}/{allocatable}** spent"
+        f" (cap **{pool_cap}** · **{stat_cap}**/stat)"
         + (f" · **{unspent}** unspent" if unspent else "")
     )
     xp_left = xp_until_next_attribute_point(class_xp, prestige_level, attrs)
     if xp_left is not None and xp_left > 0:
         lines.append(f"Next point in **{xp_left}** class XP")
-    elif attrs.total_points() >= max_alloc:
-        lines.append("Prestige up to raise per-stat caps (+1 each per level).")
+    elif attrs.total_points() >= pool_cap:
+        lines.append("Prestige up for +5 total points and +1 per-stat cap.")
     combat = combat_bonuses_from_attributes(attrs)
     resist = debuff_resistance_from_attributes(attrs)
     effect_lines = []

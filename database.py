@@ -5101,12 +5101,15 @@ class Database:
             class_xp = int(row["class_xp"] or 0)
             available = unspent_attribute_points(attrs, class_xp, prestige_level)
             if points > available:
-                from utils.character_attributes import max_total_attribute_points
+                from utils.character_attributes import total_point_pool_cap
 
                 stat_cap = stat_cap_for_prestige(prestige_level)
-                max_alloc = max_total_attribute_points(prestige_level)
-                if attrs.total_points() >= max_alloc:
-                    hint = f"Prestige up to raise per-stat caps (currently **{stat_cap}** each)."
+                pool_cap = total_point_pool_cap(prestige_level)
+                if attrs.total_points() >= pool_cap:
+                    hint = (
+                        f"Prestige up for more points (pool **{pool_cap}**, "
+                        f"**{stat_cap}**/stat)."
+                    )
                 else:
                     hint = "Earn more class XP from duels and boss raids."
                 return (

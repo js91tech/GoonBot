@@ -14,8 +14,8 @@ from utils.character_attributes import (
     attribute_points_from_class_xp,
     combat_bonuses_from_attributes,
     debuff_resistance_from_attributes,
-    max_total_attribute_points,
     stat_cap_for_prestige,
+    total_point_pool_cap,
     unspent_attribute_points,
     xp_required_for_attribute_points,
 )
@@ -27,9 +27,14 @@ class CharacterAttributeUtilTests(unittest.TestCase):
         self.assertEqual(stat_cap_for_prestige(0), 15)
         self.assertEqual(stat_cap_for_prestige(10), 25)
 
-    def test_max_total_points_at_prestige(self) -> None:
-        self.assertEqual(max_total_attribute_points(0), 75)
-        self.assertEqual(max_total_attribute_points(10), 125)
+    def test_total_pool_cap_at_prestige(self) -> None:
+        self.assertEqual(total_point_pool_cap(0), 50)
+        self.assertEqual(total_point_pool_cap(10), 100)
+
+    def test_prestige_10_can_max_four_stats_not_five(self) -> None:
+        self.assertEqual(stat_cap_for_prestige(10), 25)
+        self.assertEqual(total_point_pool_cap(10), 100)
+        self.assertLess(total_point_pool_cap(10), stat_cap_for_prestige(10) * 5)
 
     def test_fast_then_slow_xp_curve(self) -> None:
         self.assertEqual(xp_required_for_attribute_points(20), 20 * config.ATTR_XP_PER_FAST_POINT)

@@ -92,15 +92,16 @@ class Attributes(commands.Cog):
                 f"\n\nAllocate with `/attributes stat:agility points:{min(unspent, 5)}` "
                 f"(AGI reduces stun/root/chill)."
             )
-        from utils.character_attributes import stat_cap_for_prestige
+        from utils.character_attributes import stat_cap_for_prestige, total_point_pool_cap
 
         stat_cap = stat_cap_for_prestige(prestige_level)
+        pool_cap = total_point_pool_cap(prestige_level)
         stat_guide = (
             "**STR** — damage · **DEX** — crit · **AGI** — debuff resist "
             "· **DEF** — mitigation & burn/void resist · **VIT** — max HP\n"
-            f"All stats start at **0**. Per-stat cap **{stat_cap}** "
-            f"(**15** base + **1** per prestige, **25** at prestige 10). "
-            f"First **20** earned points come quickly from class XP; later points cost more."
+            f"All stats start at **0**. Spend up to **{pool_cap}** total points "
+            f"(**50** + **5**/prestige; **100** at P10). Each stat caps at **{stat_cap}** "
+            f"(**15** + **1**/prestige). First **20** earned points are fast from class XP."
         )
         embed = discord.Embed(
             title=f"{target.display_name}'s Attributes",
