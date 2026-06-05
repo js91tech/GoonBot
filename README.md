@@ -61,6 +61,8 @@ python bot.py
 | `/leaderboard` | Top 10 by net worth (pocket + bank) |
 | `/pay @user amount` | Send nuggets from your pocket to another user |
 
+**House pot** — gambling losses/taxes, scourge bank hits, and expired coin drops feed a guild pool that funds random **Claim** drops in the main channel (no minting when the pot is empty).
+
 ### Bounty
 
 | Command | Description |
@@ -74,8 +76,13 @@ python bot.py
 |---------|-------------|
 | `/heist @user [@crew1] [@crew2]` | Rob a user's **pocket** (wallet) |
 | `/bank-heist @user` | High-risk vault robbery — tier panel steals from **bank** |
+| `/bodyguards` | Hire up to 5 bodyguards (3 tiers) to defend your bank |
 | `/arrest @thief` | Arrest a failed wallet heist thief (5-minute window) |
 | `/fix` | Repair unstable gear after a failed Tier 3 bank heist |
+
+**Jail escape** — buy **Jail Key** (100k, guaranteed) or **Pick Key** (20k, 15% chance) from `/shop`, then `/use` while arrested.
+
+**Bodyguards** — Rookie/Veteran/Elite tiers from `/bodyguards` or the **Bodyguards** button on `/balance`. High-gear thieves face ~80%/75%/60% odds vs a full Elite squad on T1/T2/T3 heists.
 
 **Bank heist tiers**
 
@@ -100,10 +107,13 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 | Command | Description |
 |---------|-------------|
-| `/boss` | Open the interactive raid fight panel (attack, refresh, leaderboard) |
-| `/attack` | Strike the boss once (includes fight panel buttons) |
+| `/boss` | Raid fight panel — Attack, Cast, Items, Heal, Auto-heal, Refresh, Raid LB |
+| `/attack` | Strike the boss once (same as the panel Attack button) |
 | `/boss-status` | Quick HP check without buttons |
-| `/heal @user` | Revive a downed teammate |
+| `/heal @user` | Revive a downed teammate (also available via the panel **Heal** button) |
+| `/cast` · `/use` | Cast skills and use consumables from the panel **Cast** / **Items** buttons too |
+
+Bosses auto-spawn every **40 minutes** when none is active.
 | `/summon variant` | **Admin only:** force-spawn a boss |
 
 ### Raid avatars

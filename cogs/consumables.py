@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import random
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 from items import GIFTABLE_ITEM_IDS, get_item
 from utils.bot_players import pvp_target_error
 from utils.helpers import guild_only_message
@@ -108,6 +111,38 @@ class Consumables(commands.Cog):
             new_energy = await self.bot.db.add_energy(uid, guild_id, 15)
             await interaction.response.send_message(
                 f"**Energy Drink** — energy restored to **{new_energy}**.",
+                ephemeral=True,
+            )
+            return
+
+        if item_id in {"jail_key", "pick_key"}:
+            if not await self.bot.db.is_arrested(uid, guild_id):
+                await interaction.response.send_message(
+                    "You are not in jail — save this for when you get arrested.",
+                    ephemeral=True,
+                )
+                return
+            if not await self.bot.db.consume_inventory_item(uid, guild_id, item_id):
+                await interaction.response.send_message(
+                    "Could not consume item.", ephemeral=True,
+                )
+                return
+            if item_id == "jail_key":
+                await self.bot.db.clear_arrested(uid, guild_id)
+                await interaction.response.send_message(
+                    f"**{shop_item.name}** — the cell door swings open. You are free!",
+                    ephemeral=True,
+                )
+                return
+            if random.random() < config.PICK_KEY_ESCAPE_CHANCE:
+                await self.bot.db.clear_arrested(uid, guild_id)
+                await interaction.response.send_message(
+                    f"**{shop_item.name}** — the lock clicks. You slip out into the night!",
+                    ephemeral=True,
+                )
+                return
+            await interaction.response.send_message(
+                f"**{shop_item.name}** — the pick snaps. Guards drag you back to your cell.",
                 ephemeral=True,
             )
             return

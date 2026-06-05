@@ -49,6 +49,22 @@ def _payout_after_tax(bet: float, gross_win: float, tax_rate: float) -> float:
     return bet + profit - tax
 
 
+def _gambling_tax_amount(bet: float, gross_win: float, tax_rate: float) -> float:
+    profit = max(0.0, gross_win - bet)
+    return profit * tax_rate
+
+
+async def _credit_house_winnings_tax(db, guild_id: int, bet: float, gross_win: float, tax_rate: float) -> None:
+    tax = _gambling_tax_amount(bet, gross_win, tax_rate)
+    if tax > 0:
+        await db.credit_house_pot(guild_id, tax)
+
+
+async def _credit_house_loss(db, guild_id: int, amount: float) -> None:
+    if amount > 0:
+        await db.credit_house_pot(guild_id, amount)
+
+
 @dataclass
 class CoinflipChallenge:
     guild_id: int
@@ -121,6 +137,8 @@ class CoinflipAcceptView(discord.ui.View):
             payout = _payout_after_tax(amount, pot, tax)
             await self.cog.bot.db.credit_wallet(winner_id, guild_id, payout)
             burned = pot - payout
+            if burned > 0:
+                await self.cog.bot.db.credit_house_pot(guild_id, burned)
             winner = interaction.guild.get_member(winner_id) if interaction.guild else None
             wname = winner.display_name if winner else f"User {winner_id}"
             tax_note = f" (tax {fmt_amount(burned)})" if burned > 0.01 else ""
@@ -180,6 +198,8 @@ class BlackjackView(discord.ui.View):
             item.disabled = True
         if credit > 0:
             await self.cog.bot.db.credit_wallet(self.user_id, self.guild_id, credit)
+        elif credit <= 0:
+            await _credit_house_loss(self.cog.bot.db, self.guild_id, self.bet)
         await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "gamble_play")
         embed = self._embed(reveal_dealer=True)
         embed.description = outcome
@@ -220,6 +240,9 @@ class BlackjackView(discord.ui.View):
             dealer_total = _hand_total(self.dealer)
             if dealer_total > 21 or player_total > dealer_total:
                 payout = _payout_after_tax(self.bet, self.bet * 2, self.tax_rate)
+                await _credit_house_winnings_tax(
+                    self.cog.bot.db, self.guild_id, self.bet, self.bet * 2, self.tax_rate,
+                )
                 await self._finish(
                     interaction,
                     f"You win {fmt_amount(payout)}!",
@@ -285,12 +308,16 @@ class Gambling(commands.Cog):
         if win:
             payout = _payout_after_tax(bet, bet * 2, tax)
             await self.bot.db.credit_wallet(interaction.user.id, interaction.guild_id, payout)
+            await _credit_house_winnings_tax(
+                self.bot.db, interaction.guild_id, bet, bet * 2, tax,
+            )
             profit = payout - bet
             await interaction.response.send_message(
                 f"**Heads!** You win {fmt_amount(payout)} (+{fmt_amount(profit)} after tax).",
                 ephemeral=True,
             )
         else:
+            await _credit_house_loss(self.bot.db, interaction.guild_id, bet)
             await interaction.response.send_message(
                 f"**Tails.** You lose {fmt_amount(bet)}.",
                 ephemeral=True,
@@ -380,6 +407,9 @@ class Gambling(commands.Cog):
             else:
                 payout = _payout_after_tax(bet, bet * 2.5, tax)
                 await self.bot.db.credit_wallet(interaction.user.id, interaction.guild_id, payout)
+                await _credit_house_winnings_tax(
+                    self.bot.db, interaction.guild_id, bet, bet * 2.5, tax,
+                )
                 await interaction.response.send_message(
                     f"**Blackjack!** You win {fmt_amount(payout)}.",
                     ephemeral=True,
@@ -413,15 +443,21 @@ class Gambling(commands.Cog):
         reels = [random.choice(symbols) for _ in range(3)]
         tax = await self.bot.db.get_config_value(interaction.guild_id, "gambling_house_tax")
         payout = 0.0
+        gross_win = 0.0
         if reels[0] == reels[1] == reels[2]:
             mult = {"7️⃣": 8.0, "💎": 5.0, "⚔️": 3.0, "💰": 2.0}.get(reels[0], 1.5)
-            payout = _payout_after_tax(bet, bet * mult, tax)
+            gross_win = bet * mult
+            payout = _payout_after_tax(bet, gross_win, tax)
         elif reels[0] == reels[1] or reels[1] == reels[2]:
-            payout = _payout_after_tax(bet, bet * 1.4, tax)
+            gross_win = bet * 1.4
+            payout = _payout_after_tax(bet, gross_win, tax)
 
         lines = [f"{' | '.join(reels)}"]
         if payout > 0:
             await self.bot.db.credit_wallet(interaction.user.id, interaction.guild_id, payout)
+            await _credit_house_winnings_tax(
+                self.bot.db, interaction.guild_id, bet, gross_win, tax,
+            )
             profit = payout - bet
             await self.bot.db.increment_progress(
                 interaction.user.id, interaction.guild_id, gambles_won=1,
@@ -438,6 +474,7 @@ class Gambling(commands.Cog):
             if jackpot_win > 0:
                 lines.append(f"**JACKPOT!** +{fmt_amount(jackpot_win)} from the server pool!")
         else:
+            await _credit_house_loss(self.bot.db, interaction.guild_id, bet)
             await self.bot.db.add_jackpot_contribution(
                 interaction.guild_id, bet * config.JACKPOT_CONTRIBUTION_RATE,
             )

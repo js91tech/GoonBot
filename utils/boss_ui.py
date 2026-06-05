@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING
 import discord
 
 import config
-from items import HP_POTION_IDS, get_item
+from items import HP_POTION_HEAL, HP_POTION_IDS, get_item
 from utils.helpers import fmt_amount
+from utils.skills import skills_for_class
+from utils.spell_cast import cast_skill_for_user
 
 if TYPE_CHECKING:
     from cogs.boss import Boss
@@ -239,6 +241,196 @@ class BossFightView(discord.ui.View):
                 )
         view = await AutoPotionSettingsView.create(self.cog, self.guild_id, self.user_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="✨ Cast", style=discord.ButtonStyle.primary, row=1)
+    async def cast_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        class_id = await self.cog.bot.db.get_class_id(self.user_id, self.guild_id)
+        if not class_id:
+            await interaction.response.send_message(
+                "Choose a class with `/class-choose` first.", ephemeral=True,
+            )
+            return
+        skills = skills_for_class(class_id)
+        if not skills:
+            await interaction.response.send_message("No skills available.", ephemeral=True)
+            return
+        options = [
+            discord.SelectOption(
+                label=f"{s.name}"[:100],
+                value=s.skill_id,
+                description=f"{s.mana_cost} mana"[:100],
+                emoji=s.emoji,
+            )
+            for s in skills[:25]
+        ]
+        select = discord.ui.Select(placeholder="Pick a skill to cast", options=options)
+
+        async def cast_callback(sel_interaction: discord.Interaction) -> None:
+            if sel_interaction.user.id != self.user_id:
+                await sel_interaction.response.send_message(
+                    "This panel is not yours.", ephemeral=True,
+                )
+                return
+            skill_id = select.values[0]
+            result = await cast_skill_for_user(
+                self.cog.bot.db,
+                self.user_id,
+                self.guild_id,
+                skill_id,
+                class_id=class_id,
+            )
+            if not result.ok:
+                await sel_interaction.response.send_message(
+                    result.error or "Cast failed.", ephemeral=True,
+                )
+                return
+            await sel_interaction.response.send_message(result.message, ephemeral=True)
+
+        select.callback = cast_callback
+        view = discord.ui.View(timeout=120.0)
+        view.add_item(select)
+        await interaction.response.send_message(
+            "Select a skill to cast:", view=view, ephemeral=True,
+        )
+
+    @discord.ui.button(label="💊 Items", style=discord.ButtonStyle.secondary, row=1)
+    async def items_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        raid_ids = {"raid_potion"}
+        usable = raid_ids | set(HP_POTION_IDS)
+        rows = await self.cog.bot.db.get_inventory(self.user_id, self.guild_id)
+        options: list[discord.SelectOption] = []
+        for row in rows:
+            item_id = str(row["item_id"])
+            if item_id not in usable:
+                continue
+            item = get_item(item_id)
+            if item is None:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=f"{item.name} x{int(row['quantity'])}"[:100],
+                    value=item_id,
+                ),
+            )
+        if not options:
+            await interaction.response.send_message(
+                "No raid consumables in inventory (Raid Potion or HP potions).",
+                ephemeral=True,
+            )
+            return
+        select = discord.ui.Select(placeholder="Use a consumable", options=options[:25])
+
+        async def use_callback(sel_interaction: discord.Interaction) -> None:
+            if sel_interaction.user.id != self.user_id:
+                await sel_interaction.response.send_message(
+                    "This panel is not yours.", ephemeral=True,
+                )
+                return
+            item_id = select.values[0]
+            qty = await self.cog.bot.db.get_inventory_quantity(
+                self.user_id, self.guild_id, item_id,
+            )
+            if qty <= 0:
+                await sel_interaction.response.send_message(
+                    "You do not have that item.", ephemeral=True,
+                )
+                return
+            item = get_item(item_id)
+            if item is None:
+                await sel_interaction.response.send_message("Unknown item.", ephemeral=True)
+                return
+            if not await self.cog.bot.db.consume_inventory_item(
+                self.user_id, self.guild_id, item_id,
+            ):
+                await sel_interaction.response.send_message(
+                    "Could not consume item.", ephemeral=True,
+                )
+                return
+            if item_id == "raid_potion":
+                await self.cog.bot.db.set_pending_consumable(
+                    self.user_id, self.guild_id, item_id,
+                )
+                await sel_interaction.response.send_message(
+                    f"Used **{item.name}** — next attack deals **+20%** damage.",
+                    ephemeral=True,
+                )
+                return
+            if item_id in HP_POTION_HEAL:
+                max_hp = await self.cog._max_hp(self.user_id, self.guild_id)
+                heal_amt = float(HP_POTION_HEAL[item_id])
+                new_hp, _ = await self.cog.bot.db.heal_player(
+                    self.user_id, self.guild_id, heal_amt, max_hp,
+                )
+                await sel_interaction.response.send_message(
+                    f"Used **{item.name}** — restored HP to **{int(new_hp)}/{int(max_hp)}**.",
+                    ephemeral=True,
+                )
+                return
+            await sel_interaction.response.send_message("Item used.", ephemeral=True)
+
+        select.callback = use_callback
+        view = discord.ui.View(timeout=120.0)
+        view.add_item(select)
+        await interaction.response.send_message(
+            "Select a consumable:", view=view, ephemeral=True,
+        )
+
+    @discord.ui.button(label="❤️ Heal", style=discord.ButtonStyle.success, row=1)
+    async def heal_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        if interaction.guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        downed_ids = await self.cog.bot.db.list_downed_users(self.guild_id)
+        if not downed_ids:
+            await interaction.response.send_message(
+                "Nobody is downed right now.", ephemeral=True,
+            )
+            return
+        options: list[discord.SelectOption] = []
+        for uid in downed_ids[:25]:
+            member = interaction.guild.get_member(uid)
+            label = member.display_name if member is not None else f"User {uid}"
+            options.append(discord.SelectOption(label=label[:100], value=str(uid)))
+        select = discord.ui.Select(placeholder="Revive a downed raider", options=options)
+
+        async def heal_callback(sel_interaction: discord.Interaction) -> None:
+            if sel_interaction.user.id != self.user_id:
+                await sel_interaction.response.send_message(
+                    "This panel is not yours.", ephemeral=True,
+                )
+                return
+            if not isinstance(sel_interaction.user, discord.Member):
+                await sel_interaction.response.send_message("Members only.", ephemeral=True)
+                return
+            target_id = int(select.values[0])
+            target = sel_interaction.guild.get_member(target_id) if sel_interaction.guild else None
+            if target is None:
+                await sel_interaction.response.send_message(
+                    "Target not found.", ephemeral=True,
+                )
+                return
+            embed, err = await self.cog.execute_field_heal(
+                sel_interaction.user,
+                target,
+                sel_interaction.guild,
+            )
+            if err:
+                await sel_interaction.response.send_message(err, ephemeral=True)
+                return
+            await sel_interaction.response.send_message(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+        select.callback = heal_callback
+        view = discord.ui.View(timeout=120.0)
+        view.add_item(select)
+        await interaction.response.send_message(
+            "Select a downed ally to revive:", view=view, ephemeral=True,
+        )
 
 
 async def send_boss_fight_panel(

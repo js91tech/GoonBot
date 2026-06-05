@@ -404,7 +404,7 @@ class Shop(commands.Cog):
         if float(user_row["downed_until"]) > now:
             status_parts.append("Downed (cannot attack)")
         if float(user_row["arrested_until"]) > now:
-            status_parts.append("Arrested / jailed")
+            status_parts.append("Arrested / jailed — use **Jail Key** or **Pick Key** from inventory")
         if unstable:
             status_parts.append(f"Unstable gear ({len(unstable)} slot(s)) — /fix")
         if status_parts:

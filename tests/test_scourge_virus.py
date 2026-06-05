@@ -98,18 +98,15 @@ class ScourgeCogTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(ids), 3)
         self.assertEqual(ids[0], 201)
 
-    async def test_hourly_roll_triggers_warning(self) -> None:
+    async def test_interval_triggers_warning(self) -> None:
         channel = MagicMock()
         channel.id = 555
         send_warning = AsyncMock()
         self.cog._send_warning = send_warning
-        with (
-            patch(
-                "cogs.scourge.resolve_bot_announcement_channel",
-                new_callable=AsyncMock,
-                return_value=channel,
-            ),
-            patch("cogs.scourge.random.random", return_value=0.0),
+        with patch(
+            "cogs.scourge.resolve_bot_announcement_channel",
+            new_callable=AsyncMock,
+            return_value=channel,
         ):
             now = time.time()
             await self.db.upsert_scourge_event(

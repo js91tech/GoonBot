@@ -9,12 +9,15 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from items import get_item
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.bank_heist_ui import send_bank_heist_panel
+from utils.bodyguards import bodyguard_defeat_chance, format_bodyguard_roster, power_from_loadout
 from utils.crew_banking import heist_same_crew_bonus
 from utils.gear_sets import heist_intimidation_bonus
 from utils.bot_players import pvp_target_error
 from utils.helpers import fmt_amount, guild_only_message
+from utils.loadout import parse_loadout
 
 
 @dataclass
@@ -203,6 +206,30 @@ class Heist(commands.Cog):
             )
 
         await self.bot.db.set_last_bank_heist(thief.id, guild_id, current)
+
+        guards = await self.bot.db.get_bodyguards(target.id, guild_id)
+        if sum(guards.values()) > 0:
+            equipment = await self.bot.db.get_equipment(thief.id, guild_id)
+            unstable = await self.bot.db.list_unstable_slots(thief.id, guild_id)
+            loadout = parse_loadout(equipment, unstable_slots=unstable)
+            thief_power = power_from_loadout(loadout)
+            guard_chance = bodyguard_defeat_chance(thief_power, tier, guards)
+            if random.random() > guard_chance:
+                jail_seconds = float(spec["jail_seconds"])
+                await self.bot.db.set_arrested_until(thief.id, guild_id, current + jail_seconds)
+                hours = jail_seconds / 3600
+                jail_label = f"{int(hours)}h" if hours >= 1 else f"{int(jail_seconds // 60)}m"
+                embed = discord.Embed(
+                    title="Bodyguards stopped the heist!",
+                    description=(
+                        f"**{target.display_name}**'s guards ({format_bodyguard_roster(guards)}) "
+                        f"intercepted **{thief.display_name}** before the vault breach.\n"
+                        f"Jail time: **{jail_label}**."
+                    ),
+                    color=discord.Color.red(),
+                )
+                return BankHeistResult(embed=embed)
+
         success_chance = float(spec["success"])
         if random.random() > success_chance:
             jail_seconds = float(spec["jail_seconds"])

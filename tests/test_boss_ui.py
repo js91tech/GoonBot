@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 from cogs.boss import Boss
 from database import Database
+from utils.boss_ui import BossFightView
 
 
 class BossFightEmbedTests(unittest.IsolatedAsyncioTestCase):
@@ -54,6 +55,13 @@ class BossFightEmbedTests(unittest.IsolatedAsyncioTestCase):
         embed, err = await self.cog.build_boss_fight_embed(self.guild_id)
         self.assertIsNone(embed)
         self.assertEqual(err, "No boss is active right now.")
+
+    def test_fight_view_has_action_buttons(self) -> None:
+        view = BossFightView(self.cog, self.guild_id, 1)
+        labels = [child.label for child in view.children if hasattr(child, "label")]
+        self.assertIn("✨ Cast", labels)
+        self.assertIn("💊 Items", labels)
+        self.assertIn("❤️ Heal", labels)
 
 
 if __name__ == "__main__":

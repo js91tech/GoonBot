@@ -37,11 +37,12 @@ class CoinDropView(discord.ui.View):
             item.disabled = True
         if self.message is None:
             return
+        await self.bot.db.credit_house_pot(self.guild_id, self.amount)
         try:
             await self.message.edit(
                 content=(
                     f"**Coin drop expired.** Nobody claimed **{fmt_amount(self.amount)}** in "
-                    f"{COIN_DROP_CLAIM_SECONDS} seconds."
+                    f"{COIN_DROP_CLAIM_SECONDS} seconds — returned to the house."
                 ),
                 view=self,
             )
@@ -137,13 +138,17 @@ class Economy(commands.Cog):
             typers = self.coin_drop_typers.pop(guild.id, set())
             if len(typers) < COIN_DROP_MIN_TYPERS:
                 continue
-            amount = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
+            desired = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
+            amount = await self.bot.db.debit_house_pot(guild.id, desired)
+            if amount <= 0:
+                continue
             channel = await resolve_main_channel(guild, self.bot.db)
             if channel is None:
                 logging.warning("Coin drop: no channel to announce in guild %s", guild.id)
+                await self.bot.db.credit_house_pot(guild.id, amount)
                 continue
             body = (
-                f"**Random coin drop!** **{fmt_amount(amount)}** are up for grabs—"
+                f"**Random coin drop!** **{fmt_amount(amount)}** from the house are up for grabs—"
                 f"**first to claim** wins. Anyone can press **Claim** for **{COIN_DROP_CLAIM_SECONDS}** seconds!"
             )
             view = CoinDropView(self.bot, guild.id, amount)
@@ -390,6 +395,20 @@ class Economy(commands.Cog):
             interaction.user.id,
             "wallet_pay",
         )
+
+
+    @app_commands.command(
+        name="bodyguards",
+        description="Hire bodyguards to defend your bank against heists.",
+    )
+    @app_commands.guild_only()
+    async def bodyguards(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        from utils.bodyguard_ui import send_bodyguard_panel
+
+        await send_bodyguard_panel(interaction, self)
 
 
 async def setup(bot: commands.Bot) -> None:

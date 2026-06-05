@@ -401,6 +401,24 @@ CHIA_SEEDS = ShopItem(
     "Wholesome snack seeds. Buy from /shop, then gift with /gift.",
     shop_listed=True,
 )
+JAIL_KEY = ShopItem(
+    "jail_key",
+    "Jail Key",
+    "consumable",
+    100_000,
+    0,
+    "Use while jailed: guaranteed escape from lockup.",
+    shop_listed=True,
+)
+PICK_KEY = ShopItem(
+    "pick_key",
+    "Pick Key",
+    "consumable",
+    20_000,
+    0,
+    "Use while jailed: 15% chance to pick the lock and break out.",
+    shop_listed=True,
+)
 
 ALCHEMY_SCRAP = ShopItem(
     "alchemy_scrap",
@@ -422,6 +440,8 @@ CONSUMABLES: tuple[ShopItem, ...] = (
     ENERGY_DRINK,
     DUEL_SCROLL,
     CHIA_SEEDS,
+    JAIL_KEY,
+    PICK_KEY,
     ALCHEMY_SCRAP,
 )
 

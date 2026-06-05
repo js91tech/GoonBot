@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import discord
 
 import config
+from utils.bodyguards import format_bodyguard_roster
 from utils.bot_players import pvp_target_error
 from utils.helpers import fmt_amount
 
@@ -31,11 +32,15 @@ def build_bank_heist_embed(
     *,
     target_bank: float,
     cooldown_left: float = 0.0,
+    guards: dict[int, int] | None = None,
 ) -> discord.Embed:
+    guard_line = ""
+    if guards is not None and sum(guards.values()) > 0:
+        guard_line = f"\n**Bodyguards:** {format_bodyguard_roster(guards)}\n"
     embed = discord.Embed(
         title=f"Bank heist — {target.display_name}",
         description=(
-            f"Target vault: **{fmt_amount(target_bank)}** in bank\n\n"
+            f"Target vault: **{fmt_amount(target_bank)}** in bank{guard_line}\n"
             f"**Tier 1** — {tier_summary(1)}\n"
             f"**Tier 2** — {tier_summary(2)}\n"
             f"**Tier 3** — {tier_summary(3)}"
@@ -148,6 +153,7 @@ async def send_bank_heist_panel(
         )
         return
 
-    embed = build_bank_heist_embed(target, target_bank=target_bank)
+    guards = await cog.bot.db.get_bodyguards(target.id, interaction.guild_id)
+    embed = build_bank_heist_embed(target, target_bank=target_bank, guards=guards)
     view = BankHeistView(cog, interaction.guild_id, interaction.user.id, target.id)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
