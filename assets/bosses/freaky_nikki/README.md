@@ -9,7 +9,7 @@ Viral gifs from the 2026 horror film **Obsession** (Nikki / Inde Navarrette), so
 | `whisper.gif` | Counter: unhinged-whispers | [jaDTS1QscMaTv0rTEg](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-jaDTS1QscMaTv0rTEg) |
 | `grab.gif` | Counter: restraining-grabs (physical struggle) | [AVRwJmfMxtiIh5A5OU](https://giphy.com/gifs/obsession-movie-AVRwJmfMxtiIh5A5OU) |
 | `twist.gif` | Counter: psyche-twists | [RdRLJl1jsxie5N7qX1](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-RdRLJl1jsxie5N7qX1) |
-| `slap.gif` | Counter: freak-out-slaps | [fJHbyksRyJQGZ8GiVF](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-fJHbyksRyJQGZ8GiVF) |
+| `slap.gif` | Counter: freak-out-slaps | [Tenor](https://tenor.com/view/nikki-smiling-obsession-nikki-gif-10053150794191212310) |
 | `down.gif` | Counter downs a raider (outdoor night stalk) | [H6njy0GZN1iZOuJd5E](https://giphy.com/gifs/obsession-inde-navarrette-movie-H6njy0GZN1iZOuJd5E) |
 | `defeat.gif` | Boss defeated — "Why can't you love me?" | [Tenor](https://tenor.com/view/obsession-obsession-sad-obsession-sad-face-nikki-nikki-obsession-gif-6796048820694687605) |
 
