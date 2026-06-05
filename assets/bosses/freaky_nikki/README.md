@@ -4,7 +4,7 @@ Viral gifs from the 2026 horror film **Obsession** (Nikki / Inde Navarrette), so
 
 | File | Moment | GIPHY source |
 |------|--------|--------------|
-| `spawn.gif` | Boss spawn and retreat | [y2qz3bTcWrrI12rg1S](https://giphy.com/gifs/obsession-movie-y2qz3bTcWrrI12rg1S) |
+| `spawn.gif` | Boss spawn and retreat | [Tenor — Nikki Freeman](https://tenor.com/view/obsession-nikki-freeman-nikki-inde-navarrette-gif-11028533103312944848) |
 | `stare.gif` | Counter: obsessive-stares (booth, slow smile) | [QUfst21XDtKotSTVYg](https://giphy.com/gifs/obsession-movie-QUfst21XDtKotSTVYg) |
 | `whisper.gif` | Counter: unhinged-whispers | [jaDTS1QscMaTv0rTEg](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-jaDTS1QscMaTv0rTEg) |
 | `grab.gif` | Counter: restraining-grabs (physical struggle) | [AVRwJmfMxtiIh5A5OU](https://giphy.com/gifs/obsession-movie-AVRwJmfMxtiIh5A5OU) |
