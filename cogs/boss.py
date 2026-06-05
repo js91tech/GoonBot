@@ -436,7 +436,7 @@ class Boss(commands.Cog):
                 inline=False,
             )
         files: list[discord.File] = []
-        victory_name: str | None = None
+        portrait_name: str | None = None
         if killer_user_id is not None:
             avatar_id = await self.bot.db.get_equipped_avatar_id(killer_user_id, guild.id)
             defn = get_avatar(avatar_id)
@@ -454,18 +454,18 @@ class Boss(commands.Cog):
                 user_id=killer_user_id,
             )
             files.extend(avatar_files)
-            if victory_name:
-                embed.set_image(url=f"attachment://{victory_name}")
-            if portrait_name:
-                embed.set_thumbnail(url=f"attachment://{portrait_name}")
+            if variant != "freaky_nikki":
+                if victory_name:
+                    embed.set_image(url=f"attachment://{victory_name}")
+                if portrait_name:
+                    embed.set_thumbnail(url=f"attachment://{portrait_name}")
         if variant == "freaky_nikki":
             nikki_art = attach_boss_moment_art(embed, variant, "defeat")
             if nikki_art is not None:
                 files.append(nikki_art)
-                if victory_name:
-                    embed.set_thumbnail(url=f"attachment://{nikki_art.filename}")
-                else:
-                    embed.set_image(url=f"attachment://{nikki_art.filename}")
+                embed.set_image(url=f"attachment://{nikki_art.filename}")
+            if portrait_name:
+                embed.set_thumbnail(url=f"attachment://{portrait_name}")
         gate = getattr(self.bot, "outbound_gate", None)
         sent = await safe_channel_send(
             channel,

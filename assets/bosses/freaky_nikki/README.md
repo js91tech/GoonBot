@@ -9,9 +9,9 @@ Viral gifs from the 2026 horror film **Obsession** (Nikki / Inde Navarrette), so
 | `whisper.gif` | Counter: unhinged-whispers | [jaDTS1QscMaTv0rTEg](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-jaDTS1QscMaTv0rTEg) |
 | `grab.gif` | Counter: restraining-grabs | [DMRBUmocS7awycQ7lN](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-DMRBUmocS7awycQ7lN) |
 | `twist.gif` | Counter: psyche-twists | [RdRLJl1jsxie5N7qX1](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-RdRLJl1jsxie5N7qX1) |
-| `slap.gif` | Counter: freak-out-slaps | [Gef86gVIpkX7DjvK4C](https://giphy.com/gifs/obsession-movie-Gef86gVIpkX7DjvK4C) |
+| `slap.gif` | Counter: freak-out-slaps | [fJHbyksRyJQGZ8GiVF](https://giphy.com/gifs/obsession-movie-itsbronsn-bronsn-fJHbyksRyJQGZ8GiVF) |
 | `down.gif` | Counter downs a raider | [8ocU1TjUaBVawsmUyM](https://giphy.com/gifs/obsession-inde-navarrette-movie-8ocU1TjUaBVawsmUyM) |
-| `defeat.gif` | Boss defeated | [y2qz3bTcWrrI12rg1S](https://giphy.com/gifs/obsession-movie-y2qz3bTcWrrI12rg1S) |
+| `defeat.gif` | Boss defeated — "Why won't you love me?" | [Gef86gVIpkX7DjvK4C](https://giphy.com/gifs/obsession-movie-Gef86gVIpkX7DjvK4C) |
 
 Discord embeds accept **GIF** or **PNG**. Replace any file to swap moments.
 
