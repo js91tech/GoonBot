@@ -40,6 +40,8 @@ class DashboardSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshots[0]["id"], self.guild_id)
         html = self.server._dashboard_page(snapshots)
         self.assertIn("NuggetBot Control Room", html)
+        self.assertIn('value="freaky_nikki"', html)
+        self.assertIn("Freaky Nikki", html)
 
     async def test_hall_of_fame_includes_duel_wins(self) -> None:
         hall = await self.db.hall_of_fame_snapshot(self.guild_id, limit=3)

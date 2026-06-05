@@ -50,6 +50,23 @@ class BossAutoSpawnTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(boss["variant"]), "zz_wrath")
         self.assertGreater(float(boss["hp"]), 0)
 
+    async def test_freaky_nikki_spawn_partition(self) -> None:
+        with (
+            patch("cogs.boss.random.random", return_value=0.20),
+            patch(
+                "cogs.boss.resolve_bot_announcement_channel",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            await self.cog._try_auto_spawn_guild(self.guild)
+        boss = await self.db.get_active_boss(self.guild_id)
+        self.assertIsNotNone(boss)
+        assert boss is not None
+        self.assertEqual(str(boss["variant"]), "freaky_nikki")
+        self.assertEqual(str(boss["name"]), config.BOSS_NAME_FREAKY_NIKKI)
+        self.assertGreater(float(boss["hp"]), 0)
+
     async def test_spawn_scheduled_every_40_minutes(self) -> None:
         now = time.time()
         self.cog._schedule_next_auto_spawn(self.guild_id, now=now)

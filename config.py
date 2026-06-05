@@ -168,6 +168,7 @@ BOSS_THREAT_HP_BONUS_PER_TIER = 0.10
 BOSS_MYTHIC_DESPAWN_SECONDS = 10 * 60
 BOSS_ULTRA_DESPAWN_SECONDS = 10 * 60
 BOSS_ULTRA_SPAWN_CHANCE = 0.15
+BOSS_AUTO_SPAWN_FREAKY_NIKKI_CHANCE = 0.20
 BOSS_ATTACK_COOLDOWN_MIN_SECONDS = 2
 BOSS_ATTACK_COOLDOWN_MAX_SECONDS = 3
 # Legacy default when a row has no stored per-attack cooldown.
@@ -257,11 +258,43 @@ BOSS_VARIANTS = {
         "crit_chance": 0.22,
         "despawn_seconds": BOSS_ULTRA_DESPAWN_SECONDS,
     },
+    "freaky_nikki": {
+        "multiplier": 2.8,
+        "counter_chance": 0.18,
+        "threat": 4,
+        "counter_damage": (32, 58),
+        "crit_chance": 0.14,
+    },
 }
 
 BOSS_NAME_TOMASS = "TomAss"
+BOSS_NAME_FREAKY_NIKKI = "Freaky Nikki"
+FREAKY_NIKKI_SCRAP_RANGE = (2, 8)
+FREAKY_NIKKI_CONSUMABLE_POOL: tuple[str, ...] = (
+    "raid_potion",
+    "energy_drink",
+    "duel_scroll",
+    "hp_potion_small",
+    "hp_potion_medium",
+    "trap_bomb",
+)
+FREAKY_NIKKI_CONSUMABLE_CHANCE = 0.75
+FREAKY_NIKKI_CONSUMABLE_QTY_RANGE = (1, 2)
+# Optional hotlinked moment art (moment key -> URL). Local files in assets/bosses/freaky_nikki/ take precedence when unset.
+FREAKY_NIKKI_ART_URLS: dict[str, str] = {}
 BOSS_AUTO_SPAWN_TOMASS_CHANCE = 0.03
 HANNAH_SPAWN_VARIANTS: tuple[str, ...] = ("normal", "enraged", "shadow", "celestial", "mythic")
+# Dashboard summon dropdown — special bosses first, then Hannah tiers.
+BOSS_DASHBOARD_VARIANT_ORDER: tuple[str, ...] = (
+    "freaky_nikki",
+    "zz_wrath",
+    "tomass",
+    "mythic",
+    "celestial",
+    "shadow",
+    "enraged",
+    "normal",
+)
 
 BOSS_ELEMENTS: tuple[str, ...] = ("fire", "frost", "storm", "void", "verdant")
 BOSS_ELEMENT_STRONG_BONUS = 0.12

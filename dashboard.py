@@ -11,6 +11,7 @@ from aiohttp import web
 from discord.ext import commands
 
 import config
+from utils.boss_mechanics import dashboard_boss_variants
 from utils.helpers import fmt_amount
 
 
@@ -725,8 +726,8 @@ class DashboardServer:
           </form>
         """
         boss_variants = "".join(
-            f'<option value="{html.escape(v)}">{html.escape(v.title())}</option>'
-            for v in config.BOSS_VARIANTS
+            f'<option value="{html.escape(variant)}">{html.escape(label)}</option>'
+            for variant, label in dashboard_boss_variants()
         )
         boss_summon_form = f"""
           <form class="boss-summon-form" data-guild-id="{item['id']}">
