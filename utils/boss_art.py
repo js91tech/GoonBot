@@ -18,18 +18,18 @@ VARIANT_ART_FILES: dict[str, str] = {
     "mythic": "hannah_mythic.png",
     "tomass": "tomass.png",
     "zz_wrath": "zz_wrath.png",
-    "freaky_nikki": "freaky_nikki/spawn.png",
+    "freaky_nikki": "freaky_nikki/spawn.gif",
 }
 
 FREAKY_NIKKI_MOMENTS: dict[str, str] = {
-    "spawn": "spawn.png",
-    "obsessive_stare": "stare.png",
-    "whisper": "whisper.png",
-    "grab": "grab.png",
-    "psyche_twist": "twist.png",
-    "slap": "slap.png",
-    "down": "down.png",
-    "defeat": "defeat.png",
+    "spawn": "spawn.gif",
+    "obsessive_stare": "stare.gif",
+    "whisper": "whisper.gif",
+    "grab": "grab.gif",
+    "psyche_twist": "twist.gif",
+    "slap": "slap.gif",
+    "down": "down.gif",
+    "defeat": "defeat.gif",
 }
 
 MOVE_TO_MOMENT: dict[str, str] = {

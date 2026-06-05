@@ -31,7 +31,7 @@ class FreakyNikkiMomentTests(unittest.TestCase):
         art = attach_boss_moment_art(embed, "freaky_nikki", "spawn")
         self.assertIsNotNone(art)
         assert art is not None
-        self.assertTrue(art.filename.endswith(".png"))
+        self.assertTrue(art.filename.endswith(".gif"))
         self.assertIn("attachment://", embed.image.url or "")
 
     def test_attach_moment_art_graceful_for_missing_variant(self) -> None:
