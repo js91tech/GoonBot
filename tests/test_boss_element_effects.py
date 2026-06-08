@@ -33,13 +33,19 @@ class BossElementEffectUtilTests(unittest.TestCase):
             self.assertGreaterEqual(cd, lo)
             self.assertLessEqual(cd, hi)
 
+    def test_debuff_duration_never_exceeds_max(self) -> None:
+        for threat in range(1, 8):
+            for _ in range(50):
+                duration = roll_debuff_duration_for_threat(threat)
+                self.assertLessEqual(duration, config.BOSS_DEBUFF_MAX_SECONDS)
+
     def test_debuff_duration_scales_with_threat(self) -> None:
         lo, hi = debuff_duration_range_for_threat(1)
         self.assertEqual(lo, config.BOSS_DEBUFF_DURATION_BASE_SECONDS[0])
         self.assertEqual(hi, config.BOSS_DEBUFF_DURATION_BASE_SECONDS[1])
 
         tier6_lo, tier6_hi = debuff_duration_range_for_threat(6)
-        self.assertGreater(tier6_lo, lo)
+        self.assertGreaterEqual(tier6_lo, lo)
         self.assertGreater(tier6_hi, hi)
 
         for threat in (1, 3, 6):

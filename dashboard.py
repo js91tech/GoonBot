@@ -39,6 +39,10 @@ class DashboardServer:
                 web.get("/api/guild/{guild_id}/config", self.api_get_config),
                 web.post("/api/guild/{guild_id}/config", self.api_update_config),
                 web.post("/api/guild/{guild_id}/boss/summon", self.api_summon_boss),
+                web.post(
+                    "/api/guild/{guild_id}/attributes/reset-all",
+                    self.api_reset_guild_attributes,
+                ),
             ]
         )
         self._runner = web.AppRunner(app)
@@ -243,6 +247,35 @@ class DashboardServer:
                 "hp": hp,
             }
         )
+
+    async def api_reset_guild_attributes(self, request: web.Request) -> web.Response:
+        if not config.DASHBOARD_TOKEN:
+            return web.json_response({"error": "dashboard token is not configured"}, status=503)
+        if not self._authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        try:
+            guild_id = int(request.match_info["guild_id"])
+        except (KeyError, TypeError, ValueError):
+            return web.json_response({"error": "invalid guild id"}, status=400)
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return web.json_response({"error": "guild not found"}, status=404)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            return web.json_response({"error": "body must be a json object"}, status=400)
+        if not payload.get("confirm"):
+            return web.json_response(
+                {"error": "confirmation required — set confirm: true"},
+                status=400,
+            )
+
+        updated = await self.bot.db.reset_guild_character_attributes(guild_id)
+        return web.json_response({"ok": True, "characters_reset": updated})
 
     async def api_update_config(self, request: web.Request) -> web.Response:
         if not config.DASHBOARD_TOKEN:
@@ -607,6 +640,39 @@ class DashboardServer:
                 }}
               }});
             }});
+            document.querySelectorAll(".attributes-reset-form").forEach((form) => {{
+              form.addEventListener("submit", async (event) => {{
+                event.preventDefault();
+                const status = form.querySelector(".attributes-reset-status");
+                const guildId = form.dataset.guildId;
+                const confirmed = form.elements.confirm.checked;
+                if (!confirmed) {{
+                  status.textContent = "Check the confirmation box first.";
+                  status.className = "attributes-reset-status error";
+                  return;
+                }}
+                status.textContent = "Resetting...";
+                status.className = "attributes-reset-status";
+                try {{
+                  const response = await fetch(`/api/guild/${{guildId}}/attributes/reset-all`, {{
+                    method: "POST",
+                    headers: {{ "Content-Type": "application/json" }},
+                    body: JSON.stringify({{ confirm: true }}),
+                  }});
+                  const data = await response.json();
+                  if (!response.ok) {{
+                    status.textContent = data.error || "Reset failed";
+                    status.className = "attributes-reset-status error";
+                    return;
+                  }}
+                  status.textContent = `Reset ${{data.characters_reset}} character(s) to 0 in all stats.`;
+                  status.className = "attributes-reset-status ok";
+                }} catch (err) {{
+                  status.textContent = "Network error";
+                  status.className = "attributes-reset-status error";
+                }}
+              }});
+            }});
             document.querySelectorAll(".tuning-form").forEach((form) => {{
               form.addEventListener("submit", async (event) => {{
                 event.preventDefault();
@@ -739,6 +805,17 @@ class DashboardServer:
             <p class="boss-summon-status" aria-live="polite"></p>
           </form>
         """
+        attributes_reset_form = f"""
+          <form class="attributes-reset-form" data-guild-id="{item['id']}">
+            <p class="admin-warning">Sets <strong>every player&apos;s</strong> STR/DEX/AGI/DEF/VIT to <strong>0</strong> on this server.</p>
+            <label class="confirm-row">
+              <input type="checkbox" name="confirm" />
+              <span>I understand — reset all attribute stats</span>
+            </label>
+            <button type="submit" class="danger">Reset all attribute stats</button>
+            <p class="attributes-reset-status" aria-live="polite"></p>
+          </form>
+        """
         seasonal = item.get("seasonal_event")
         if seasonal is None:
             event_text = "None"
@@ -774,6 +851,8 @@ class DashboardServer:
           {duel_form}
           <h3>Boss spawn</h3>
           {boss_summon_form}
+          <h3>Attributes admin</h3>
+          {attributes_reset_form}
           <h3>Hall of fame</h3>
           <div class="hof-grid">
               <div><p class="hof-title">Richest</p><ol class="leaderboard">{hof_richest}</ol></div>
@@ -1099,13 +1178,17 @@ class DashboardServer:
               width: 100%;
               accent-color: var(--gold);
             }}
-            .economy-status, .duel-status, .boss-summon-status, .tuning-status {{
+            .economy-status, .duel-status, .boss-summon-status, .tuning-status, .attributes-reset-status {{
               margin: 0;
               font-size: 0.85rem;
               color: var(--muted);
             }}
-            .economy-status.ok, .duel-status.ok, .boss-summon-status.ok, .tuning-status.ok {{ color: #9dffb8; }}
-            .economy-status.error, .duel-status.error, .boss-summon-status.error, .tuning-status.error {{ color: #ff9a9a; }}
+            .economy-status.ok, .duel-status.ok, .boss-summon-status.ok, .tuning-status.ok, .attributes-reset-status.ok {{ color: #9dffb8; }}
+            .economy-status.error, .duel-status.error, .boss-summon-status.error, .tuning-status.error, .attributes-reset-status.error {{ color: #ff9a9a; }}
+            .admin-warning {{ color: #ffd89a; font-size: 0.9rem; margin: 0 0 0.5rem; }}
+            .confirm-row {{ display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; font-size: 0.9rem; }}
+            button.danger {{ background: #8b2e2e; border-color: #a33; }}
+            button.danger:hover {{ background: #a33; }}
             .hof-grid {{
               display: grid;
               grid-template-columns: repeat(2, 1fr);

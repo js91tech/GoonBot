@@ -31,12 +31,12 @@ def roll_debuff_attack_cooldown() -> float:
 
 
 def roll_debuff_duration_for_threat(threat: int) -> float:
-    """Stun/freeze/root duration: 10–15s base plus 1–2s per threat tier above 1."""
+    """Stun/freeze/root duration: short base, small tier bonus, hard-capped at 30s."""
     lo, hi = config.BOSS_DEBUFF_DURATION_BASE_SECONDS
     base = random.randint(lo, hi)
     tier_lo, tier_hi = config.BOSS_DEBUFF_DURATION_PER_TIER_SECONDS
     tier_bonus = max(0, threat - 1) * random.randint(tier_lo, tier_hi)
-    return float(base + tier_bonus)
+    return min(config.BOSS_DEBUFF_MAX_SECONDS, float(base + tier_bonus))
 
 
 def debuff_duration_range_for_threat(threat: int) -> tuple[int, int]:
@@ -45,13 +45,18 @@ def debuff_duration_range_for_threat(threat: int) -> tuple[int, int]:
     tier_lo, tier_hi = config.BOSS_DEBUFF_DURATION_PER_TIER_SECONDS
     tier_bonus_min = max(0, threat - 1) * tier_lo
     tier_bonus_max = max(0, threat - 1) * tier_hi
-    return base_lo + tier_bonus_min, base_hi + tier_bonus_max
+    cap = int(config.BOSS_DEBUFF_MAX_SECONDS)
+    return (
+        min(cap, base_lo + tier_bonus_min),
+        min(cap, base_hi + tier_bonus_max),
+    )
 
 
 def _element_hazards() -> dict[str, str]:
     lo, hi = config.BOSS_DEBUFF_DURATION_BASE_SECONDS
     tier_lo, tier_hi = config.BOSS_DEBUFF_DURATION_PER_TIER_SECONDS
-    tier_note = f", +{tier_lo}–{tier_hi}s per threat tier"
+    cap = int(config.BOSS_DEBUFF_MAX_SECONDS)
+    tier_note = f", +{tier_lo}–{tier_hi}s per threat tier (max **{cap}s**; AGI reduces further)"
     debuff_lo, debuff_hi = config.BOSS_DEBUFF_ATTACK_COOLDOWN_SECONDS
     return {
         "frost": (

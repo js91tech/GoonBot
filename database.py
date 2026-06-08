@@ -482,6 +482,8 @@ class Database:
         await self._migrate_boss_attack_pacing()
         await self._migrate_jail_bodyguards_house()
         await self._migrate_character_attributes()
+        await self._migrate_character_attributes_reset()
+        await self._migrate_character_attributes_v3_reset()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -518,6 +520,78 @@ class Database:
                         f"ALTER TABLE user_character ADD COLUMN {col} {typedef}",
                     )
         await self.conn.commit()
+
+    async def _migrate_character_attributes_reset(self) -> None:
+        """One-time reset: stats start at 0; caps derived from prestige."""
+        if await self.is_one_time_job_complete("character_attributes_v2_reset"):
+            return
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'user_character' AND column_name = 'stat_str'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.mark_one_time_job_complete("character_attributes_v2_reset")
+                return
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            if "stat_str" not in cols:
+                await self.mark_one_time_job_complete("character_attributes_v2_reset")
+                return
+        await self.conn.execute(
+            """
+            UPDATE user_character
+            SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+            """,
+        )
+        await self.conn.commit()
+        await self.mark_one_time_job_complete("character_attributes_v2_reset")
+
+    async def _migrate_character_attributes_v3_reset(self) -> None:
+        """One-time global reset: zero all stats so players re-allocate under correct rules."""
+        if await self.is_one_time_job_complete("character_attributes_v3_reset"):
+            return
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'user_character' AND column_name = 'stat_str'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.mark_one_time_job_complete("character_attributes_v3_reset")
+                return
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            if "stat_str" not in cols:
+                await self.mark_one_time_job_complete("character_attributes_v3_reset")
+                return
+        await self.conn.execute(
+            """
+            UPDATE user_character
+            SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+            """,
+        )
+        await self.conn.commit()
+        await self.mark_one_time_job_complete("character_attributes_v3_reset")
+
+    async def reset_all_character_attributes(self) -> int:
+        """Zero attribute stats for every character in every guild."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE user_character
+                SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+                """,
+            )
+            await self.conn.commit()
+            return int(cursor.rowcount or 0)
 
     async def _migrate_jail_bodyguards_house(self) -> None:
         await self.conn.execute(
@@ -5025,7 +5099,37 @@ class Database:
         from utils.character_attributes import CharacterAttributes
 
         row = await self.get_user_character(user_id, guild_id)
-        return CharacterAttributes.from_row(row)
+        progress = await self.get_user_progress(user_id, guild_id)
+        prestige_level = int(progress["prestige_level"])
+        return CharacterAttributes.from_row(row, prestige_level=prestige_level)
+
+    async def reset_guild_character_attributes(self, guild_id: int) -> int:
+        """Zero all attribute stats for every character in a guild."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE user_character
+                SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+                WHERE guild_id = ?
+                """,
+                (guild_id,),
+            )
+            await self.conn.commit()
+            return int(cursor.rowcount or 0)
+
+    async def reset_user_character_attributes(self, user_id: int, guild_id: int) -> bool:
+        """Zero one player's attribute stats."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE user_character
+                SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+            return int(cursor.rowcount or 0) > 0
 
     async def allocate_attribute_points(
         self,
@@ -5037,8 +5141,8 @@ class Database:
         from utils.character_attributes import (
             STAT_COLUMNS,
             CharacterAttributes,
-            attribute_point_cap,
             normalize_stat_name,
+            stat_cap_for_prestige,
             unspent_attribute_points,
         )
 
@@ -5070,26 +5174,29 @@ class Database:
             class_xp = int(row["class_xp"] or 0)
             available = unspent_attribute_points(attrs, class_xp, prestige_level)
             if points > available:
-                pool_cap = attribute_point_cap(prestige_level)
-                hint = (
-                    f"Prestige up to raise your pool cap (currently **{pool_cap}**)."
-                    if attrs.points_spent() >= pool_cap
-                    or available >= pool_cap
-                    else "Earn more class XP from duels and boss raids."
-                )
+                from utils.character_attributes import total_point_pool_cap
+
+                stat_cap = stat_cap_for_prestige(prestige_level)
+                pool_cap = total_point_pool_cap(prestige_level)
+                if attrs.total_points() >= pool_cap:
+                    hint = (
+                        f"Prestige up for more points (pool **{pool_cap}**, "
+                        f"**{stat_cap}**/stat)."
+                    )
+                else:
+                    hint = "Earn more class XP from duels and boss raids."
                 return (
                     False,
                     f"Only **{available}** unspent point{'s' if available != 1 else ''} — {hint}",
                 )
             col = STAT_COLUMNS[normalized]
             current = attrs.value(normalized)
-            import config
-
-            if current + points > config.ATTR_MAX_VALUE:
+            stat_cap = stat_cap_for_prestige(prestige_level)
+            if current + points > stat_cap:
                 return (
                     False,
-                    f"**{normalized.title()}** cannot exceed **{config.ATTR_MAX_VALUE}** "
-                    f"(currently **{current}**).",
+                    f"**{normalized.title()}** cannot exceed **{stat_cap}** at your prestige "
+                    f"(currently **{current}**). Prestige up for +1 cap per stat.",
                 )
             await self.conn.execute(
                 f"""

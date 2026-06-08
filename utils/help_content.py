@@ -24,7 +24,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "Character",
         "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar** (upload custom)\n"
         "**/use** — raid potion, energy drink, duel scroll, **Jail Key**, **Pick Key** · **/gift** — chia seeds\n"
-        "**/attributes** — STR/DEX/AGI/DEF/VIT (fast first 20 pts; +5 pool cap/prestige; 25/stat max)\n"
+        "**/attributes** — interactive stat panel (50 pt pool +5/prestige; 15 + prestige/stat cap)\n"
         "**/profile** · **/stats** · **/quests** · **/achievements** · **/fix** (unstable gear)",
     ),
     (
@@ -33,8 +33,8 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**Jail Key** (100k, guaranteed escape) · **Pick Key** (20k, 15% escape) while arrested.\n"
         "**/bodyguards** — hire up to 5 guards (3 tiers) to defend your bank from heists.\n"
         "House pot — gambling losses, scourge hits, and unclaimed drops fund random coin drops.\n"
-        "Scourge Virus — every **90** minutes; warning GIF, then 7 min of infections on the top 5.\n"
-        "Boss auto-spawn — every **40** minutes when none is active.\n"
+        "Scourge Virus — every **8** hours; warning GIF, then 7 min of infections on the top 5.\n"
+        "Boss auto-spawn — every **90** minutes when none is active.\n"
         "**/hall-of-fame** · **/event** (admins)",
     ),
 )
