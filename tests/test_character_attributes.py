@@ -115,6 +115,17 @@ class CharacterAttributeDatabaseTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(ok)
 
+    async def test_v3_migration_resets_all_stats(self) -> None:
+        await self.db.add_class_xp(self.user_id, self.guild_id, 500)
+        await self.db.allocate_attribute_points(self.user_id, self.guild_id, "strength", 5)
+        await self.db.conn.execute(
+            "DELETE FROM one_time_jobs WHERE job_id = 'character_attributes_v3_reset'",
+        )
+        await self.db.conn.commit()
+        await self.db._migrate_character_attributes_v3_reset()
+        attrs = await self.db.get_character_attributes(self.user_id, self.guild_id)
+        self.assertEqual(attrs.total_points(), 0)
+
     async def test_reset_guild_attributes(self) -> None:
         await self.db.add_class_xp(self.user_id, self.guild_id, 500)
         await self.db.allocate_attribute_points(self.user_id, self.guild_id, "agility", 3)

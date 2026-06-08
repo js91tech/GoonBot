@@ -202,7 +202,7 @@ def debuff_resistance_from_attributes(attrs: CharacterAttributes) -> DebuffResis
         config.ATTR_MAX_CC_PROC_RESIST,
         attrs.agility * config.ATTR_AGI_CC_PROC_RESIST_PCT,
     )
-    attack_cd_reduction = min(0.35, attrs.agility * config.ATTR_AGI_ATTACK_CD_PCT)
+    attack_cd_reduction = min(0.45, attrs.agility * config.ATTR_AGI_ATTACK_CD_PCT)
     dot_resist = min(
         config.ATTR_MAX_DOT_RESIST,
         attrs.defense * config.ATTR_DEF_DOT_RESIST_PCT,
@@ -211,7 +211,7 @@ def debuff_resistance_from_attributes(attrs: CharacterAttributes) -> DebuffResis
     return DebuffResistance(
         cc_duration_mult=max(0.25, 1.0 - cc_duration_reduction),
         cc_proc_mult=max(0.35, 1.0 - cc_proc_resist),
-        debuff_attack_cd_mult=max(0.65, 1.0 - attack_cd_reduction),
+        debuff_attack_cd_mult=max(0.55, 1.0 - attack_cd_reduction),
         dot_damage_mult=max(0.50, 1.0 - dot_resist),
         void_drain_mult=max(0.50, 1.0 - dot_resist),
     )

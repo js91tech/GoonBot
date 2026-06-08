@@ -67,7 +67,7 @@ class BossAutoSpawnTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(boss["name"]), config.BOSS_NAME_FREAKY_NIKKI)
         self.assertGreater(float(boss["hp"]), 0)
 
-    async def test_spawn_scheduled_every_40_minutes(self) -> None:
+    async def test_spawn_scheduled_every_90_minutes(self) -> None:
         now = time.time()
         self.cog._schedule_next_auto_spawn(self.guild_id, now=now)
         due = self.cog._auto_spawn_due_at[self.guild_id]

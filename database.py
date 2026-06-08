@@ -483,6 +483,7 @@ class Database:
         await self._migrate_jail_bodyguards_house()
         await self._migrate_character_attributes()
         await self._migrate_character_attributes_reset()
+        await self._migrate_character_attributes_v3_reset()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -549,6 +550,48 @@ class Database:
         )
         await self.conn.commit()
         await self.mark_one_time_job_complete("character_attributes_v2_reset")
+
+    async def _migrate_character_attributes_v3_reset(self) -> None:
+        """One-time global reset: zero all stats so players re-allocate under correct rules."""
+        if await self.is_one_time_job_complete("character_attributes_v3_reset"):
+            return
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'user_character' AND column_name = 'stat_str'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.mark_one_time_job_complete("character_attributes_v3_reset")
+                return
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_character)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            if "stat_str" not in cols:
+                await self.mark_one_time_job_complete("character_attributes_v3_reset")
+                return
+        await self.conn.execute(
+            """
+            UPDATE user_character
+            SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+            """,
+        )
+        await self.conn.commit()
+        await self.mark_one_time_job_complete("character_attributes_v3_reset")
+
+    async def reset_all_character_attributes(self) -> int:
+        """Zero attribute stats for every character in every guild."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE user_character
+                SET stat_str = 0, stat_dex = 0, stat_agi = 0, stat_def = 0, stat_vit = 0
+                """,
+            )
+            await self.conn.commit()
+            return int(cursor.rowcount or 0)
 
     async def _migrate_jail_bodyguards_house(self) -> None:
         await self.conn.execute(
