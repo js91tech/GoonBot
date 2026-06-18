@@ -3,7 +3,8 @@ from __future__ import annotations
 HELP_PAGES: tuple[tuple[str, str], ...] = (
     (
         "Economy",
-        "**/daily** · **/balance** · **/deposit** · **/withdraw** · **/pay** · **/leaderboard**\n"
+        "**/daily** · **/balance** · **/deposit** · **/withdraw** · **/expand-bank** · **/pay** · **/leaderboard**\n"
+        "Bank cap **100k** base — buy vault expansions (**10k** each, **+10k** cap). Prestige **1–9** resets pocket only; **prestige 10** also wipes bank + expansions.\n"
         "**/jobs** · **/work** · **/energy** · **/upgrade-energy**\n"
         "Bot Discord accounts can use slash commands and be targeted in PvP (duels, heists, bounties, etc.). Passive chat/VC farming stays human-only to prevent spam.",
     ),

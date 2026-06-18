@@ -253,16 +253,20 @@ class Economy(commands.Cog):
         bank = await self.bot.db.get_bank(target.id, interaction.guild_id)
 
         if target.id == interaction.user.id:
-            from utils.wallet_ui import WalletView, build_wallet_embed
+            from utils.wallet_ui import WalletView, build_wallet_embed_for_user
 
             view = WalletView(self, interaction.guild_id, target.id)
-            embed = build_wallet_embed(target, wallet=wallet, bank=bank)
+            embed = await build_wallet_embed_for_user(
+                self, target, interaction.guild_id, target.id,
+            )
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
 
-        from utils.wallet_ui import build_wallet_embed
+        from utils.wallet_ui import build_wallet_embed_for_user
 
-        embed = build_wallet_embed(target, wallet=wallet, bank=bank)
+        embed = await build_wallet_embed_for_user(
+            self, target, interaction.guild_id, target.id,
+        )
         await interaction.response.send_message(
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
@@ -282,6 +286,23 @@ class Economy(commands.Cog):
         if not valid_amount(amount):
             await interaction.response.send_message("Enter a positive amount.", ephemeral=True)
             return
+        wallet = await self.bot.db.get_balance(interaction.user.id, interaction.guild_id)
+        if wallet < amount:
+            await interaction.response.send_message(
+                "You do not have enough nuggets in your pocket.", ephemeral=True
+            )
+            return
+        room = await self.bot.db.get_bank_deposit_room(
+            interaction.user.id, interaction.guild_id,
+        )
+        if room <= 0:
+            await interaction.response.send_message(
+                f"Your bank is full (**{fmt_amount(await self.bot.db.get_bank_capacity(interaction.user.id, interaction.guild_id))}** cap). "
+                f"Run **/expand-bank** ({fmt_amount(config.BANK_EXPANSION_TOKEN_COST)} per "
+                f"+{fmt_amount(config.BANK_EXPANSION_CAPACITY_PER_TOKEN)}).",
+                ephemeral=True,
+            )
+            return
         ok = await self.bot.db.deposit_to_bank(
             interaction.user.id,
             interaction.guild_id,
@@ -289,11 +310,41 @@ class Economy(commands.Cog):
         )
         if not ok:
             await interaction.response.send_message(
-                "You do not have enough nuggets in your pocket.", ephemeral=True
+                "Could not deposit — check pocket balance and bank capacity.", ephemeral=True
             )
             return
+        bank = await self.bot.db.get_bank(interaction.user.id, interaction.guild_id)
+        capacity = await self.bot.db.get_bank_capacity(interaction.user.id, interaction.guild_id)
         await interaction.response.send_message(
-            f"Deposited **{fmt_amount(amount)}** into your bank.",
+            f"Deposited into your bank. Balance **{fmt_amount(bank)}** / **{fmt_amount(capacity)}**.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(
+        name="expand-bank",
+        description="Buy a vault expansion (+bank capacity) from your pocket.",
+    )
+    @app_commands.guild_only()
+    async def expand_bank(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        ok, reason = await self.bot.db.expand_bank_capacity(
+            interaction.user.id, interaction.guild_id,
+        )
+        if not ok:
+            if reason == "insufficient_wallet":
+                await interaction.response.send_message(
+                    f"You need **{fmt_amount(config.BANK_EXPANSION_TOKEN_COST)}** in your pocket.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message("Could not expand vault.", ephemeral=True)
+            return
+        capacity = await self.bot.db.get_bank_capacity(interaction.user.id, interaction.guild_id)
+        expansions = await self.bot.db.get_bank_expansions(interaction.user.id, interaction.guild_id)
+        await interaction.response.send_message(
+            f"Vault expanded! **{expansions}** token(s) · capacity **{fmt_amount(capacity)}**.",
             ephemeral=True,
         )
 

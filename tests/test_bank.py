@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import config
 from database import Database
 
 
@@ -45,6 +46,62 @@ class BankTests(unittest.IsolatedAsyncioTestCase):
         rows = await self.db.leaderboard(100, limit=5)
         self.assertEqual(int(rows[0]["user_id"]), 2)
         self.assertEqual(float(rows[0]["net"]), 200.0)
+
+    async def test_default_bank_capacity_is_100k(self) -> None:
+        uid, gid = 3, 100
+        self.assertEqual(await self.db.get_bank_capacity(uid, gid), config.BANK_BASE_CAPACITY)
+
+    async def test_deposit_blocked_at_capacity(self) -> None:
+        uid, gid = 4, 100
+        await self.db.credit_wallet(uid, gid, 150_000.0)
+        self.assertTrue(await self.db.deposit_to_bank(uid, gid, 100_000.0))
+        self.assertFalse(await self.db.deposit_to_bank(uid, gid, 1.0))
+        self.assertEqual(await self.db.get_bank(uid, gid), 100_000.0)
+
+    async def test_deposit_all_respects_capacity(self) -> None:
+        uid, gid = 5, 100
+        await self.db.credit_wallet(uid, gid, 250_000.0)
+        moved = await self.db.deposit_all_to_bank(uid, gid)
+        self.assertEqual(moved, 100_000.0)
+        self.assertEqual(await self.db.get_bank(uid, gid), 100_000.0)
+        self.assertEqual(await self.db.get_balance(uid, gid), 150_000.0)
+
+    async def test_expand_bank_increases_capacity(self) -> None:
+        uid, gid = 6, 100
+        await self.db.credit_wallet(uid, gid, 20_000.0)
+        ok, reason = await self.db.expand_bank_capacity(uid, gid)
+        self.assertTrue(ok)
+        self.assertEqual(reason, "ok")
+        expected = config.BANK_BASE_CAPACITY + config.BANK_EXPANSION_CAPACITY_PER_TOKEN
+        self.assertEqual(await self.db.get_bank_capacity(uid, gid), expected)
+        self.assertEqual(await self.db.get_bank_expansions(uid, gid), 1)
+
+    async def test_prestige_below_max_keeps_bank(self) -> None:
+        uid, gid = 7, 100
+        await self.db.credit_wallet(uid, gid, 200_000.0)
+        await self.db.deposit_to_bank(uid, gid, 50_000.0)
+        await self.db.expand_bank_capacity(uid, gid)
+        for _ in range(9):
+            await self.db.credit_wallet(uid, gid, config.PRESTIGE_MIN_WALLET)
+            level = await self.db.prestige_user(uid, gid)
+        self.assertEqual(level, 9)
+        self.assertEqual(await self.db.get_bank(uid, gid), 50_000.0)
+        self.assertEqual(await self.db.get_bank_expansions(uid, gid), 1)
+
+    async def test_prestige_10_resets_bank_and_expansions(self) -> None:
+        uid, gid = 8, 100
+        await self.db.credit_wallet(uid, gid, 200_000.0)
+        await self.db.deposit_to_bank(uid, gid, 80_000.0)
+        await self.db.expand_bank_capacity(uid, gid)
+        for _ in range(9):
+            await self.db.credit_wallet(uid, gid, config.PRESTIGE_MIN_WALLET)
+            await self.db.prestige_user(uid, gid)
+        await self.db.credit_wallet(uid, gid, config.PRESTIGE_MIN_WALLET)
+        level = await self.db.prestige_user(uid, gid)
+        self.assertEqual(level, 10)
+        self.assertEqual(await self.db.get_balance(uid, gid), 0.0)
+        self.assertEqual(await self.db.get_bank(uid, gid), 0.0)
+        self.assertEqual(await self.db.get_bank_expansions(uid, gid), 0)
 
 
 if __name__ == "__main__":

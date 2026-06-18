@@ -80,6 +80,11 @@ BANK_HEIST_TIERS: dict[int, dict[str, float]] = {
 }
 GEAR_FIX_COST_FRACTION = 0.80
 
+# Personal bank vault — base cap; buy expansions for +capacity each.
+BANK_BASE_CAPACITY = 100_000.0
+BANK_EXPANSION_CAPACITY_PER_TOKEN = 10_000.0
+BANK_EXPANSION_TOKEN_COST = 10_000.0
+
 # Personal bank bodyguards (defend against /bank-heist).
 BODYGUARD_MAX_TOTAL = 5
 BODYGUARD_TIERS: dict[int, dict[str, float | str]] = {

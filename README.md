@@ -55,13 +55,16 @@ python bot.py
 | Command | Description |
 |---------|-------------|
 | `/daily` | Claim 75 nuggets daily |
-| `/balance` | Pocket + bank panel with deposit/withdraw buttons |
-| `/deposit amount` | Move nuggets pocket → bank (safer than pocket, but `/bank-heist` targets bank) |
+| `/balance` | Pocket + bank panel with deposit/withdraw/expand buttons |
+| `/deposit amount` | Move nuggets pocket → bank (100k base cap; `/bank-heist` targets bank) |
 | `/withdraw amount` | Move nuggets bank → pocket |
+| `/expand-bank` | Buy a vault expansion token (**10k** from pocket, **+10k** bank capacity) |
 | `/leaderboard` | Top 10 by net worth (pocket + bank) |
 | `/pay @user amount` | Send nuggets from your pocket to another user |
 
 **House pot** — gambling losses/taxes, scourge bank hits, and expired coin drops feed a guild pool that funds random **Claim** drops in the main channel (no minting when the pot is empty).
+
+**Bank vault** — personal bank holds up to **100k** nuggets by default. Each **/expand-bank** purchase costs **10k** from your pocket and adds **+10k** capacity. Prestiges **1–9** reset your pocket only; reaching **prestige 10** also resets your bank balance and vault expansions.
 
 ### Bounty
 

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+import config
 from utils.helpers import fmt_amount
 
 if TYPE_CHECKING:
@@ -15,6 +16,8 @@ def build_wallet_embed(
     *,
     wallet: float,
     bank: float,
+    bank_capacity: float | None = None,
+    bank_expansions: int | None = None,
 ) -> discord.Embed:
     net = wallet + bank
     embed = discord.Embed(
@@ -23,10 +26,44 @@ def build_wallet_embed(
     )
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.add_field(name="Pocket", value=fmt_amount(wallet), inline=True)
-    embed.add_field(name="Bank", value=fmt_amount(bank), inline=True)
+    if bank_capacity is not None:
+        bank_label = f"{fmt_amount(bank)} / {fmt_amount(bank_capacity)}"
+    else:
+        bank_label = fmt_amount(bank)
+    embed.add_field(name="Bank", value=bank_label, inline=True)
     embed.add_field(name="Net worth", value=fmt_amount(net), inline=True)
-    embed.set_footer(text="Bank can be hit by /bank-heist · Hire bodyguards to defend your vault")
+    if bank_expansions is not None:
+        embed.add_field(
+            name="Vault expansions",
+            value=f"**{bank_expansions}** token(s)",
+            inline=True,
+        )
+    footer = (
+        f"Base bank cap {fmt_amount(config.BANK_BASE_CAPACITY)} · "
+        f"Expand +{fmt_amount(config.BANK_EXPANSION_CAPACITY_PER_TOKEN)} for "
+        f"{fmt_amount(config.BANK_EXPANSION_TOKEN_COST)} · /bank-heist targets bank"
+    )
+    embed.set_footer(text=footer)
     return embed
+
+
+async def build_wallet_embed_for_user(
+    cog: commands.Cog,
+    member: discord.Member,
+    guild_id: int,
+    user_id: int,
+) -> discord.Embed:
+    wallet = await cog.bot.db.get_balance(user_id, guild_id)
+    bank = await cog.bot.db.get_bank(user_id, guild_id)
+    capacity = await cog.bot.db.get_bank_capacity(user_id, guild_id)
+    expansions = await cog.bot.db.get_bank_expansions(user_id, guild_id)
+    return build_wallet_embed(
+        member,
+        wallet=wallet,
+        bank=bank,
+        bank_capacity=capacity,
+        bank_expansions=expansions,
+    )
 
 
 class DepositModal(discord.ui.Modal, title="Deposit to bank"):
@@ -54,17 +91,30 @@ class DepositModal(discord.ui.Modal, title="Deposit to bank"):
         if not valid_amount(value):
             await interaction.response.send_message("Enter a positive amount.", ephemeral=True)
             return
+        wallet = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
+        room = await self.cog.bot.db.get_bank_deposit_room(self.user_id, self.guild_id)
+        if wallet < value:
+            await interaction.response.send_message(
+                "You do not have enough nuggets in your pocket.", ephemeral=True
+            )
+            return
+        if room <= 0:
+            await interaction.response.send_message(
+                f"Your bank is full. Buy a vault expansion with **/expand-bank** "
+                f"({fmt_amount(config.BANK_EXPANSION_TOKEN_COST)} each).",
+                ephemeral=True,
+            )
+            return
         ok = await self.cog.bot.db.deposit_to_bank(self.user_id, self.guild_id, value)
         if not ok:
             await interaction.response.send_message(
-                "You do not have enough nuggets in your pocket.", ephemeral=True
+                "Could not deposit — check pocket balance and bank capacity.",
+                ephemeral=True,
             )
             return
         await self._refresh(interaction)
 
     async def _refresh(self, interaction: discord.Interaction) -> None:
-        wallet = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
-        bank = await self.cog.bot.db.get_bank(self.user_id, self.guild_id)
         member = interaction.user
         if not isinstance(member, discord.Member):
             member = interaction.guild.get_member(self.user_id) if interaction.guild else None
@@ -72,7 +122,7 @@ class DepositModal(discord.ui.Modal, title="Deposit to bank"):
             await interaction.response.send_message("Deposit complete.", ephemeral=True)
             return
         view = WalletView(self.cog, self.guild_id, self.user_id)
-        embed = build_wallet_embed(member, wallet=wallet, bank=bank)
+        embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
 
@@ -107,14 +157,12 @@ class WithdrawModal(discord.ui.Modal, title="Withdraw from bank"):
                 "You do not have enough nuggets in your bank.", ephemeral=True
             )
             return
-        wallet = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
-        bank = await self.cog.bot.db.get_bank(self.user_id, self.guild_id)
         member = interaction.user
         if not isinstance(member, discord.Member):
             await interaction.response.send_message("Withdrawal complete.", ephemeral=True)
             return
         view = WalletView(self.cog, self.guild_id, self.user_id)
-        embed = build_wallet_embed(member, wallet=wallet, bank=bank)
+        embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
 
@@ -150,15 +198,30 @@ class WalletView(discord.ui.View):
     @discord.ui.button(label="Dep all", style=discord.ButtonStyle.secondary)
     async def deposit_all(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
+        wallet_before = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
         moved = await self.cog.bot.db.deposit_all_to_bank(self.user_id, self.guild_id)
         if moved <= 0:
-            await interaction.response.send_message("Nothing in your pocket to deposit.", ephemeral=True)
+            if wallet_before <= 0:
+                await interaction.response.send_message(
+                    "Nothing in your pocket to deposit.", ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    f"Bank is full. Use **/expand-bank** "
+                    f"({fmt_amount(config.BANK_EXPANSION_TOKEN_COST)} per "
+                    f"+{fmt_amount(config.BANK_EXPANSION_CAPACITY_PER_TOKEN)} cap).",
+                    ephemeral=True,
+                )
             return
-        wallet = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
-        bank = await self.cog.bot.db.get_bank(self.user_id, self.guild_id)
         member = interaction.user
         assert isinstance(member, discord.Member)
-        embed = build_wallet_embed(member, wallet=wallet, bank=bank)
+        embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
+        wallet_after = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
+        if wallet_after > 0:
+            embed.description = (
+                f"Deposited **{fmt_amount(moved)}** — "
+                f"**{fmt_amount(wallet_after)}** left in pocket (bank full)."
+            )
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="With all", style=discord.ButtonStyle.secondary)
@@ -168,11 +231,31 @@ class WalletView(discord.ui.View):
         if moved <= 0:
             await interaction.response.send_message("Your bank is empty.", ephemeral=True)
             return
-        wallet = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
-        bank = await self.cog.bot.db.get_bank(self.user_id, self.guild_id)
         member = interaction.user
         assert isinstance(member, discord.Member)
-        embed = build_wallet_embed(member, wallet=wallet, bank=bank)
+        embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Expand vault", style=discord.ButtonStyle.success, row=1)
+    async def expand_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        ok, reason = await self.cog.bot.db.expand_bank_capacity(self.user_id, self.guild_id)
+        if not ok:
+            if reason == "insufficient_wallet":
+                await interaction.response.send_message(
+                    f"You need **{fmt_amount(config.BANK_EXPANSION_TOKEN_COST)}** in your pocket.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message("Could not expand vault.", ephemeral=True)
+            return
+        member = interaction.user
+        assert isinstance(member, discord.Member)
+        capacity = await self.cog.bot.db.get_bank_capacity(self.user_id, self.guild_id)
+        embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
+        embed.description = (
+            f"Vault expanded! New capacity: **{fmt_amount(capacity)}**."
+        )
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="Bodyguards", style=discord.ButtonStyle.secondary, row=1)
