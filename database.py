@@ -474,6 +474,7 @@ class Database:
         await self._migrate_territories()
         await self._migrate_territory_integration()
         await self._migrate_personal_bank()
+        await self._migrate_bank_capacity()
         await self._migrate_bank_heist()
         await self._migrate_dungeon_tiers()
         await self._migrate_scourge_virus()
@@ -907,6 +908,28 @@ class Database:
             if "bank" not in existing:
                 await self.conn.execute(
                     "ALTER TABLE users ADD COLUMN bank REAL NOT NULL DEFAULT 0 CHECK (bank >= 0)",
+                )
+        await self.conn.commit()
+
+    async def _migrate_bank_capacity(self) -> None:
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'users' AND column_name = 'bank_expansions'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.conn.execute(
+                    "ALTER TABLE users ADD COLUMN bank_expansions INTEGER NOT NULL DEFAULT 0 CHECK (bank_expansions >= 0)",
+                )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(users)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            if "bank_expansions" not in existing:
+                await self.conn.execute(
+                    "ALTER TABLE users ADD COLUMN bank_expansions INTEGER NOT NULL DEFAULT 0 CHECK (bank_expansions >= 0)",
                 )
         await self.conn.commit()
 
@@ -2268,6 +2291,52 @@ class Database:
         row = await self.get_user(user_id, guild_id)
         return float(row["bank"])
 
+    async def get_bank_expansions(self, user_id: int, guild_id: int) -> int:
+        row = await self.get_user(user_id, guild_id)
+        try:
+            return max(0, int(row["bank_expansions"]))
+        except (KeyError, TypeError, ValueError):
+            return 0
+
+    async def get_bank_capacity(self, user_id: int, guild_id: int) -> float:
+        from utils.bank_capacity import bank_capacity
+
+        expansions = await self.get_bank_expansions(user_id, guild_id)
+        return bank_capacity(expansions)
+
+    async def get_bank_deposit_room(self, user_id: int, guild_id: int) -> float:
+        from utils.bank_capacity import bank_deposit_room
+
+        bank = await self.get_bank(user_id, guild_id)
+        expansions = await self.get_bank_expansions(user_id, guild_id)
+        return bank_deposit_room(bank, expansions)
+
+    async def expand_bank_capacity(self, user_id: int, guild_id: int) -> tuple[bool, str]:
+        """Buy one bank expansion token (+capacity) for the configured nugget cost."""
+        import config
+
+        cost = float(config.BANK_EXPANSION_TOKEN_COST)
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            if row is None or float(row["wallet"]) < cost:
+                await self.conn.commit()
+                return False, "insufficient_wallet"
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET wallet = wallet - ?, bank_expansions = bank_expansions + 1
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (cost, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return True, "ok"
+
     async def get_net_worth(self, user_id: int, guild_id: int) -> float:
         row = await self.get_user(user_id, guild_id)
         return float(row["wallet"]) + float(row["bank"])
@@ -2278,11 +2347,26 @@ class Database:
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
             cursor = await self.conn.execute(
-                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                "SELECT wallet, bank, bank_expansions FROM users WHERE user_id = ? AND guild_id = ?",
                 (user_id, guild_id),
             )
             row = await cursor.fetchone()
-            if row is None or float(row["wallet"]) < amount:
+            if row is None:
+                await self.conn.commit()
+                return False
+            wallet = float(row["wallet"])
+            if wallet <= 0:
+                await self.conn.commit()
+                return False
+            from utils.bank_capacity import bank_deposit_room
+
+            expansions = max(0, int(row["bank_expansions"] or 0))
+            room = bank_deposit_room(float(row["bank"]), expansions)
+            if room <= 0:
+                await self.conn.commit()
+                return False
+            actual = min(amount, wallet, room)
+            if actual <= 0:
                 await self.conn.commit()
                 return False
             await self.conn.execute(
@@ -2291,7 +2375,7 @@ class Database:
                 SET wallet = wallet - ?, bank = bank + ?
                 WHERE user_id = ? AND guild_id = ?
                 """,
-                (amount, amount, user_id, guild_id),
+                (actual, actual, user_id, guild_id),
             )
             await self.conn.commit()
             return True
@@ -2324,21 +2408,33 @@ class Database:
         async with self._write_lock:
             await self._ensure_user_no_lock(user_id, guild_id)
             cursor = await self.conn.execute(
-                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                """
+                SELECT wallet, bank, bank_expansions FROM users
+                WHERE user_id = ? AND guild_id = ?
+                """,
                 (user_id, guild_id),
             )
             row = await cursor.fetchone()
-            amount = float(row["wallet"]) if row is not None else 0.0
+            wallet = float(row["wallet"]) if row is not None else 0.0
+            if wallet <= 0:
+                await self.conn.commit()
+                return 0.0
+            from utils.bank_capacity import bank_deposit_room
+
+            expansions = max(0, int(row["bank_expansions"] or 0)) if row is not None else 0
+            bank = float(row["bank"]) if row is not None else 0.0
+            room = bank_deposit_room(bank, expansions)
+            amount = min(wallet, room)
             if amount <= 0:
                 await self.conn.commit()
                 return 0.0
             await self.conn.execute(
                 """
                 UPDATE users
-                SET wallet = 0, bank = bank + ?
+                SET wallet = wallet - ?, bank = bank + ?
                 WHERE user_id = ? AND guild_id = ?
                 """,
-                (amount, user_id, guild_id),
+                (amount, amount, user_id, guild_id),
             )
             await self.conn.commit()
             return amount
@@ -2436,6 +2532,7 @@ class Database:
                 UPDATE users
                 SET wallet = 0,
                     bank = 0,
+                    bank_expansions = 0,
                     last_daily = 0,
                     last_heist = 0,
                     last_active_ts = 0,
@@ -5408,14 +5505,26 @@ class Database:
                 """,
                 (new_level, user_id, guild_id),
             )
-            await self.conn.execute(
-                """
-                UPDATE users
-                SET wallet = 0, bank = 0
-                WHERE user_id = ? AND guild_id = ?
-                """,
-                (user_id, guild_id),
-            )
+            import config
+
+            if new_level >= config.PRESTIGE_MAX_LEVEL:
+                await self.conn.execute(
+                    """
+                    UPDATE users
+                    SET wallet = 0, bank = 0, bank_expansions = 0
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (user_id, guild_id),
+                )
+            else:
+                await self.conn.execute(
+                    """
+                    UPDATE users
+                    SET wallet = 0
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (user_id, guild_id),
+                )
             await self.conn.commit()
             return new_level
 

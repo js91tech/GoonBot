@@ -119,22 +119,33 @@ class Progression(commands.Cog):
             next_level = level + 1
             crit_bonus = int(next_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL * 100)
             income_bonus = int(next_level * config.PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)
+            reset_lines = [f"Your wallet ({fmt_amount(wallet)}) will reset to **0**."]
+            if next_level >= config.PRESTIGE_MAX_LEVEL:
+                reset_lines.append(
+                    "At **prestige 10**, your **bank** and **vault expansions** reset too."
+                )
+            else:
+                reset_lines.append("Your bank balance is kept (up to your vault capacity).")
             await interaction.response.send_message(
                 f"Prestige to level **{next_level}**?\n"
-                f"Your wallet ({fmt_amount(wallet)}) will reset to **0**.\n"
-                f"Bonuses stack: **+{crit_bonus}%** crit, **+{income_bonus}%** income.\n"
+                + "\n".join(reset_lines)
+                + f"\nBonuses stack: **+{crit_bonus}%** crit, **+{income_bonus}%** income.\n"
                 f"Run `/prestige confirm:true` when ready.",
                 ephemeral=True,
             )
             return
 
         new_level = await self.bot.db.prestige_user(interaction.user.id, interaction.guild_id)
+        bank_note = ""
+        if new_level >= config.PRESTIGE_MAX_LEVEL:
+            bank_note = "\nBank and vault expansions were reset."
         embed = discord.Embed(
             title="Prestige complete",
             description=(
                 f"You are now prestige **{new_level}**.\n"
                 f"+{int(new_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL * 100)}% crit · "
                 f"+{int(new_level * config.PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)}% income"
+                f"{bank_note}"
             ),
             color=discord.Color.gold(),
         )
