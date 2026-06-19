@@ -26,7 +26,8 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar** (upload custom)\n"
         "**/use** — raid potion, energy drink, duel scroll, **Jail Key**, **Pick Key** · **/gift** — chia seeds\n"
         "**/attributes** — interactive stat panel (50 pt pool +5/prestige; 15 + prestige/stat cap)\n"
-        "**/profile** · **/stats** · **/quests** · **/achievements** · **/fix** (unstable gear)",
+        "**/profile** · **/stats** · **/quests** · **/achievements** · **/fix** (unstable gear)\n"
+        "**/guide** — full interactive systems + item catalog (dropdown UI)",
     ),
     (
         "Chaos modules",

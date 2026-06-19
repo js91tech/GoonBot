@@ -1,0 +1,374 @@
+"""NuggetBot game guide — sections and item catalogs for /guide UI."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import config
+from items import (
+    ARMOR,
+    CONSUMABLES,
+    GUNS,
+    WEAPONS,
+    ShopItem,
+    armor_mitigation_percent,
+)
+from utils.alchemy import RECIPES
+from utils.aspects import ASPECT_DEFINITIONS
+from utils.helpers import clip_embed_field, fmt_amount
+
+MAX_PAGE_CHARS = 3600
+
+
+@dataclass(frozen=True)
+class GuidePage:
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
+class GuideSection:
+    section_id: str
+    label: str
+    emoji: str
+    description: str
+    pages: tuple[GuidePage, ...]
+
+
+def _chunk_lines(lines: list[str], *, max_chars: int = MAX_PAGE_CHARS) -> list[str]:
+    if not lines:
+        return [""]
+    pages: list[str] = []
+    current: list[str] = []
+    length = 0
+    for line in lines:
+        line_len = len(line) + 1
+        if current and length + line_len > max_chars:
+            pages.append("\n".join(current))
+            current = [line]
+            length = line_len
+        else:
+            current.append(line)
+            length += line_len
+    if current:
+        pages.append("\n".join(current))
+    return pages
+
+
+def _format_weapon_line(item: ShopItem) -> str:
+    crit = f" · {int(item.crit_chance * 100)}% crit" if item.crit_chance else ""
+    return f"**{item.name}** — {fmt_amount(item.price)} · {item.power} dmg{crit}"
+
+
+def _format_armor_line(item: ShopItem) -> str:
+    mit = armor_mitigation_percent(item.power)
+    return (
+        f"**{item.name}** — {fmt_amount(item.price)} · "
+        f"{mit}% mit · +{item.hp_bonus} HP"
+    )
+
+
+def _format_consumable_line(item: ShopItem) -> str:
+    price = "drop/craft" if item.price <= 0 else fmt_amount(item.price)
+    return f"**{item.name}** — {price} — {item.description}"
+
+
+def _item_catalog_pages(
+    title: str,
+    items: tuple[ShopItem, ...],
+    *,
+    formatter,
+) -> tuple[GuidePage, ...]:
+    listed = [item for item in items if item.shop_listed]
+    lines = [formatter(item) for item in listed]
+    bodies = _chunk_lines(lines)
+    if not bodies:
+        bodies = ["No shop items in this category."]
+    return tuple(
+        GuidePage(
+            title=title if len(bodies) == 1 else f"{title} ({index + 1}/{len(bodies)})",
+            body=body,
+        )
+        for index, body in enumerate(bodies)
+    )
+
+
+def _static_pages(section_title: str, paragraphs: list[str]) -> tuple[GuidePage, ...]:
+    bodies = _chunk_lines(paragraphs)
+    return tuple(
+        GuidePage(
+            title=section_title if len(bodies) == 1 else f"{section_title} ({i + 1}/{len(bodies)})",
+            body=body,
+        )
+        for i, body in enumerate(bodies)
+    )
+
+
+def _build_sections() -> tuple[GuideSection, ...]:
+    aspect_lines = [
+        f"**{aspect.name}** — {aspect.description}"
+        for aspect in ASPECT_DEFINITIONS
+    ]
+    alchemy_lines = [
+        f"**{recipe.name}** — {recipe.scrap_cost} scrap + {fmt_amount(recipe.nugget_cost)} — {recipe.description}"
+        for recipe in RECIPES
+    ]
+
+    return (
+        GuideSection(
+            section_id="overview",
+            label="Overview",
+            emoji="📖",
+            description="Quick start and core loops",
+            pages=_static_pages(
+                "Getting started",
+                [
+                    "**NuggetBot** is a Discord economy RPG. Earn **nuggets**, gear up, raid bosses, "
+                    "fight duels, run heists, and climb prestige.",
+                    "**First hour**\n"
+                    "1. `/daily` — free nuggets\n"
+                    "2. `/shop` — buy a weapon and armor\n"
+                    "3. `/equip` — wear your gear\n"
+                    "4. `/class-choose` — pick Vanguard, Mogul, or Shade\n"
+                    "5. `/boss` or `/attack` — join the raid\n"
+                    "6. `/balance` — pocket vs bank vault",
+                    "**Core loops**\n"
+                    "· **Economy** — chat, VC, jobs, daily, pay friends\n"
+                    "· **Raid** — boss panels, heals, loot, dungeons\n"
+                    "· **PvP** — duels, heists, territories, crews\n"
+                    "· **Build** — craft, aspects, attributes, prestige\n"
+                    "Use the dropdown below to browse every system and item catalog.",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="economy",
+            label="Economy",
+            emoji="💰",
+            description="Wallet, bank, jobs, and income",
+            pages=_static_pages(
+                "Economy",
+                [
+                    "**Pocket vs bank**\n"
+                    "· **Pocket** — spent at `/shop`, visible to wallet heists\n"
+                    f"· **Bank** — safer storage; `/bank-heist` targets bank only\n"
+                    f"· Base bank cap **{fmt_amount(config.BANK_BASE_CAPACITY)}** — "
+                    f"`/expand-bank` adds **{fmt_amount(config.BANK_EXPANSION_CAPACITY_PER_TOKEN)}** "
+                    f"for **{fmt_amount(config.BANK_EXPANSION_TOKEN_COST)}** each",
+                    "**Commands**\n"
+                    "`/daily` · `/balance` · `/deposit` · `/withdraw` · `/expand-bank` · "
+                    "`/pay` · `/leaderboard` · `/hall-of-fame`\n"
+                    "`/jobs` · `/work` · `/energy` · `/upgrade-energy`",
+                    "**Income sources**\n"
+                    "· Passive chat messages and voice chat minutes\n"
+                    "· Active-hour bonus while chatting\n"
+                    "· Job shifts (`/work`) — costs energy, regens over time\n"
+                    "· Boss damage payouts, quest rewards, trivia, coin drops\n"
+                    "· Class modifiers (Mogul boosts income/jobs)",
+                    f"**Prestige** (`/prestige`)\n"
+                    f"· Requires **{fmt_amount(config.PRESTIGE_MIN_WALLET)}**+ in pocket\n"
+                    f"· Max **{config.PRESTIGE_MAX_LEVEL}** — +{int(config.PRESTIGE_CRIT_BONUS_PER_LEVEL * 100)}% "
+                    f"crit and +{int(config.PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)}% income per level\n"
+                    "· Prestiges **1–9** reset pocket only\n"
+                    "· **Prestige 10** also wipes bank and vault expansions",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="boss",
+            label="Boss raids",
+            emoji="👹",
+            description="Hannah fights, loot, and healing",
+            pages=_static_pages(
+                "Boss raids",
+                [
+                    "**Commands** — `/boss` panel · `/attack` · `/heal` · `/cast` · `/use` · "
+                    "`/boss-status` · `/raid-leaderboard`",
+                    "**How raids work**\n"
+                    "· Bosses auto-spawn about every **90** minutes when none is active\n"
+                    "· Your weapon sets base damage (+ small roll); armor adds HP and mitigation\n"
+                    "· Hannah counters can down you — teammates `/heal` to revive\n"
+                    "· Damage share when the boss falls; killing blow shows your avatar pose",
+                    "**Variants** (weakest → strongest)\n"
+                    "normal → enraged → shadow → celestial → mythic\n"
+                    "Special: **TomAss** (regen), **ZZ Wrath** (40k HP), **Freaky Nikki** (moment counters)",
+                    "**Elements** — bosses have fire/frost/storm/void/verdant; your class element "
+                    "can boost or reduce `/attack` damage.\n"
+                    "**Loot** — battle-worn gear (craft up with `/craft`), epic raid pieces, "
+                    "mythic drops on celestial/mythic, aspect drops",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="dungeon",
+            label="Dungeons",
+            emoji="🕳️",
+            description="Solo delves and party vault raids",
+            pages=_static_pages(
+                "Dungeons",
+                [
+                    "`/dungeon` — interactive panel\n"
+                    f"· **Delver's Depths** — solo, **{config.DUNGEON_ENERGY_COST}** energy per run\n"
+                    f"· **Gilded Vault** — unlock **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**, "
+                    f"party of **{config.DUNGEON_VAULT_MIN_PARTY_SIZE}**+ raiders",
+                    "**Rewards** — room nuggets, clear bonus, **alchemy scrap** for `/alchemy`\n"
+                    "`/alchemy` — craft raid potions, energy drinks, duel scrolls, trap bombs from scrap",
+                    f"**Energy** — base cap **{config.ENERGY_BASE_CAP}**, regen every "
+                    f"{config.ENERGY_REGEN_INTERVAL_SECONDS // 60} min; `/upgrade-energy` raises max",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="pvp",
+            label="PvP & crews",
+            emoji="⚔️",
+            description="Duels, heists, territories",
+            pages=_static_pages(
+                "PvP & crews",
+                [
+                    "**Duels** — `/duel` turn-based combat using equipped gear, class modifiers, "
+                    "aspects, and skills (`/cast`). ELO tracked; `/season` for ranked resets.",
+                    "**Wallet heist** — `/heist @user` steals from **pocket**; crew tags add success. "
+                    "`/arrest` failed thieves within 5 minutes.",
+                    "**Bank heist** — `/bank-heist` tier panel vs target **bank**; hire `/bodyguards` "
+                    "to defend. Tier 3 failures can make gear **unstable** — repair with `/fix`.",
+                    "**Crews** — `/crew` panel: treasury, deposits, loans, XP levels\n"
+                    "**Territories** — `/territory` map; five zones, hourly crew income, "
+                    "30 min sieges, zone perks (heist loot, craft discount, etc.)",
+                    "**Casino** — `/coinflip` · `/blackjack` · `/slots` · `/jackpot`",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="character",
+            label="Character",
+            emoji="🎭",
+            description="Classes, stats, aspects, avatars",
+            pages=_static_pages(
+                "Character build",
+                [
+                    "**Classes** — `/class-choose` then `/class-evolve` with class XP from duels and boss damage\n"
+                    "Starters: **Vanguard** (combat), **Mogul** (income), **Shade** (heists)\n"
+                    "Evolve → master branches → hybrids (**Warlord**, **Archon**) need multiple master roots",
+                    "**Attributes** — `/attributes` STR/DEX/AGI/DEF/VIT from class XP; "
+                    "caps scale with prestige\n"
+                    "**Skills** — `/cast` in raids/duels; mana from damage dealt (healers regen over time)\n"
+                    "**Aspects** — `/aspects` Diablo-style rolls; equip slots; `/fuse-aspects` burn 3 for stronger roll",
+                    "**Avatars** — `/avatar` victory poses on duel wins and boss killing blows\n"
+                    "`/profile` · `/stats` · `/loadout` · `/equip-best`",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="aspects",
+            label="Aspects",
+            emoji="💎",
+            description="All aspect types",
+            pages=_static_pages("Aspect catalog", aspect_lines),
+        ),
+        GuideSection(
+            section_id="weapons",
+            label="Weapons",
+            emoji="🗡️",
+            description="Melee weapon shop catalog",
+            pages=_item_catalog_pages("Weapons", WEAPONS, formatter=_format_weapon_line),
+        ),
+        GuideSection(
+            section_id="guns",
+            label="Guns",
+            emoji="🔫",
+            description="Ranged weapon shop catalog",
+            pages=_item_catalog_pages("Guns", GUNS, formatter=_format_weapon_line),
+        ),
+        GuideSection(
+            section_id="armor",
+            label="Armor",
+            emoji="🛡️",
+            description="Armor shop catalog",
+            pages=_item_catalog_pages("Armor", ARMOR, formatter=_format_armor_line),
+        ),
+        GuideSection(
+            section_id="consumables",
+            label="Consumables",
+            emoji="🧪",
+            description="Potions, keys, and alchemy",
+            pages=_static_pages(
+                "Consumables & alchemy",
+                [_format_consumable_line(item) for item in CONSUMABLES if item.shop_listed]
+                + ["", "**Alchemy recipes** (`/alchemy`)"]
+                + alchemy_lines
+                + [
+                    "",
+                    "**Usage**\n"
+                    "`/use` — raid potion, energy drink, duel scroll, jail/pick keys, HP potions in raids\n"
+                    "Trap bombs — duel consumable from alchemy",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="chaos",
+            label="Chaos events",
+            emoji="🦠",
+            description="Bounties, viruses, scourge",
+            pages=_static_pages(
+                "Chaos modules",
+                [
+                    "**Bounty** — `/bounty @user amount word` · `/bounties` — claim when target says the trigger word",
+                    "**Hot potato** — `/hack @user` starts the virus; `/transfer` passes it; "
+                    "scaling wallet penalties",
+                    "**Scourge Virus** — world event every **8** hours; warning GIF, then **7** min outbreak; "
+                    "`/scourge-pass` to pass infection; hits top wallets' banks",
+                    "**Trivia** — `/trivia` Lore Roulette from server chat history\n"
+                    "**Imposter** — random AI word sabotage in messages (server config)",
+                    "**House pot** — gambling taxes and unclaimed drops fund random **Claim** coin drops",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="progression",
+            label="Progression",
+            emoji="🏆",
+            description="Quests, achievements, craft, events",
+            pages=_static_pages(
+                "Progression",
+                [
+                    "**Quests** — `/quests` onboarding steps + **3** daily goals (UTC midnight reset)",
+                    "**Achievements** — `/achievements` track boss kills, heals, heists, duels, dungeons, territories",
+                    "**Craft** — `/craft` upgrades **battle-worn** boss drops (`boss_weak_*`) into real shop gear",
+                    "**Events** (admin `/event`) — double drops, bonus income, festival boss HP, trivia fiesta, world boss week",
+                    "**Sell** — `/sell-worn` battle-worn drops · `/shop-list` text catalog fallback",
+                ],
+            ),
+        ),
+    )
+
+
+GUIDE_SECTIONS: tuple[GuideSection, ...] = _build_sections()
+GUIDE_SECTION_MAP: dict[str, GuideSection] = {section.section_id: section for section in GUIDE_SECTIONS}
+
+
+def guide_section_options() -> list[tuple[str, str, str]]:
+    """(section_id, label, description) for select menu."""
+    return [
+        (section.section_id, f"{section.emoji} {section.label}", section.description)
+        for section in GUIDE_SECTIONS
+    ]
+
+
+def build_guide_embed(section_id: str, page_index: int) -> tuple[discord.Embed, int, int]:
+    """Return embed, current page index, and total pages."""
+    import discord
+
+    section = GUIDE_SECTION_MAP[section_id]
+    total_pages = len(section.pages)
+    page_index = max(0, min(page_index, total_pages - 1))
+    page = section.pages[page_index]
+    body = clip_embed_field(page.body, 4096)
+    embed = discord.Embed(
+        title=f"{section.emoji} {page.title}",
+        description=body,
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(
+        text=f"{section.label} · Page {page_index + 1}/{total_pages} · Use the menu to switch topics",
+    )
+    return embed, page_index, total_pages
