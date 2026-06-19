@@ -56,6 +56,7 @@ python bot.py
 |---------|-------------|
 | `/daily` | Claim 75 nuggets daily |
 | `/balance` | Pocket + bank panel with deposit/withdraw/expand buttons |
+| `/guide` | Interactive popup guide — all systems, gear tiers, and items |
 | `/deposit amount` | Move nuggets pocket → bank (100k base cap; `/bank-heist` targets bank) |
 | `/withdraw amount` | Move nuggets bank → pocket |
 | `/expand-bank` | Buy a vault expansion token (**10k** from pocket, **+10k** bank capacity) |
