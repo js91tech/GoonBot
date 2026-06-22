@@ -486,6 +486,7 @@ class Database:
         await self._migrate_character_attributes_reset()
         await self._migrate_character_attributes_v3_reset()
         await self._migrate_business_empire()
+        await self._migrate_business_districts()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1033,6 +1034,42 @@ class Database:
             )
             """,
         )
+        await self.conn.commit()
+
+    async def _migrate_business_districts(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS district_influence (
+                guild_id BIGINT NOT NULL,
+                district_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                influence REAL NOT NULL DEFAULT 0 CHECK (influence >= 0),
+                updated_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, district_id, entity_type, entity_id)
+            )
+            """,
+        )
+        # Add the relocation-cooldown column to user_businesses if missing.
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'user_businesses' AND column_name = 'last_relocate_at'
+                """,
+            )
+            if await cursor.fetchone() is None:
+                await self.conn.execute(
+                    "ALTER TABLE user_businesses ADD COLUMN last_relocate_at REAL NOT NULL DEFAULT 0",
+                )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_businesses)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            if "last_relocate_at" not in existing:
+                await self.conn.execute(
+                    "ALTER TABLE user_businesses ADD COLUMN last_relocate_at REAL NOT NULL DEFAULT 0",
+                )
         await self.conn.commit()
 
     async def _migrate_crew_banking(self) -> None:
@@ -7132,9 +7169,16 @@ class Database:
         return await cursor.fetchone()
 
     @staticmethod
-    def _business_hourly_from_row(row: aiosqlite.Row, *, district_mult: float = 1.0) -> float:
+    def _business_hourly_from_row(row: aiosqlite.Row, *, district_mult: float | None = None) -> float:
         from utils.businesses import hourly_income
+        from utils.districts import district_income_mult
 
+        if district_mult is None:
+            try:
+                district_id = row["district_id"]
+            except (KeyError, IndexError):
+                district_id = None
+            district_mult = district_income_mult(district_id)
         return hourly_income(
             tier=int(row["tier"]),
             efficiency_level=int(row["efficiency"]),
@@ -7379,6 +7423,135 @@ class Database:
             for uid in user_ids:
                 await self._settle_business_income_no_lock(uid, guild_id, now=now)
             await self.conn.commit()
+
+    async def relocate_business(
+        self, user_id: int, guild_id: int, district_id: str,
+    ) -> tuple[float, str | None]:
+        """Move a business to a district for a tier-scaled fee. Returns (cost, error)."""
+        from utils.districts import district_by_id, relocate_cost
+
+        defn = district_by_id(district_id)
+        if defn is None:
+            return 0.0, "invalid_district"
+        async with self._write_lock:
+            row = await self._settle_business_income_no_lock(user_id, guild_id)
+            if row is None:
+                await self.conn.commit()
+                return 0.0, "no_business"
+            if str(row["district_id"] or "") == defn.district_id:
+                await self.conn.commit()
+                return 0.0, "already_here"
+            now = time.time()
+            last_relocate = float(row["last_relocate_at"] or 0)
+            if now - last_relocate < config.BUSINESS_DISTRICT_RELOCATE_COOLDOWN_SECONDS:
+                await self.conn.commit()
+                return 0.0, "cooldown"
+            cost = relocate_cost(int(row["tier"]))
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < cost:
+                await self.conn.commit()
+                return cost, "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (cost, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE user_businesses SET district_id = ?, last_relocate_at = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (defn.district_id, now, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return cost, None
+
+    async def add_district_influence(
+        self,
+        guild_id: int,
+        district_id: str,
+        entity_type: str,
+        entity_id: str,
+        points: float,
+    ) -> float:
+        """Add influence (capped at the configured max) and return the new value."""
+        cap = float(config.BUSINESS_DISTRICT_INFLUENCE_MAX)
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                SELECT influence FROM district_influence
+                WHERE guild_id = ? AND district_id = ? AND entity_type = ? AND entity_id = ?
+                """,
+                (guild_id, district_id, entity_type, entity_id),
+            )
+            existing = await cursor.fetchone()
+            current = float(existing["influence"]) if existing is not None else 0.0
+            new_value = min(cap, max(0.0, current + points))
+            await self.conn.execute(
+                """
+                INSERT INTO district_influence (
+                    guild_id, district_id, entity_type, entity_id, influence, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, district_id, entity_type, entity_id) DO UPDATE SET
+                    influence = excluded.influence,
+                    updated_at = excluded.updated_at
+                """,
+                (guild_id, district_id, entity_type, entity_id, new_value, time.time()),
+            )
+            await self.conn.commit()
+        return new_value
+
+    async def expand_district_influence(
+        self, user_id: int, guild_id: int, district_id: str, points: int,
+    ) -> tuple[float, float, str | None]:
+        """Spend nuggets to gain influence. Returns (cost, new_influence, error)."""
+        from utils.districts import district_by_id
+
+        if district_by_id(district_id) is None:
+            return 0.0, 0.0, "invalid_district"
+        if points <= 0:
+            return 0.0, 0.0, "invalid_amount"
+        cost = points * config.BUSINESS_DISTRICT_INFLUENCE_COST_PER_POINT
+        ok = await self.debit_wallet(user_id, guild_id, cost)
+        if not ok:
+            return cost, 0.0, "insufficient_funds"
+        new_value = await self.add_district_influence(
+            guild_id, district_id, "user", str(user_id), float(points),
+        )
+        return cost, new_value, None
+
+    async def get_user_district_influence(
+        self, user_id: int, guild_id: int, district_id: str,
+    ) -> float:
+        cursor = await self.conn.execute(
+            """
+            SELECT influence FROM district_influence
+            WHERE guild_id = ? AND district_id = ? AND entity_type = 'user' AND entity_id = ?
+            """,
+            (guild_id, district_id, str(user_id)),
+        )
+        row = await cursor.fetchone()
+        return float(row["influence"]) if row is not None else 0.0
+
+    async def list_district_influence(
+        self, guild_id: int, district_id: str, *, limit: int = 5,
+    ) -> list[tuple[str, str, float]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT entity_type, entity_id, influence FROM district_influence
+            WHERE guild_id = ? AND district_id = ? AND influence > 0
+            ORDER BY influence DESC
+            LIMIT ?
+            """,
+            (guild_id, district_id, limit),
+        )
+        return [
+            (str(r["entity_type"]), str(r["entity_id"]), float(r["influence"]))
+            for r in await cursor.fetchall()
+        ]
 
     async def buy_territory_guards(
         self,

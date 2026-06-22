@@ -537,6 +537,12 @@ BUSINESS_SECURITY_PER_BRANCH_LEVEL = 5
 # Business prestige is separate from combat prestige.
 BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL = 0.05
 BUSINESS_PRESTIGE_MAX_LEVEL = 10
+# Districts: relocation fee (scales with tier) and a cooldown between moves.
+BUSINESS_DISTRICT_RELOCATE_BASE_COST = 1_000.0
+BUSINESS_DISTRICT_RELOCATE_COOLDOWN_SECONDS = 6 * 3600
+# Influence: cost per point and the 0-100 cap.
+BUSINESS_DISTRICT_INFLUENCE_COST_PER_POINT = 250.0
+BUSINESS_DISTRICT_INFLUENCE_MAX = 100
 
 
 def custom_avatar_max_size_label() -> str:

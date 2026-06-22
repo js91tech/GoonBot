@@ -135,6 +135,15 @@ class Business(commands.Cog):
             embed=build_upgrade_embed(row), view=view, ephemeral=True,
         )
 
+    @business_group.command(name="districts", description="View the district map, relocate, and build influence.")
+    async def districts(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        from utils.district_ui import send_district_panel
+
+        await send_district_panel(interaction, self)
+
     @business_group.command(name="prestige", description="Business prestige (coming soon).")
     async def prestige(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(

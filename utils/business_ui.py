@@ -32,6 +32,8 @@ def _bar(current: float, total: float, *, length: int = 12) -> str:
 
 
 def _hourly_from_row(row: object) -> float:
+    from utils.districts import district_income_mult
+
     return hourly_income(
         tier=int(row["tier"]),
         efficiency_level=int(row["efficiency"]),
@@ -40,6 +42,7 @@ def _hourly_from_row(row: object) -> float:
         growth_branch_level=int(row["branch_growth"]),
         satisfaction=int(row["employee_satisfaction"]),
         business_prestige=int(row["business_prestige"]),
+        district_mult=district_income_mult(row["district_id"]),
     )
 
 
@@ -64,6 +67,16 @@ def build_business_embed(member: discord.Member, row: object) -> tuple[discord.E
     prestige = int(row["business_prestige"])
     if prestige > 0:
         embed.add_field(name="Prestige", value=f"⭐ {prestige}", inline=True)
+
+    from utils.districts import district_by_id
+
+    district = district_by_id(row["district_id"])
+    if district is not None:
+        embed.add_field(
+            name="District",
+            value=f"{district.emoji} {district.name} · {district.label}",
+            inline=False,
+        )
 
     fill_pct = int((min(stored, capacity) / capacity) * 100) if capacity > 0 else 0
     embed.add_field(
@@ -219,6 +232,15 @@ class BusinessPanelView(discord.ui.View):
             defn = tier_def(new_tier)
             note = f"🏗️ Upgraded to **{defn.name if defn else 'next tier'}**!"
         await _refresh_panel(interaction, self.cog, self.guild_id, self.user_id, note=note)
+
+    @discord.ui.button(label="Districts", style=discord.ButtonStyle.secondary)
+    async def districts_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        from utils.district_ui import DistrictMapView, build_district_embed
+
+        embed = await build_district_embed(self.cog, interaction.guild, self.user_id)
+        view = DistrictMapView(self.cog, self.guild_id, self.user_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary)
     async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:

@@ -18,6 +18,7 @@ from utils.businesses import (
     tier_def_by_id,
     upgrade_cost,
 )
+from utils.districts import DISTRICT_MAP, district_income_mult
 
 
 class BusinessMathTests(unittest.TestCase):
@@ -192,6 +193,74 @@ class BusinessDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.db.create_business(uid, guild_id)
         _, err = await self.db.upgrade_business_attribute(uid, guild_id, "nope")
         self.assertEqual(err, "invalid_attribute")
+
+
+class DistrictTests(unittest.TestCase):
+    def test_five_districts(self) -> None:
+        self.assertEqual(len(DISTRICT_MAP), 5)
+        for defn in DISTRICT_MAP.values():
+            self.assertGreaterEqual(defn.income_mult, 1.0)
+
+    def test_income_mult_lookup(self) -> None:
+        self.assertEqual(district_income_mult(None), 1.0)
+        self.assertEqual(district_income_mult("nope"), 1.0)
+        self.assertEqual(district_income_mult("financial"), DISTRICT_MAP["financial"].income_mult)
+
+
+class BusinessDistrictDatabaseTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.db = Database(self.db_path)
+        await self.db.connect()
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        Path(self.db_path).unlink(missing_ok=True)
+
+    async def test_relocate_applies_income_bonus(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        cost, err = await self.db.relocate_business(uid, guild_id, "financial")
+        self.assertIsNone(err)
+        self.assertGreater(cost, 0)
+        row = await self.db.get_business(uid, guild_id)
+        self.assertEqual(str(row["district_id"]), "financial")
+        hourly = self.db._business_hourly_from_row(row)
+        base = hourly_income(tier=1)
+        self.assertAlmostEqual(hourly, base * DISTRICT_MAP["financial"].income_mult, places=4)
+
+    async def test_relocate_same_district_blocked(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        await self.db.relocate_business(uid, guild_id, "downtown")
+        _, err = await self.db.relocate_business(uid, guild_id, "downtown")
+        self.assertEqual(err, "already_here")
+
+    async def test_relocate_invalid_district(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        _, err = await self.db.relocate_business(uid, guild_id, "atlantis")
+        self.assertEqual(err, "invalid_district")
+
+    async def test_expand_influence(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 50_000.0, apply_bonuses=False)
+        cost, new_inf, err = await self.db.expand_district_influence(uid, guild_id, "downtown", 10)
+        self.assertIsNone(err)
+        self.assertGreater(cost, 0)
+        self.assertEqual(new_inf, 10.0)
+        ranking = await self.db.list_district_influence(guild_id, "downtown")
+        self.assertEqual(ranking[0][1], str(uid))
+
+    async def test_influence_capped(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 10_000_000.0, apply_bonuses=False)
+        _, new_inf, _ = await self.db.expand_district_influence(uid, guild_id, "downtown", 999)
+        self.assertLessEqual(new_inf, float(config.BUSINESS_DISTRICT_INFLUENCE_MAX))
 
 
 if __name__ == "__main__":
