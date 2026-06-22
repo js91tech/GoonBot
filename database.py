@@ -485,6 +485,7 @@ class Database:
         await self._migrate_character_attributes()
         await self._migrate_character_attributes_reset()
         await self._migrate_character_attributes_v3_reset()
+        await self._migrate_business_empire()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1001,6 +1002,34 @@ class Database:
                 siege_started_at REAL,
                 last_siege_at REAL,
                 PRIMARY KEY (guild_id, territory_id)
+            )
+            """,
+        )
+        await self.conn.commit()
+
+    async def _migrate_business_empire(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_businesses (
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                tier INTEGER NOT NULL DEFAULT 1 CHECK (tier >= 1),
+                tier_id TEXT NOT NULL DEFAULT 'lemon_stand',
+                district_id TEXT,
+                security INTEGER NOT NULL DEFAULT 0 CHECK (security >= 0),
+                reputation INTEGER NOT NULL DEFAULT 0 CHECK (reputation >= 0),
+                efficiency INTEGER NOT NULL DEFAULT 0 CHECK (efficiency >= 0),
+                capacity INTEGER NOT NULL DEFAULT 0 CHECK (capacity >= 0),
+                employee_satisfaction INTEGER NOT NULL DEFAULT 50
+                    CHECK (employee_satisfaction >= 0 AND employee_satisfaction <= 100),
+                branch_security INTEGER NOT NULL DEFAULT 0 CHECK (branch_security >= 0),
+                branch_growth INTEGER NOT NULL DEFAULT 0 CHECK (branch_growth >= 0),
+                branch_production INTEGER NOT NULL DEFAULT 0 CHECK (branch_production >= 0),
+                stored_income REAL NOT NULL DEFAULT 0 CHECK (stored_income >= 0),
+                last_income_at REAL NOT NULL DEFAULT 0,
+                business_prestige INTEGER NOT NULL DEFAULT 0 CHECK (business_prestige >= 0),
+                created_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, guild_id)
             )
             """,
         )
@@ -7092,6 +7121,263 @@ class Database:
                 total_paid += payout
             await self.conn.commit()
         return total_paid
+
+    # --- Business Empire ----------------------------------------------------
+
+    async def get_business(self, user_id: int, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            "SELECT * FROM user_businesses WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        return await cursor.fetchone()
+
+    @staticmethod
+    def _business_hourly_from_row(row: aiosqlite.Row, *, district_mult: float = 1.0) -> float:
+        from utils.businesses import hourly_income
+
+        return hourly_income(
+            tier=int(row["tier"]),
+            efficiency_level=int(row["efficiency"]),
+            reputation_level=int(row["reputation"]),
+            production_branch_level=int(row["branch_production"]),
+            satisfaction=int(row["employee_satisfaction"]),
+            business_prestige=int(row["business_prestige"]),
+            district_mult=district_mult,
+        )
+
+    @staticmethod
+    def _business_capacity_from_row(row: aiosqlite.Row) -> float:
+        from utils.businesses import capacity_for_level
+
+        return capacity_for_level(int(row["tier"]), int(row["capacity"]))
+
+    async def _settle_business_income_no_lock(
+        self, user_id: int, guild_id: int, now: float | None = None,
+    ) -> aiosqlite.Row | None:
+        """Accrue stored income up to ``now`` and persist. Returns the fresh row."""
+        from utils.businesses import accrue_income
+
+        cursor = await self.conn.execute(
+            "SELECT * FROM user_businesses WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        current = time.time() if now is None else now
+        last_at = float(row["last_income_at"]) or current
+        elapsed = max(0.0, current - last_at)
+        hourly = self._business_hourly_from_row(row)
+        capacity = self._business_capacity_from_row(row)
+        new_stored = accrue_income(
+            stored=float(row["stored_income"]),
+            capacity=capacity,
+            hourly=hourly,
+            elapsed_seconds=elapsed,
+        )
+        await self.conn.execute(
+            """
+            UPDATE user_businesses
+            SET stored_income = ?, last_income_at = ?
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (new_stored, current, user_id, guild_id),
+        )
+        cursor = await self.conn.execute(
+            "SELECT * FROM user_businesses WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        return await cursor.fetchone()
+
+    async def create_business(self, user_id: int, guild_id: int) -> str | None:
+        """Create the player's tier-1 business, debiting the purchase cost.
+
+        Returns ``None`` on success or an error code string.
+        """
+        from utils.businesses import tier_def
+
+        defn = tier_def(1)
+        if defn is None:
+            return "invalid_tier"
+        cost = defn.purchase_cost
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT 1 FROM user_businesses WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            if await cursor.fetchone() is not None:
+                await self.conn.commit()
+                return "already_owns"
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < cost:
+                await self.conn.commit()
+                return "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (cost, user_id, guild_id),
+            )
+            now = time.time()
+            await self.conn.execute(
+                """
+                INSERT INTO user_businesses (
+                    user_id, guild_id, tier, tier_id, employee_satisfaction,
+                    stored_income, last_income_at, created_at
+                ) VALUES (?, ?, 1, ?, ?, 0, ?, ?)
+                """,
+                (
+                    user_id,
+                    guild_id,
+                    defn.tier_id,
+                    config.BUSINESS_SATISFACTION_START,
+                    now,
+                    now,
+                ),
+            )
+            await self.conn.commit()
+        return None
+
+    async def collect_business_income(
+        self, user_id: int, guild_id: int,
+    ) -> tuple[float, str | None]:
+        """Settle accrued income, move it to the wallet, and reset the store."""
+        async with self._write_lock:
+            row = await self._settle_business_income_no_lock(user_id, guild_id)
+            if row is None:
+                await self.conn.commit()
+                return 0.0, "no_business"
+            amount = float(row["stored_income"])
+            if amount <= 0:
+                await self.conn.commit()
+                return 0.0, "empty"
+            await self.conn.execute(
+                """
+                UPDATE user_businesses SET stored_income = 0
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET wallet = wallet + ?, total_earned = total_earned + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, amount, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return amount, None
+
+    async def tier_up_business(
+        self, user_id: int, guild_id: int,
+    ) -> tuple[str | None, int]:
+        """Purchase the next business tier. Returns (error, new_tier)."""
+        from utils.businesses import next_tier_def
+
+        async with self._write_lock:
+            row = await self._settle_business_income_no_lock(user_id, guild_id)
+            if row is None:
+                await self.conn.commit()
+                return "no_business", 0
+            current_tier = int(row["tier"])
+            nxt = next_tier_def(current_tier)
+            if nxt is None:
+                await self.conn.commit()
+                return "max_tier", current_tier
+            cost = nxt.purchase_cost
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < cost:
+                await self.conn.commit()
+                return "insufficient_funds", current_tier
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (cost, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                UPDATE user_businesses SET tier = ?, tier_id = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (nxt.tier, nxt.tier_id, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return None, nxt.tier
+
+    async def upgrade_business_attribute(
+        self, user_id: int, guild_id: int, attribute: str,
+    ) -> tuple[float, str | None]:
+        """Buy one level of an attribute or upgrade branch.
+
+        ``attribute`` is one of: security, reputation, efficiency, capacity,
+        branch_security, branch_growth, branch_production. Returns (cost, error).
+        """
+        from utils.businesses import upgrade_cost
+
+        attribute_columns = {
+            "security": ("security", config.BUSINESS_ATTRIBUTE_MAX),
+            "reputation": ("reputation", config.BUSINESS_ATTRIBUTE_MAX),
+            "efficiency": ("efficiency", config.BUSINESS_ATTRIBUTE_MAX),
+            "capacity": ("capacity", config.BUSINESS_ATTRIBUTE_MAX),
+            "branch_security": ("branch_security", config.BUSINESS_BRANCH_MAX),
+            "branch_growth": ("branch_growth", config.BUSINESS_BRANCH_MAX),
+            "branch_production": ("branch_production", config.BUSINESS_BRANCH_MAX),
+        }
+        spec = attribute_columns.get(attribute)
+        if spec is None:
+            return 0.0, "invalid_attribute"
+        column, level_cap = spec
+        async with self._write_lock:
+            row = await self._settle_business_income_no_lock(user_id, guild_id)
+            if row is None:
+                await self.conn.commit()
+                return 0.0, "no_business"
+            current_level = int(row[column])
+            if current_level >= level_cap:
+                await self.conn.commit()
+                return 0.0, "max_level"
+            cost = upgrade_cost(int(row["tier"]), current_level)
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < cost:
+                await self.conn.commit()
+                return cost, "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (cost, user_id, guild_id),
+            )
+            await self.conn.execute(
+                f"""
+                UPDATE user_businesses SET {column} = {column} + 1
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+        return cost, None
+
+    async def process_business_income(self, guild_id: int) -> None:
+        """Background tick: accrue stored income for every business in a guild."""
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT user_id FROM user_businesses WHERE guild_id = ?",
+                (guild_id,),
+            )
+            user_ids = [int(r["user_id"]) for r in await cursor.fetchall()]
+            now = time.time()
+            for uid in user_ids:
+                await self._settle_business_income_no_lock(uid, guild_id, now=now)
+            await self.conn.commit()
 
     async def buy_territory_guards(
         self,

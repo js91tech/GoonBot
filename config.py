@@ -508,6 +508,35 @@ TERRITORY_PERK_DOCKS_HEIST_LOOT = 0.05
 TERRITORY_PERK_VAULT_HEIST_SUCCESS = 0.03
 TERRITORY_PERK_CITADEL_INCOME_BONUS = 0.10
 
+# --- Business Empire ---------------------------------------------------------
+# Passive business income accrues into a capped store; players collect it with
+# /business collect. All values are in nuggets.
+BUSINESS_INCOME_TICK_SECONDS = 5 * 60
+# Per-level multiplier contributions for the upgradeable attributes.
+BUSINESS_EFFICIENCY_BONUS_PER_LEVEL = 0.05
+BUSINESS_REPUTATION_BONUS_PER_LEVEL = 0.04
+BUSINESS_PRODUCTION_BRANCH_BONUS_PER_LEVEL = 0.06
+# Employee satisfaction is 0-100; this is the max +/- income swing at the edges.
+BUSINESS_SATISFACTION_SWING = 0.15
+BUSINESS_SATISFACTION_START = 50
+# Stored-income capacity: a base buffer of N hours plus extra per capacity level.
+BUSINESS_BASE_CAPACITY_HOURS = 8.0
+BUSINESS_CAPACITY_HOURS_PER_LEVEL = 4.0
+BUSINESS_MIN_CAPACITY = 100.0
+# Attribute / branch upgrade pricing (cost scales off the tier purchase price).
+BUSINESS_UPGRADE_BASE_COST = 500.0
+BUSINESS_UPGRADE_COST_FRACTION = 0.15
+BUSINESS_UPGRADE_COST_GROWTH = 1.6
+BUSINESS_ATTRIBUTE_MAX = 25
+BUSINESS_BRANCH_MAX = 5
+# Security rating inputs (used by the Phase 4 defense system).
+BUSINESS_SECURITY_PER_LEVEL = 2
+BUSINESS_SECURITY_PER_BRANCH_LEVEL = 5
+# Business prestige is separate from combat prestige.
+BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL = 0.05
+BUSINESS_PRESTIGE_MAX_LEVEL = 10
+
+
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""
     n = CUSTOM_AVATAR_MAX_BYTES
