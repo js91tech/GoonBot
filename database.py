@@ -2093,14 +2093,25 @@ class Database:
                         """,
                         (guild_id, user_id, item_id),
                     )
+                    inst_cursor = await self.conn.execute(
+                        """
+                        INSERT INTO gear_instances (
+                            guild_id, user_id, item_id, enhancement_level, is_broken, created_at
+                        )
+                        VALUES (?, ?, ?, 0, 0, ?)
+                        """,
+                        (guild_id, user_id, item_id, time.time()),
+                    )
+                    instance_id = int(inst_cursor.lastrowid)
                     await self.conn.execute(
                         """
-                        INSERT INTO equipment (guild_id, user_id, slot, item_id)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO equipment (guild_id, user_id, slot, item_id, gear_instance_id)
+                        VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
-                            item_id = excluded.item_id
+                            item_id = excluded.item_id,
+                            gear_instance_id = excluded.gear_instance_id
                         """,
-                        (guild_id, user_id, slot, item_id),
+                        (guild_id, user_id, slot, item_id, instance_id),
                     )
                 await self.conn.execute(
                     """

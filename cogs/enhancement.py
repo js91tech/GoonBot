@@ -119,15 +119,19 @@ class EnhanceView(discord.ui.View):
                 f"Need **{cost.material_qty}×** `{cost.material_id}`.", ephemeral=True,
             )
             return
-        if not await self.cog.bot.db.debit_wallet(self.user_id, self.guild_id, cost.nugget_cost):
-            await interaction.response.send_message("Could not debit nuggets.", ephemeral=True)
-            return
         for _ in range(cost.material_qty):
             if not await self.cog.bot.db.consume_inventory_item(
                 self.user_id, self.guild_id, cost.material_id,
             ):
                 await interaction.response.send_message("Material consumption failed.", ephemeral=True)
                 return
+        if not await self.cog.bot.db.debit_wallet(self.user_id, self.guild_id, cost.nugget_cost):
+            for _ in range(cost.material_qty):
+                await self.cog.bot.db.grant_item(
+                    self.user_id, self.guild_id, cost.material_id,
+                )
+            await interaction.response.send_message("Could not debit nuggets.", ephemeral=True)
+            return
         result = roll_enhancement(level)
         await self.cog.bot.db.set_gear_instance_level(
             int(row["instance_id"]),
@@ -169,8 +173,10 @@ class RepairButton(discord.ui.Button):
         if not await self.cog.bot.db.repair_gear_instance(self.instance_id, self.guild_id):
             await interaction.response.send_message("Repair failed.", ephemeral=True)
             return
+        item = get_item(str(row["item_id"]))
+        item_name = item.name if item is not None else str(row["item_id"])
         await interaction.response.send_message(
-            f"Repaired **{get_item(str(row['item_id'])).name}** for **{fmt_amount(cost)}**.",
+            f"Repaired **{item_name}** for **{fmt_amount(cost)}**.",
             ephemeral=True,
         )
 

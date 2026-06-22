@@ -797,6 +797,7 @@ class Boss(commands.Cog):
         set_bonus: SetBonus | None = None,
         defense_retention: float = 1.0,
         attr_mitigation_bonus: float = 0.0,
+        accessory_bonuses=None,
     ) -> tuple[int, int]:
         from utils.combat_engine import apply_armor_mitigation
 
@@ -806,6 +807,7 @@ class Boss(commands.Cog):
             set_bonus=set_bonus,
             defense_retention=defense_retention,
             attr_mitigation_bonus=attr_mitigation_bonus,
+            accessory_bonuses=accessory_bonuses,
         )
 
     @staticmethod
@@ -817,6 +819,7 @@ class Boss(commands.Cog):
         defense_retention: float = 1.0,
         hp_ratio: float = 1.0,
         attr_mitigation_bonus: float = 0.0,
+        accessory_bonuses=None,
     ) -> tuple[int, int, bool, str]:
         variant_config = config.BOSS_VARIANTS[variant]
         raw_damage = roll_counter_damage(variant, hp_ratio=hp_ratio)
@@ -829,6 +832,7 @@ class Boss(commands.Cog):
             set_bonus=set_bonus,
             defense_retention=defense_retention,
             attr_mitigation_bonus=attr_mitigation_bonus,
+            accessory_bonuses=accessory_bonuses,
         )
         moves = {
             "normal": ("backhands", "shoulder-checks", "bonks"),
@@ -1736,6 +1740,7 @@ class Boss(commands.Cog):
             defense_retention=defense_retention,
             hp_ratio=hp_ratio,
             attr_mitigation_bonus=attr_bonuses.mitigation_bonus,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         if summoner_victim:
             damage = apply_summoner_counter_damage(damage)

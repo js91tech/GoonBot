@@ -493,7 +493,10 @@ class Dungeon(commands.Cog):
         progress = await self.bot.db.get_user_progress(user_id, guild_id)
         ctx = AttackContext(prestige_level=int(progress["prestige_level"]))
         damage, critical, verb = roll_player_damage(
-            loadout.primary, off_hand=loadout.off_hand, ctx=ctx,
+            loadout.primary,
+            off_hand=loadout.off_hand,
+            ctx=ctx,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         enemy_hp = float(party["enemy_hp"]) - damage
         room = int(party["room"])
@@ -522,6 +525,7 @@ class Dungeon(commands.Cog):
         if room >= config.DUNGEON_ROOMS:
             reward_each += tier.clear_bonus / max(1, len(members))
             await self.bot.db.clear_dungeon_party(guild_id, lid)
+            bonus_notes: list[str] = []
             for m in members:
                 mid = int(m["user_id"])
                 if float(m["player_hp"]) > 0:
@@ -531,12 +535,23 @@ class Dungeon(commands.Cog):
                     )
                     for _ in range(tier.scrap_per_clear):
                         await self.bot.db.grant_item(mid, guild_id, "alchemy_scrap")
+                    accessory_name = await self._maybe_roll_accessory_drop(
+                        mid, guild_id, tier_id=tier.tier_id,
+                    )
+                    hardener_name = await self._maybe_roll_vault_hardener(
+                        mid, guild_id, tier.tier_id,
+                    )
+                    if accessory_name:
+                        bonus_notes.append(accessory_name)
+                    if hardener_name:
+                        bonus_notes.append(hardener_name)
+            bonus_text = f" · {', '.join(bonus_notes)}" if bonus_notes else ""
             return DungeonActionResult(
                 message=(
                     "\n".join(lines)
                     + f"\n**{tier.name} cleared!** "
                     f"+{fmt_amount(reward_each)} each "
-                    f"({fmt_amount(room_total)} room pool split) · scrap for survivors."
+                    f"({fmt_amount(room_total)} room pool split) · scrap for survivors{bonus_text}."
                 ),
             )
 

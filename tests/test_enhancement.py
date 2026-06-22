@@ -12,6 +12,7 @@ from utils.enhancement import (
     material_for_target_level,
     nugget_cost_for_attempt,
     repair_nugget_cost,
+    resolve_effective_gear,
     roll_enhancement,
     stat_multiplier_for_level,
 )
@@ -45,6 +46,14 @@ class EnhancementCostTests(unittest.TestCase):
     def test_stat_multiplier_grows(self) -> None:
         self.assertGreater(stat_multiplier_for_level(10), stat_multiplier_for_level(1))
         self.assertGreater(stat_multiplier_for_level(16), stat_multiplier_for_level(15))
+
+    def test_effective_gear_exposes_item_id(self) -> None:
+        blade = get_item("iron_sword")
+        assert blade is not None
+        gear = resolve_effective_gear(blade, enhancement_level=3)
+        assert gear is not None
+        self.assertEqual(gear.id, blade.id)
+        self.assertEqual(gear.name, blade.name)
 
 
 class EnhancementRollTests(unittest.TestCase):

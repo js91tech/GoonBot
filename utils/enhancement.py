@@ -21,6 +21,10 @@ class EffectiveGear:
     is_broken: bool = False
 
     @property
+    def id(self) -> str:
+        return self.base.id
+
+    @property
     def name(self) -> str:
         return self.base.name
 
