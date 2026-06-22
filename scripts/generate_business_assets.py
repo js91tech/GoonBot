@@ -28,8 +28,12 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     created = 0
     for defn in BUSINESS_TIERS:
-        png = render_business_image(SHOWCASE_USER_ID, SHOWCASE_GUILD_ID, defn.tier_id)
         path = OUT_DIR / f"{defn.tier_id}.png"
+        if path.is_file():
+            # Preserve curated/generated art; only fill in missing tiers.
+            print(f"skip existing {path.relative_to(ROOT)}")
+            continue
+        png = render_business_image(SHOWCASE_USER_ID, SHOWCASE_GUILD_ID, defn.tier_id)
         path.write_bytes(png)
         created += 1
         print(f"wrote {path.relative_to(ROOT)}")

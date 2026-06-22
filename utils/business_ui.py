@@ -139,6 +139,13 @@ async def build_business_payload(
     if row is None:
         return None
     embed, file = build_business_embed(member, row)
+    files = [file]
+    from utils.districts import district_image_path
+
+    district_path = district_image_path(row["district_id"])
+    if district_path is not None:
+        files.append(discord.File(str(district_path), filename="district.png"))
+        embed.set_thumbnail(url="attachment://district.png")
     buffs = await cog.bot.db.list_active_business_buffs(user_id, guild_id)
     if buffs:
         from utils.business_competition import action_by_id
@@ -155,7 +162,7 @@ async def build_business_payload(
         embed.add_field(name="Active effects", value="\n".join(lines), inline=False)
     view = BusinessPanelView(cog, guild_id, user_id)
     view.sync_state(row)
-    return embed, [file], view
+    return embed, files, view
 
 
 async def _refresh_panel(
@@ -250,11 +257,11 @@ class BusinessPanelView(discord.ui.View):
     @discord.ui.button(label="Districts", style=discord.ButtonStyle.secondary)
     async def districts_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        from utils.district_ui import DistrictMapView, build_district_embed
+        from utils.district_ui import DistrictMapView, build_district_payload
 
-        embed = await build_district_embed(self.cog, interaction.guild, self.user_id)
+        embed, files = await build_district_payload(self.cog, interaction.guild, self.user_id)
         view = DistrictMapView(self.cog, self.guild_id, self.user_id)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=view, files=files, ephemeral=True)
 
     @discord.ui.button(label="Compete", style=discord.ButtonStyle.danger, row=1)
     async def compete_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:

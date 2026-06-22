@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import io
 import random
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,6 +19,29 @@ from utils.businesses import tier_def_by_id
 WIDTH = 480
 HEIGHT = 320
 GROUND_Y = 264
+
+ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "businesses"
+
+
+def _static_asset(tier_id: str) -> Path | None:
+    path = ASSET_DIR / f"{tier_id}.png"
+    return path if path.is_file() else None
+
+
+def _cover_resize(img: Image.Image, width: int, height: int) -> Image.Image:
+    """Resize and center-crop an image to exactly fill width×height."""
+    src_ratio = img.width / img.height
+    dst_ratio = width / height
+    if src_ratio > dst_ratio:
+        new_h = height
+        new_w = int(round(height * src_ratio))
+    else:
+        new_w = width
+        new_h = int(round(width / src_ratio))
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - width) // 2
+    top = (new_h - height) // 2
+    return resized.crop((left, top, left + width, top + height))
 
 
 def _rng(user_id: int, guild_id: int, tier_id: str) -> random.Random:
@@ -171,13 +195,47 @@ def _draw_building(
             )
 
 
+def _render_with_static_base(
+    base_path: Path, *, name: str, tier: int, accent: tuple[int, int, int], emoji: str,
+) -> bytes:
+    """Composite a label bar + per-player accent border over generated art."""
+    canvas = _cover_resize(Image.open(base_path).convert("RGB"), WIDTH, HEIGHT)
+    draw = ImageDraw.Draw(canvas)
+    # Per-player accent top border keeps each empire's card distinct.
+    draw.rectangle([0, 0, WIDTH, 6], fill=accent)
+    title_font, small_font = _fonts()
+    draw.rectangle([0, HEIGHT - 34, WIDTH, HEIGHT], fill=(14, 16, 22))
+    label = f"{emoji + ' ' if emoji else ''}{name}"
+    draw.text((14, HEIGHT - 28), label, font=title_font, fill=(255, 255, 255))
+    tier_text = f"Tier {tier}"
+    tw = draw.textlength(tier_text, font=small_font)
+    draw.text((WIDTH - tw - 14, HEIGHT - 24), tier_text, font=small_font, fill=accent)
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def render_business_image(user_id: int, guild_id: int, tier_id: str) -> bytes:
-    """Render the business building PNG and return raw bytes."""
+    """Render the business building PNG and return raw bytes.
+
+    Uses a generated base asset when available (with a per-player accent strip),
+    otherwise falls back to fully procedural art.
+    """
     defn = tier_def_by_id(tier_id)
     tier = defn.tier if defn else 1
     name = defn.name if defn else "Business"
     rng = _rng(user_id, guild_id, tier_id)
     accent = _accent(rng)
+
+    base = _static_asset(tier_id)
+    if base is not None:
+        try:
+            return _render_with_static_base(
+                base, name=name, tier=tier, accent=accent,
+                emoji=defn.emoji if defn else "",
+            )
+        except OSError:
+            pass
 
     canvas = Image.new("RGB", (WIDTH, HEIGHT), (24, 26, 32))
     draw = ImageDraw.Draw(canvas)

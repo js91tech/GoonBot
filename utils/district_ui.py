@@ -6,12 +6,28 @@ from typing import TYPE_CHECKING
 import discord
 
 import config
-from utils.districts import DISTRICT_MAP, district_by_id, relocate_cost
+from utils.districts import DISTRICT_MAP, district_by_id, district_image_path, relocate_cost
 from utils.helpers import fmt_amount
 from utils.quests import record_quest_event
 
 if TYPE_CHECKING:
     from discord.ext import commands
+
+
+async def build_district_payload(
+    cog: commands.Cog,
+    guild: discord.Guild,
+    user_id: int,
+) -> tuple[discord.Embed, list[discord.File]]:
+    embed = await build_district_embed(cog, guild, user_id)
+    files: list[discord.File] = []
+    row = await cog.bot.db.get_business(user_id, guild.id)
+    current = str(row["district_id"]) if row is not None and row["district_id"] else None
+    image_path = district_image_path(current)
+    if image_path is not None:
+        files.append(discord.File(str(image_path), filename="district.png"))
+        embed.set_image(url="attachment://district.png")
+    return embed, files
 
 
 async def build_district_embed(
@@ -111,12 +127,12 @@ class RelocateSelect(discord.ui.Select):
         )
         guild = interaction.guild
         view = DistrictMapView(self.cog, self.guild_id, self.user_id)
-        embed = await build_district_embed(self.cog, guild, self.user_id)
+        embed, files = await build_district_payload(self.cog, guild, self.user_id)
         embed.description = (
             f"✅ Relocated to **{defn.emoji} {defn.name}** for **{fmt_amount(cost)}** "
             f"({defn.label})."
         )
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.response.edit_message(embed=embed, view=view, attachments=files)
 
 
 class InfluenceModal(discord.ui.Modal, title="Expand influence"):
@@ -160,12 +176,12 @@ class InfluenceModal(discord.ui.Modal, title="Expand influence"):
         defn = district_by_id(self.district_id)
         guild = interaction.guild
         view = DistrictMapView(self.cog, self.guild_id, self.user_id)
-        embed = await build_district_embed(self.cog, guild, self.user_id)
+        embed, files = await build_district_payload(self.cog, guild, self.user_id)
         embed.description = (
             f"📈 +{amount} influence in **{defn.name if defn else self.district_id}** "
             f"for **{fmt_amount(cost)}** — now **{int(new_inf)}%**."
         )
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.response.edit_message(embed=embed, view=view, attachments=files)
 
 
 class InfluenceSelect(discord.ui.Select):
@@ -214,8 +230,8 @@ class DistrictMapView(discord.ui.View):
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=2)
     async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        embed = await build_district_embed(self.cog, interaction.guild, self.user_id)
-        await interaction.response.edit_message(embed=embed, view=self)
+        embed, files = await build_district_payload(self.cog, interaction.guild, self.user_id)
+        await interaction.response.edit_message(embed=embed, view=self, attachments=files)
 
 
 async def send_district_panel(interaction: discord.Interaction, cog: commands.Cog) -> None:
@@ -223,6 +239,6 @@ async def send_district_panel(interaction: discord.Interaction, cog: commands.Co
     if guild is None:
         await interaction.response.send_message("Guild only.", ephemeral=True)
         return
-    embed = await build_district_embed(cog, guild, interaction.user.id)
+    embed, files = await build_district_payload(cog, guild, interaction.user.id)
     view = DistrictMapView(cog, guild.id, interaction.user.id)
-    await interaction.response.send_message(embed=embed, view=view)
+    await interaction.response.send_message(embed=embed, view=view, files=files)

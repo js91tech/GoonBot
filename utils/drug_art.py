@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import random
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -11,6 +12,28 @@ from utils.drugs import DRUGS, drug_by_id
 
 WIDTH = 480
 HEIGHT = 280
+
+ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "drugs"
+
+
+def _static_asset(name: str) -> Path | None:
+    path = ASSET_DIR / f"{name}.png"
+    return path if path.is_file() else None
+
+
+def _cover_resize(img: Image.Image, width: int, height: int) -> Image.Image:
+    src_ratio = img.width / img.height
+    dst_ratio = width / height
+    if src_ratio > dst_ratio:
+        new_h = height
+        new_w = int(round(height * src_ratio))
+    else:
+        new_w = width
+        new_h = int(round(width / src_ratio))
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - width) // 2
+    top = (new_h - height) // 2
+    return resized.crop((left, top, left + width, top + height))
 
 
 def _rng(drug_id: str) -> random.Random:
@@ -48,11 +71,34 @@ def _draw_pouch(draw: ImageDraw.ImageDraw, cx: int, cy: int, color: tuple[int, i
         draw.ellipse([px, py, px + r, py + r], fill=(jitter(color[0]), jitter(color[1]), jitter(color[2])))
 
 
+def _label_bar(canvas: Image.Image, name: str, defn: object, color: tuple[int, int, int]) -> bytes:
+    draw = ImageDraw.Draw(canvas)
+    title_font, small_font = _fonts()
+    draw.rectangle([0, HEIGHT - 34, WIDTH, HEIGHT], fill=(14, 16, 22))
+    label = f"{getattr(defn, 'emoji', '') + ' ' if defn else ''}{name}"
+    draw.text((14, HEIGHT - 27), label, font=title_font, fill=(255, 255, 255))
+    if defn is not None:
+        price_text = f"~{int(defn.street_price)}/unit"
+        tw = draw.textlength(price_text, font=small_font)
+        draw.text((WIDTH - tw - 14, HEIGHT - 24), price_text, font=small_font, fill=color)
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def render_drug_image(drug_id: str) -> bytes:
     defn = drug_by_id(drug_id)
     name = defn.name if defn else "Product"
     color = _STRAIN_COLORS.get(drug_id, (160, 160, 170))
     rng = _rng(drug_id)
+
+    base = _static_asset(drug_id)
+    if base is not None:
+        try:
+            canvas = _cover_resize(Image.open(base).convert("RGB"), WIDTH, HEIGHT)
+            return _label_bar(canvas, name, defn, color)
+        except OSError:
+            pass
 
     canvas = Image.new("RGB", (WIDTH, HEIGHT), (22, 24, 30))
     draw = ImageDraw.Draw(canvas)
@@ -78,7 +124,21 @@ def render_drug_image(drug_id: str) -> bytes:
 
 
 def render_lab_image() -> bytes:
-    """A simple lab/grow-room banner image."""
+    """A lab/grow-room banner image (generated asset if present, else procedural)."""
+    base = _static_asset("grow_lab")
+    if base is not None:
+        try:
+            canvas = _cover_resize(Image.open(base).convert("RGB"), WIDTH, HEIGHT)
+            draw = ImageDraw.Draw(canvas)
+            title_font, _ = _fonts()
+            draw.rectangle([0, HEIGHT - 32, WIDTH, HEIGHT], fill=(12, 14, 18))
+            draw.text((14, HEIGHT - 26), "🧪 Grow Lab", font=title_font, fill=(220, 240, 220))
+            buffer = io.BytesIO()
+            canvas.save(buffer, format="PNG")
+            return buffer.getvalue()
+        except OSError:
+            pass
+
     canvas = Image.new("RGB", (WIDTH, HEIGHT), (18, 22, 26))
     draw = ImageDraw.Draw(canvas)
     rng = random.Random(42)

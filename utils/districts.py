@@ -8,8 +8,18 @@ per district that feeds the Phase 4 Market Expansion action.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import config
+
+ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "districts"
+
+
+def district_image_path(district_id: str | None) -> Path | None:
+    if not district_id:
+        return None
+    path = ASSET_DIR / f"{district_id}.png"
+    return path if path.is_file() else None
 
 
 @dataclass(frozen=True, slots=True)
