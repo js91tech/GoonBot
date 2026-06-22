@@ -487,6 +487,7 @@ class Database:
         await self._migrate_character_attributes_v3_reset()
         await self._migrate_business_empire()
         await self._migrate_business_districts()
+        await self._migrate_business_competition()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1070,6 +1071,50 @@ class Database:
                 await self.conn.execute(
                     "ALTER TABLE user_businesses ADD COLUMN last_relocate_at REAL NOT NULL DEFAULT 0",
                 )
+        await self.conn.commit()
+
+    async def _migrate_business_competition(self) -> None:
+        pk = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS business_buffs (
+                buff_id {pk},
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                buff_type TEXT NOT NULL,
+                multiplier REAL NOT NULL DEFAULT 1.0,
+                ends_at REAL NOT NULL,
+                source_attack_id BIGINT
+            )
+            """,
+        )
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS business_attacks (
+                attack_id {pk},
+                guild_id BIGINT NOT NULL,
+                attacker_id BIGINT NOT NULL,
+                defender_id BIGINT NOT NULL,
+                action_type TEXT NOT NULL,
+                penalty REAL NOT NULL DEFAULT 0,
+                started_at REAL NOT NULL,
+                ends_at REAL NOT NULL,
+                defended INTEGER NOT NULL DEFAULT 0,
+                notify_expires_at REAL NOT NULL DEFAULT 0
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS business_action_cooldowns (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                action_type TEXT NOT NULL,
+                last_used_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, user_id, action_type)
+            )
+            """,
+        )
         await self.conn.commit()
 
     async def _migrate_crew_banking(self) -> None:
@@ -7212,7 +7257,8 @@ class Database:
         current = time.time() if now is None else now
         last_at = float(row["last_income_at"]) or current
         elapsed = max(0.0, current - last_at)
-        hourly = self._business_hourly_from_row(row)
+        buff_mult = await self._active_buff_multiplier_no_lock(user_id, guild_id, current)
+        hourly = self._business_hourly_from_row(row) * buff_mult
         capacity = self._business_capacity_from_row(row)
         new_stored = accrue_income(
             stored=float(row["stored_income"]),
@@ -7423,6 +7469,263 @@ class Database:
             for uid in user_ids:
                 await self._settle_business_income_no_lock(uid, guild_id, now=now)
             await self.conn.commit()
+
+    async def _active_buff_multiplier_no_lock(
+        self, user_id: int, guild_id: int, now: float,
+    ) -> float:
+        cursor = await self.conn.execute(
+            """
+            SELECT multiplier FROM business_buffs
+            WHERE guild_id = ? AND user_id = ? AND ends_at > ?
+            """,
+            (guild_id, user_id, now),
+        )
+        mult = 1.0
+        for r in await cursor.fetchall():
+            mult *= float(r["multiplier"])
+        return max(0.0, mult)
+
+    async def list_active_business_buffs(
+        self, user_id: int, guild_id: int,
+    ) -> list[dict[str, object]]:
+        now = time.time()
+        cursor = await self.conn.execute(
+            """
+            SELECT buff_id, buff_type, multiplier, ends_at, source_attack_id
+            FROM business_buffs
+            WHERE guild_id = ? AND user_id = ? AND ends_at > ?
+            ORDER BY ends_at ASC
+            """,
+            (guild_id, user_id, now),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def prune_expired_business_buffs(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                "DELETE FROM business_buffs WHERE guild_id = ? AND ends_at <= ?",
+                (guild_id, time.time()),
+            )
+            await self.conn.commit()
+
+    async def perform_business_action(
+        self,
+        attacker_id: int,
+        guild_id: int,
+        action_id: str,
+        *,
+        target_id: int | None = None,
+    ) -> dict[str, object]:
+        """Execute a competitive action. Returns a result dict with an 'error' key on failure."""
+        from utils.business_competition import (
+            action_by_id,
+            bonus_to_multiplier,
+            effective_penalty,
+            penalty_to_multiplier,
+        )
+        from utils.businesses import security_rating
+
+        action = action_by_id(action_id)
+        if action is None:
+            return {"error": "invalid_action"}
+        now = time.time()
+        async with self._write_lock:
+            # Attacker must own a business.
+            cursor = await self.conn.execute(
+                "SELECT * FROM user_businesses WHERE user_id = ? AND guild_id = ?",
+                (attacker_id, guild_id),
+            )
+            attacker_biz = await cursor.fetchone()
+            if attacker_biz is None:
+                await self.conn.commit()
+                return {"error": "no_business"}
+
+            # Cooldown per action.
+            cursor = await self.conn.execute(
+                """
+                SELECT last_used_at FROM business_action_cooldowns
+                WHERE guild_id = ? AND user_id = ? AND action_type = ?
+                """,
+                (guild_id, attacker_id, action.action_id),
+            )
+            cd_row = await cursor.fetchone()
+            if cd_row is not None:
+                remaining = config.BUSINESS_ACTION_COOLDOWN_SECONDS - (now - float(cd_row["last_used_at"]))
+                if remaining > 0:
+                    await self.conn.commit()
+                    return {"error": "cooldown", "retry_after": remaining}
+
+            defender_biz = None
+            if action.target == "opponent":
+                if target_id is None or target_id == attacker_id:
+                    await self.conn.commit()
+                    return {"error": "invalid_target"}
+                cursor = await self.conn.execute(
+                    "SELECT * FROM user_businesses WHERE user_id = ? AND guild_id = ?",
+                    (target_id, guild_id),
+                )
+                defender_biz = await cursor.fetchone()
+                if defender_biz is None:
+                    await self.conn.commit()
+                    return {"error": "target_no_business"}
+
+            # Charge the attacker.
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (attacker_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < action.cost:
+                await self.conn.commit()
+                return {"error": "insufficient_funds", "cost": action.cost}
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (action.cost, attacker_id, guild_id),
+            )
+
+            # Record cooldown.
+            await self.conn.execute(
+                """
+                INSERT INTO business_action_cooldowns (guild_id, user_id, action_type, last_used_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, action_type) DO UPDATE SET last_used_at = excluded.last_used_at
+                """,
+                (guild_id, attacker_id, action.action_id, now),
+            )
+
+            result: dict[str, object] = {"error": None, "action": action.action_id, "cost": action.cost}
+
+            if action.kind == "buff":
+                ends_at = now + action.duration_seconds
+                await self.conn.execute(
+                    """
+                    INSERT INTO business_buffs (guild_id, user_id, buff_type, multiplier, ends_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (guild_id, attacker_id, action.action_id, bonus_to_multiplier(action.magnitude), ends_at),
+                )
+                result.update({"kind": "buff", "ends_at": ends_at, "magnitude": action.magnitude})
+            elif action.kind == "attack":
+                rating = security_rating(
+                    security_level=int(defender_biz["security"]),
+                    branch_security_level=int(defender_biz["branch_security"]),
+                    tier=int(defender_biz["tier"]),
+                )
+                penalty = effective_penalty(action.magnitude, rating)
+                ends_at = now + action.duration_seconds
+                notify_expires = now + config.BUSINESS_DEFENSE_WINDOW_SECONDS
+                cursor = await self.conn.execute(
+                    """
+                    INSERT INTO business_attacks (
+                        guild_id, attacker_id, defender_id, action_type, penalty,
+                        started_at, ends_at, defended, notify_expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    """,
+                    (guild_id, attacker_id, int(target_id), action.action_id, penalty, now, ends_at, notify_expires),
+                )
+                attack_id = await self._last_insert_id_no_lock("business_attacks", "attack_id")
+                await self.conn.execute(
+                    """
+                    INSERT INTO business_buffs (guild_id, user_id, buff_type, multiplier, ends_at, source_attack_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (guild_id, int(target_id), action.action_id, penalty_to_multiplier(penalty), ends_at, attack_id),
+                )
+                result.update({
+                    "kind": "attack",
+                    "defender_id": int(target_id),
+                    "attack_id": attack_id,
+                    "penalty": penalty,
+                    "base_penalty": action.magnitude,
+                    "mitigated": action.magnitude - penalty,
+                    "security_rating": rating,
+                    "ends_at": ends_at,
+                    "notify_expires_at": notify_expires,
+                })
+            else:  # influence
+                district_id = attacker_biz["district_id"]
+                if not district_id:
+                    # Refund: no district to expand into.
+                    await self.conn.execute(
+                        "UPDATE users SET wallet = wallet + ? WHERE user_id = ? AND guild_id = ?",
+                        (action.cost, attacker_id, guild_id),
+                    )
+                    await self.conn.commit()
+                    return {"error": "no_district"}
+                cursor = await self.conn.execute(
+                    """
+                    SELECT influence FROM district_influence
+                    WHERE guild_id = ? AND district_id = ? AND entity_type = 'user' AND entity_id = ?
+                    """,
+                    (guild_id, str(district_id), str(attacker_id)),
+                )
+                existing = await cursor.fetchone()
+                cap = float(config.BUSINESS_DISTRICT_INFLUENCE_MAX)
+                current = float(existing["influence"]) if existing is not None else 0.0
+                new_value = min(cap, current + config.BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE)
+                await self.conn.execute(
+                    """
+                    INSERT INTO district_influence (
+                        guild_id, district_id, entity_type, entity_id, influence, updated_at
+                    ) VALUES (?, ?, 'user', ?, ?, ?)
+                    ON CONFLICT(guild_id, district_id, entity_type, entity_id) DO UPDATE SET
+                        influence = excluded.influence, updated_at = excluded.updated_at
+                    """,
+                    (guild_id, str(district_id), str(attacker_id), new_value, now),
+                )
+                result.update({
+                    "kind": "influence",
+                    "district_id": str(district_id),
+                    "influence": new_value,
+                })
+            await self.conn.commit()
+        return result
+
+    async def _last_insert_id_no_lock(self, table: str, pk_column: str) -> int:
+        if self.is_postgres:
+            cursor = await self.conn.execute(f"SELECT MAX({pk_column}) AS id FROM {table}")
+        else:
+            cursor = await self.conn.execute("SELECT last_insert_rowid() AS id")
+        row = await cursor.fetchone()
+        return int(row["id"]) if row is not None and row["id"] is not None else 0
+
+    async def defend_business(self, user_id: int, guild_id: int) -> dict[str, object]:
+        """Respond to the most recent active attack, halving its remaining penalty."""
+        from utils.business_competition import defended_penalty, penalty_to_multiplier
+
+        now = time.time()
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                SELECT * FROM business_attacks
+                WHERE guild_id = ? AND defender_id = ? AND defended = 0
+                  AND notify_expires_at > ? AND ends_at > ?
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (guild_id, user_id, now, now),
+            )
+            attack = await cursor.fetchone()
+            if attack is None:
+                await self.conn.commit()
+                return {"error": "no_attack"}
+            attack_id = int(attack["attack_id"])
+            new_penalty = defended_penalty(float(attack["penalty"]))
+            await self.conn.execute(
+                "UPDATE business_attacks SET defended = 1, penalty = ? WHERE attack_id = ?",
+                (new_penalty, attack_id),
+            )
+            await self.conn.execute(
+                "UPDATE business_buffs SET multiplier = ? WHERE source_attack_id = ?",
+                (penalty_to_multiplier(new_penalty), attack_id),
+            )
+            await self.conn.commit()
+        return {
+            "error": None,
+            "action_type": str(attack["action_type"]),
+            "attacker_id": int(attack["attacker_id"]),
+            "new_penalty": new_penalty,
+        }
 
     async def relocate_business(
         self, user_id: int, guild_id: int, district_id: str,

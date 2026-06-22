@@ -544,6 +544,33 @@ BUSINESS_DISTRICT_RELOCATE_COOLDOWN_SECONDS = 6 * 3600
 BUSINESS_DISTRICT_INFLUENCE_COST_PER_POINT = 250.0
 BUSINESS_DISTRICT_INFLUENCE_MAX = 100
 
+# --- Competition & defense (Phase 4) ----------------------------------------
+# All competitive actions are temporary income multipliers; no permanent loss.
+BUSINESS_ACTION_COOLDOWN_SECONDS = 3600
+BUSINESS_DEFENSE_WINDOW_SECONDS = 15 * 60
+# Active defense removes this fraction of an incoming debuff's remaining penalty.
+BUSINESS_DEFENSE_MITIGATION = 0.5
+# Passive defense: mitigation = security_rating / (security_rating + K).
+BUSINESS_SECURITY_MITIGATION_K = 120
+BUSINESS_SECURITY_MITIGATION_CAP = 0.75
+# Self-buff actions.
+BUSINESS_ACTION_MARKETING_COST = 5_000.0
+BUSINESS_ACTION_MARKETING_BONUS = 0.10
+BUSINESS_ACTION_MARKETING_DURATION = 12 * 3600
+BUSINESS_ACTION_TALENT_COST = 6_000.0
+BUSINESS_ACTION_TALENT_BONUS = 0.08
+BUSINESS_ACTION_TALENT_DURATION = 8 * 3600
+# Attack actions (penalty applied to the opponent's income).
+BUSINESS_ACTION_PRICE_WAR_COST = 4_000.0
+BUSINESS_ACTION_PRICE_WAR_PENALTY = 0.05
+BUSINESS_ACTION_PRICE_WAR_DURATION = 6 * 3600
+BUSINESS_ACTION_REPUTATION_COST = 4_500.0
+BUSINESS_ACTION_REPUTATION_PENALTY = 0.10
+BUSINESS_ACTION_REPUTATION_DURATION = 6 * 3600
+# Market Expansion is an instant influence purchase in your current district.
+BUSINESS_ACTION_MARKET_EXPANSION_COST = 3_000.0
+BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE = 10
+
 
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""

@@ -8,6 +8,12 @@ from pathlib import Path
 
 import config
 from database import Database
+from utils.business_competition import (
+    bonus_to_multiplier,
+    effective_penalty,
+    penalty_to_multiplier,
+    security_mitigation,
+)
 from utils.businesses import (
     BUSINESS_TIERS,
     accrue_income,
@@ -261,6 +267,110 @@ class BusinessDistrictDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.db.credit_wallet(uid, guild_id, 10_000_000.0, apply_bonuses=False)
         _, new_inf, _ = await self.db.expand_district_influence(uid, guild_id, "downtown", 999)
         self.assertLessEqual(new_inf, float(config.BUSINESS_DISTRICT_INFLUENCE_MAX))
+
+
+class CompetitionMathTests(unittest.TestCase):
+    def test_security_mitigation_increases_with_rating(self) -> None:
+        self.assertLess(security_mitigation(0), security_mitigation(50))
+        self.assertLess(security_mitigation(50), security_mitigation(500))
+
+    def test_effective_penalty_reduced_by_security(self) -> None:
+        base = 0.10
+        self.assertEqual(effective_penalty(base, 0), base)
+        self.assertLess(effective_penalty(base, 200), base)
+
+    def test_multiplier_conversions(self) -> None:
+        self.assertAlmostEqual(penalty_to_multiplier(0.10), 0.90)
+        self.assertAlmostEqual(bonus_to_multiplier(0.10), 1.10)
+
+
+class BusinessCompetitionDatabaseTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.db = Database(self.db_path)
+        await self.db.connect()
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        Path(self.db_path).unlink(missing_ok=True)
+
+    async def _setup_business(self, uid: int, guild_id: int, funds: float) -> None:
+        await self.db.credit_wallet(uid, guild_id, funds + 500.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+
+    async def test_self_buff_applies(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 20_000.0)
+        result = await self.db.perform_business_action(uid, guild_id, "marketing_campaign")
+        self.assertIsNone(result["error"])
+        buffs = await self.db.list_active_business_buffs(uid, guild_id)
+        self.assertEqual(len(buffs), 1)
+        self.assertGreater(float(buffs[0]["multiplier"]), 1.0)
+
+    async def test_action_cooldown(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 50_000.0)
+        await self.db.perform_business_action(uid, guild_id, "marketing_campaign")
+        again = await self.db.perform_business_action(uid, guild_id, "marketing_campaign")
+        self.assertEqual(again["error"], "cooldown")
+
+    async def test_attack_and_defend(self) -> None:
+        guild_id, attacker, defender = 1, 100, 200
+        await self._setup_business(attacker, guild_id, 20_000.0)
+        await self._setup_business(defender, guild_id, 5_000.0)
+        result = await self.db.perform_business_action(
+            attacker, guild_id, "price_war", target_id=defender,
+        )
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["kind"], "attack")
+        buffs = await self.db.list_active_business_buffs(defender, guild_id)
+        self.assertEqual(len(buffs), 1)
+        penalty_before = 1.0 - float(buffs[0]["multiplier"])
+        self.assertGreater(penalty_before, 0)
+
+        defend = await self.db.defend_business(defender, guild_id)
+        self.assertIsNone(defend["error"])
+        buffs_after = await self.db.list_active_business_buffs(defender, guild_id)
+        penalty_after = 1.0 - float(buffs_after[0]["multiplier"])
+        self.assertLess(penalty_after, penalty_before)
+
+    async def test_attack_requires_target_business(self) -> None:
+        guild_id, attacker = 1, 100
+        await self._setup_business(attacker, guild_id, 20_000.0)
+        result = await self.db.perform_business_action(
+            attacker, guild_id, "price_war", target_id=999,
+        )
+        self.assertEqual(result["error"], "target_no_business")
+
+    async def test_defend_without_attack(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 5_000.0)
+        result = await self.db.defend_business(uid, guild_id)
+        self.assertEqual(result["error"], "no_attack")
+
+    async def test_market_expansion_requires_district(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 20_000.0)
+        result = await self.db.perform_business_action(uid, guild_id, "market_expansion")
+        self.assertEqual(result["error"], "no_district")
+
+    async def test_market_expansion_grants_influence(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 20_000.0)
+        await self.db.relocate_business(uid, guild_id, "downtown")
+        result = await self.db.perform_business_action(uid, guild_id, "market_expansion")
+        self.assertIsNone(result["error"])
+        self.assertGreater(float(result["influence"]), 0)
+
+    async def test_buff_affects_income(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 20_000.0)
+        await self.db.perform_business_action(uid, guild_id, "marketing_campaign")
+        row = await self.db.get_business(uid, guild_id)
+        base = self.db._business_hourly_from_row(row)
+        mult = await self.db._active_buff_multiplier_no_lock(uid, guild_id, __import__("time").time())
+        self.assertGreater(base * mult, base)
 
 
 if __name__ == "__main__":

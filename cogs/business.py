@@ -144,6 +144,33 @@ class Business(commands.Cog):
 
         await send_district_panel(interaction, self)
 
+    @business_group.command(name="action", description="Launch a competitive action against a rival.")
+    async def action(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        from utils.business_action_ui import send_action_panel
+
+        await send_action_panel(interaction, self)
+
+    @business_group.command(name="defend", description="Respond to an attack on your business.")
+    async def defend(self, interaction: discord.Interaction) -> None:
+        guild_id = interaction.guild_id
+        if guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        result = await self.bot.db.defend_business(interaction.user.id, guild_id)
+        if result.get("error"):
+            await interaction.response.send_message(
+                "No active attack to defend right now.", ephemeral=True,
+            )
+            return
+        pct = int(float(result["new_penalty"]) * 100)
+        await record_quest_event(self.bot.db, guild_id, interaction.user.id, "business_defend")
+        await interaction.response.send_message(
+            f"🛡️ Defended! The attack's penalty is cut to **−{pct}%**.", ephemeral=True,
+        )
+
     @business_group.command(name="prestige", description="Business prestige (coming soon).")
     async def prestige(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
@@ -157,6 +184,7 @@ class Business(commands.Cog):
         for guild in self.bot.guilds:
             try:
                 await self.bot.db.process_business_income(guild.id)
+                await self.bot.db.prune_expired_business_buffs(guild.id)
             except Exception:
                 logger.exception("business income tick failed guild=%s", guild.id)
 

@@ -139,6 +139,20 @@ async def build_business_payload(
     if row is None:
         return None
     embed, file = build_business_embed(member, row)
+    buffs = await cog.bot.db.list_active_business_buffs(user_id, guild_id)
+    if buffs:
+        from utils.business_competition import action_by_id
+
+        lines = []
+        for buff in buffs:
+            mult = float(buff["multiplier"])
+            action = action_by_id(str(buff["buff_type"]))
+            label = action.name if action else str(buff["buff_type"])
+            sign = "+" if mult >= 1.0 else "−"
+            pct = int(round(abs(mult - 1.0) * 100))
+            ends = int(float(buff["ends_at"]))
+            lines.append(f"{sign}{pct}% {label} · ends <t:{ends}:R>")
+        embed.add_field(name="Active effects", value="\n".join(lines), inline=False)
     view = BusinessPanelView(cog, guild_id, user_id)
     view.sync_state(row)
     return embed, [file], view
@@ -241,6 +255,16 @@ class BusinessPanelView(discord.ui.View):
         embed = await build_district_embed(self.cog, interaction.guild, self.user_id)
         view = DistrictMapView(self.cog, self.guild_id, self.user_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Compete", style=discord.ButtonStyle.danger, row=1)
+    async def compete_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        from utils.business_action_ui import BusinessActionView, build_action_embed
+
+        view = BusinessActionView(self.cog, self.guild_id, self.user_id)
+        await interaction.response.send_message(
+            embed=build_action_embed(), view=view, ephemeral=True,
+        )
 
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary)
     async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
