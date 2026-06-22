@@ -111,13 +111,16 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 | Command | Description |
 |---------|-------------|
-| `/boss` | Raid fight panel — Attack, Cast, Items, Heal, Auto-heal, Refresh, Raid LB |
+| `/boss` | Raid fight panel — Attack, **Attack Add**, Cast, Items, Heal, Auto-heal, Refresh, Raid LB |
 | `/attack` | Strike the boss once (same as the panel Attack button) |
 | `/boss-status` | Quick HP check without buttons |
 | `/heal @user` | Revive a downed teammate (also available via the panel **Heal** button) |
 | `/cast` · `/use` | Cast skills and use consumables from the panel **Cast** / **Items** buttons too |
 
 Bosses auto-spawn every **40 minutes** when none is active.
+
+**Raid adds** — After the boss drops below 50% HP, **Hannah's Henchmen** and **Court of Kitty's Jesters** can spawn mid-fight. Use **Attack Add** on the `/boss` panel for alchemy scrap and void hardener (never celestial shards).
+
 | `/summon variant` | **Admin only:** force-spawn a boss |
 
 ### Raid avatars
@@ -182,7 +185,12 @@ Max **3 zones per crew**. Siege cooldown **12h** per zone after an attack.
 | `/shop-list [category]` | Text catalog fallback |
 | `/buy item_id` | Buy a weapon or armor piece |
 | `/inventory [user]` | View owned and equipped gear |
-| `/equip item_id` | Equip an owned weapon or armor piece |
+| `/equip item_id` | Equip an owned weapon, armor, or accessory |
+| `/enhance` | Enhance gear instances (+1 through +15, then PRI→PENTA) |
+| `/repair-gear` | Repair broken enhanced gear (10% of base item shop price) |
+| `/equip-instance` | Equip a specific gear instance by id (shown in `/enhance` and `/inventory`) |
+
+**Enhancement** — Each weapon, armor piece, and accessory is a unique instance. Use alchemy scrap (+1–+10), void hardener (+11–+15), and celestial shards (PRI–PENTA, mythic/ZZ Wrath boss drops only). Every attempt costs materials plus escalating nuggets. Failures can downgrade or break gear; broken gear is repaired with `/repair-gear`. Ring and amulet accessory slots grant flat combat bonuses.
 
 Weapons define base boss damage (plus a 1–5 roll) and tier crit chance; unarmed
 attacks deal 1–15. Armor adds HP and percentage mitigation on Hannah's counters.

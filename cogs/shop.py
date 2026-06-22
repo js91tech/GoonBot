@@ -335,6 +335,7 @@ class Shop(commands.Cog):
                 loadout.armor,
                 class_modifiers=get_modifiers(class_id),
                 attr_hp_bonus=attr_bonuses.hp_bonus,
+                accessory_bonuses=loadout.accessory_bonuses,
             )
         )
         await self.bot.db.sync_combat_hp(target.id, guild_id, max_hp)
@@ -351,6 +352,7 @@ class Shop(commands.Cog):
             prestige_level=prestige,
             set_bonus=set_bonus,
             attr_bonuses=attr_bonuses,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         class_blurb = ""
         if cls is not None:
@@ -408,7 +410,9 @@ class Shop(commands.Cog):
             value=(
                 f"Main: {_gear_label('weapon', raw_equipment.get('weapon'), loadout.primary.name if loadout.primary else None)}\n"
                 f"Off-hand: {_gear_label('off_hand', raw_equipment.get('off_hand'), loadout.off_hand.name if loadout.off_hand else None)}\n"
-                f"Armor: {_gear_label('armor', raw_equipment.get('armor'), loadout.armor.name if loadout.armor else None)}"
+                f"Armor: {_gear_label('armor', raw_equipment.get('armor'), loadout.armor.name if loadout.armor else None)}\n"
+                f"Ring: {_gear_label('ring', raw_equipment.get('ring'), loadout.ring.name if loadout.ring else None)}\n"
+                f"Amulet: {_gear_label('amulet', raw_equipment.get('amulet'), loadout.amulet.name if loadout.amulet else None)}"
             ),
             inline=True,
         )
@@ -473,11 +477,29 @@ class Shop(commands.Cog):
                 off_hand=loadout.off_hand,
                 prestige_level=int(progress["prestige_level"]),
                 set_bonus=set_bonus,
+                accessory_bonuses=loadout.accessory_bonuses,
             ),
             set_bonus=set_bonus,
             prestige_level=int(progress["prestige_level"]),
             off_hand=loadout.off_hand,
         )
+        instances = await self.bot.db.list_gear_instances(target.id, interaction.guild_id)
+        instance_lines: list[str] = []
+        if instances:
+            from utils.enhancement import display_level, format_instance_label
+
+            for row in instances[:15]:
+                item = get_item(str(row["item_id"]))
+                if item is None:
+                    continue
+                instance_lines.append(
+                    format_instance_label(
+                        item,
+                        int(row["instance_id"]),
+                        int(row["enhancement_level"]),
+                        broken=bool(int(row["is_broken"])),
+                    ),
+                )
 
         embed = discord.Embed(
             title=f"{target.display_name}'s Gear",
@@ -485,7 +507,15 @@ class Shop(commands.Cog):
             color=discord.Color.blue(),
         )
         embed.add_field(name="Equipped loadout", value=summary, inline=False)
-        embed.set_footer(text="/stats for wallet, raid damage, and HP bar · /equip to change gear")
+        if instance_lines:
+            embed.add_field(
+                name="Gear instances",
+                value="\n".join(instance_lines),
+                inline=False,
+            )
+        embed.set_footer(
+            text="/enhance · /equip-instance · /stats · /equip for quick slot equip",
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
@@ -635,6 +665,10 @@ class Shop(commands.Cog):
             equipped = " (off-hand)"
         elif equipment.get("armor") == item.id:
             equipped = " (armor)"
+        elif equipment.get("ring") == item.id:
+            equipped = " (ring)"
+        elif equipment.get("amulet") == item.id:
+            equipped = " (amulet)"
         else:
             equipped = ""
         refund = sell_refund_for_item(item)

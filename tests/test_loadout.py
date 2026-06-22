@@ -34,8 +34,8 @@ class EquipTargetSlotTests(unittest.TestCase):
         pistol = get_item("iron_pistol")
         assert cap is not None and pistol is not None
         loadout = parse_loadout({"weapon": cap.id, "off_hand": pistol.id})
-        self.assertEqual(loadout.primary.id, pistol.id)
-        self.assertEqual(loadout.off_hand.id, cap.id)
+        self.assertEqual(loadout.primary.base.id, pistol.id)
+        self.assertEqual(loadout.off_hand.base.id, cap.id)
 
 
 if __name__ == "__main__":

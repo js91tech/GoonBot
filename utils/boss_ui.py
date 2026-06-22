@@ -181,6 +181,31 @@ class BossFightView(discord.ui.View):
             kwargs["attachments"] = result.files
         await interaction.edit_original_response(**kwargs)
 
+    @discord.ui.button(label="👹 Attack Add", style=discord.ButtonStyle.danger, row=0)
+    async def attack_add_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        if interaction.guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Members only.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        result = await self.cog.execute_raid_add_attack(
+            interaction.user,
+            interaction.guild,
+        )
+        if result.error:
+            await interaction.followup.send(result.error, ephemeral=True)
+            return
+        if result.embed is None:
+            await interaction.followup.send("Attack failed.", ephemeral=True)
+            return
+        await interaction.edit_original_response(embed=result.embed, view=self)
+
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=0)
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button

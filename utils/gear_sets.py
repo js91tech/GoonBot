@@ -64,7 +64,16 @@ SET_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
-def detect_set_bonus(weapon: ShopItem | None, armor: ShopItem | None) -> SetBonus | None:
+def _base_shop_item(item: ShopItem | object | None) -> ShopItem | None:
+    if item is None:
+        return None
+    base = getattr(item, "base", None)
+    return base if base is not None else item  # type: ignore[return-value]
+
+
+def detect_set_bonus(weapon: ShopItem | object | None, armor: ShopItem | object | None) -> SetBonus | None:
+    weapon = _base_shop_item(weapon)
+    armor = _base_shop_item(armor)
     if weapon is None or armor is None:
         return None
     weapon_set = ITEM_SET_MAP.get(weapon.id)

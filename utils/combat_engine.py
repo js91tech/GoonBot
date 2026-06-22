@@ -12,8 +12,13 @@ from utils.classes import (
     is_jester_class,
     pvp_matchup_multiplier,
 )
+from utils.enhancement import AccessoryBonuses, EffectiveGear
 from utils.gear_sets import SetBonus
 from utils.loadout import off_hand_crit_bonus, off_hand_power_bonus
+
+
+def _flat_damage_bonus(flat: AccessoryBonuses | None) -> int:
+    return flat.flat_damage if flat is not None else 0
 
 
 @dataclass(frozen=True)
@@ -41,12 +46,13 @@ def _combined_damage_mult(ctx: AttackContext, set_bonus: SetBonus | None) -> flo
 
 
 def roll_player_damage(
-    weapon: ShopItem | None,
+    weapon: EffectiveGear | ShopItem | None,
     *,
-    off_hand: ShopItem | None = None,
+    off_hand: EffectiveGear | ShopItem | None = None,
     ctx: AttackContext | None = None,
     set_bonus: SetBonus | None = None,
     crit_chance_multiplier: float = 1.0,
+    accessory_bonuses: AccessoryBonuses | None = None,
 ) -> tuple[int, bool, str]:
     ctx = ctx or AttackContext()
     damage_mult = _combined_damage_mult(ctx, set_bonus)
@@ -65,11 +71,13 @@ def roll_player_damage(
         low = int((attack_power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
         high = int((attack_power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
         damage = random.randint(low, max(low, high))
+        damage += _flat_damage_bonus(accessory_bonuses)
         crit_chance = (
             config.PLAYER_BASE_CRIT_CHANCE
             + weapon.crit_chance
             + off_hand_crit_bonus(off_hand)
             + extra_crit
+            + (accessory_bonuses.flat_crit if accessory_bonuses else 0.0)
         )
         verb = random.choice(weapon.verbs or ("strikes",))
     crit_chance = max(0.0, crit_chance * crit_chance_multiplier)
@@ -81,12 +89,13 @@ def roll_player_damage(
 
 def apply_armor_mitigation(
     raw_damage: int,
-    armor: ShopItem | None,
+    armor: EffectiveGear | ShopItem | None,
     *,
     set_bonus: SetBonus | None = None,
     class_modifiers: ClassModifiers | None = None,
     defense_retention: float = 1.0,
     attr_mitigation_bonus: float = 0.0,
+    accessory_bonuses: AccessoryBonuses | None = None,
 ) -> tuple[int, int]:
     if armor is None:
         mitigated = int(raw_damage * attr_mitigation_bonus)
@@ -101,17 +110,22 @@ def apply_armor_mitigation(
         mitigated += int(raw_damage * set_bonus.mitigation_bonus)
     if attr_mitigation_bonus > 0:
         mitigated += int(raw_damage * attr_mitigation_bonus)
+    if accessory_bonuses is not None and accessory_bonuses.flat_mitigation > 0:
+        mitigated += int(raw_damage * accessory_bonuses.flat_mitigation)
     mitigated = min(raw_damage - 1, mitigated)
     return max(1, raw_damage - mitigated), mitigated
 
 
 def max_hp_from_armor(
-    armor: ShopItem | None,
+    armor: EffectiveGear | ShopItem | None,
     *,
     class_modifiers: ClassModifiers | None = None,
     attr_hp_bonus: int = 0,
+    accessory_bonuses: AccessoryBonuses | None = None,
 ) -> int:
     bonus = armor.hp_bonus if armor is not None else 0
+    if accessory_bonuses is not None:
+        bonus += accessory_bonuses.flat_hp
     base = config.PLAYER_BASE_HP + bonus + attr_hp_bonus
     if class_modifiers is not None:
         base = int(base * class_modifiers.max_hp_mult)

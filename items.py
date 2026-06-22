@@ -15,6 +15,10 @@ class ShopItem:
     crit_chance: float = 0.0
     hp_bonus: int = 0
     shop_listed: bool = True
+    flat_damage: int = 0
+    flat_hp: int = 0
+    flat_crit: float = 0.0
+    flat_mitigation: float = 0.0
 
 
 STARTER_WEAPON = ShopItem(
@@ -426,9 +430,101 @@ ALCHEMY_SCRAP = ShopItem(
     "consumable",
     0,
     0,
-    "Crafting material from dungeons. Used with /alchemy.",
+    "Crafting material from dungeons and raid adds. Used for +1–+10 enhancement.",
     shop_listed=False,
 )
+
+VOID_HARDENER = ShopItem(
+    "void_hardener",
+    "Void Hardener",
+    "consumable",
+    0,
+    0,
+    "Rare tempering agent for +11–+15 enhancement.",
+    shop_listed=False,
+)
+
+CELESTIAL_SHARD = ShopItem(
+    "celestial_shard",
+    "Celestial Shard",
+    "consumable",
+    0,
+    0,
+    "Mythic tempering shard for PRI–PENTA enhancement.",
+    shop_listed=False,
+)
+
+ACCESSORIES: tuple[ShopItem, ...] = (
+    ShopItem(
+        "rust_band",
+        "Rust Band",
+        "accessory",
+        0,
+        0,
+        "A dented ring from a henchman's pocket.",
+        flat_damage=3,
+        shop_listed=False,
+    ),
+    ShopItem(
+        "storm_loop",
+        "Storm Loop",
+        "accessory",
+        0,
+        0,
+        "Crackles with leftover raid energy.",
+        flat_damage=8,
+        flat_crit=0.01,
+        shop_listed=False,
+    ),
+    ShopItem(
+        "jester_charm",
+        "Jester's Charm",
+        "accessory",
+        0,
+        0,
+        "Court of Kitty's token of chaos.",
+        flat_damage=5,
+        flat_hp=15,
+        shop_listed=False,
+    ),
+    ShopItem(
+        "mythic_signet",
+        "Mythic Signet",
+        "accessory",
+        0,
+        0,
+        "A signet pulsing with mythic residue.",
+        flat_damage=15,
+        flat_hp=25,
+        flat_crit=0.02,
+        shop_listed=False,
+    ),
+    ShopItem(
+        "warden_amulet",
+        "Warden Amulet",
+        "accessory",
+        0,
+        0,
+        "Flat protection from fallen raiders.",
+        flat_hp=40,
+        flat_mitigation=0.02,
+        shop_listed=False,
+    ),
+    ShopItem(
+        "citadel_pendant",
+        "Citadel Pendant",
+        "accessory",
+        0,
+        0,
+        "Vault-tier accessory for endgame collectors.",
+        flat_damage=12,
+        flat_hp=35,
+        flat_mitigation=0.03,
+        shop_listed=False,
+    ),
+)
+
+BOSS_ACCESSORY_POOL: tuple[str, ...] = tuple(item.id for item in ACCESSORIES)
 
 CONSUMABLES: tuple[ShopItem, ...] = (
     TRAP_BOMB,
@@ -443,6 +539,8 @@ CONSUMABLES: tuple[ShopItem, ...] = (
     JAIL_KEY,
     PICK_KEY,
     ALCHEMY_SCRAP,
+    VOID_HARDENER,
+    CELESTIAL_SHARD,
 )
 
 HP_POTION_HEAL: dict[str, int] = {
@@ -500,17 +598,34 @@ ITEMS: dict[str, ShopItem] = {
         MYTHIC_RAID_MAIL,
         *BOSS_WEAK_ITEMS,
         *CONSUMABLES,
+        *ACCESSORIES,
     )
 }
 ITEM_ORDER: tuple[str, ...] = tuple(
-    item.id for item in (*WEAPONS, *GUNS, *ARMOR, *CONSUMABLES)
+    item.id for item in (*WEAPONS, *GUNS, *ARMOR, *ACCESSORIES, *CONSUMABLES)
 )
-CATEGORIES = ("all", "weapon", "gun", "armor", "consumable")
-SHOP_CATEGORIES = ("all", "weapon", "gun", "armor", "consumable")
+CATEGORIES = ("all", "weapon", "gun", "armor", "accessory", "consumable")
+SHOP_CATEGORIES = ("all", "weapon", "gun", "armor", "accessory", "consumable")
+GEAR_INSTANCE_CATEGORIES = frozenset({"weapon", "gun", "armor", "accessory"})
 
 
 def is_damage_dealer(item: ShopItem) -> bool:
     return item.category in ("weapon", "gun")
+
+
+def is_gear_instance_item(item: ShopItem | None) -> bool:
+    return item is not None and item.category in GEAR_INSTANCE_CATEGORIES
+
+
+def is_accessory(item: ShopItem | None) -> bool:
+    return item is not None and item.category == "accessory"
+
+
+def accessory_equip_slot(item: ShopItem) -> str:
+    """Ring vs amulet slot routing."""
+    if item.id in ("warden_amulet", "citadel_pendant", "jester_charm"):
+        return "amulet"
+    return "ring"
 
 
 def get_item(item_id: str) -> ShopItem | None:

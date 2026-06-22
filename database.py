@@ -485,9 +485,8 @@ class Database:
         await self._migrate_character_attributes()
         await self._migrate_character_attributes_reset()
         await self._migrate_character_attributes_v3_reset()
+        await self._migrate_gear_enhancement()
 
-
-    async def _migrate_character_attributes(self) -> None:
         import config
 
         base = config.ATTR_BASE_VALUE
@@ -1552,6 +1551,106 @@ class Database:
             return
         await self._rebuild_equipment_for_off_hand()
         await self.conn.commit()
+
+    async def _migrate_gear_enhancement(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gear_instances (
+                instance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                item_id TEXT NOT NULL,
+                enhancement_level INTEGER NOT NULL DEFAULT 0 CHECK (enhancement_level >= 0),
+                is_broken INTEGER NOT NULL DEFAULT 0 CHECK (is_broken IN (0, 1)),
+                created_at REAL NOT NULL
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_gear_instances_owner
+            ON gear_instances(guild_id, user_id)
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS boss_raid_adds (
+                add_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id BIGINT NOT NULL,
+                add_type TEXT NOT NULL,
+                hp REAL NOT NULL CHECK (hp >= 0),
+                max_hp REAL NOT NULL CHECK (max_hp > 0),
+                spawned_at REAL NOT NULL,
+                expires_at REAL NOT NULL
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_boss_raid_adds_guild
+            ON boss_raid_adds(guild_id)
+            """,
+        )
+        if not await self._equipment_has_gear_instance_id():
+            await self._rebuild_equipment_for_enhancement()
+        await self.conn.commit()
+
+    async def _equipment_has_gear_instance_id(self) -> bool:
+        if self.is_postgres:
+            cursor = await self.conn.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(true))
+                  AND table_name = 'equipment' AND column_name = 'gear_instance_id'
+                """,
+            )
+            return await cursor.fetchone() is not None
+        cursor = await self.conn.execute("PRAGMA table_info(equipment)")
+        return "gear_instance_id" in {row[1] for row in await cursor.fetchall()}
+
+    async def _rebuild_equipment_for_enhancement(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS equipment_enhanced (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                slot TEXT NOT NULL CHECK (
+                    slot IN ('weapon', 'off_hand', 'armor', 'ring', 'amulet')
+                ),
+                item_id TEXT NOT NULL,
+                gear_instance_id BIGINT,
+                PRIMARY KEY (guild_id, user_id, slot)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            INSERT INTO equipment_enhanced (guild_id, user_id, slot, item_id, gear_instance_id)
+            SELECT guild_id, user_id, slot, item_id, NULL FROM equipment
+            """,
+        )
+        await self.conn.execute("DROP TABLE equipment")
+        await self.conn.execute("ALTER TABLE equipment_enhanced RENAME TO equipment")
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS equipment_unstable_new (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                slot TEXT NOT NULL CHECK (
+                    slot IN ('weapon', 'off_hand', 'armor', 'ring', 'amulet')
+                ),
+                PRIMARY KEY (guild_id, user_id, slot)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            INSERT INTO equipment_unstable_new (guild_id, user_id, slot)
+            SELECT guild_id, user_id, slot FROM equipment_unstable
+            """,
+        )
+        await self.conn.execute("DROP TABLE IF EXISTS equipment_unstable")
+        await self.conn.execute("ALTER TABLE equipment_unstable_new RENAME TO equipment_unstable")
 
     async def _migrate_duel_history(self) -> None:
         await self.conn.execute(
@@ -2721,7 +2820,40 @@ class Database:
         )
         return list(await cursor.fetchall())
 
+    async def pick_gear_instance_for_equip(
+        self, user_id: int, guild_id: int, item_id: str,
+    ) -> int | None:
+        from items import get_item, is_gear_instance_item
+
+        item = get_item(item_id)
+        if not is_gear_instance_item(item):
+            return None
+        records = await self.get_equipment_records(user_id, guild_id)
+        equipped_ids = {
+            int(rec["gear_instance_id"])
+            for rec in records.values()
+            if rec.get("gear_instance_id") is not None
+        }
+        instances = await self.list_gear_instances(user_id, guild_id)
+        candidates = [
+            row
+            for row in instances
+            if str(row["item_id"]) == item_id
+            and int(row["instance_id"]) not in equipped_ids
+            and not bool(int(row["is_broken"]))
+        ]
+        if not candidates:
+            qty = await self.get_inventory_quantity(user_id, guild_id, item_id)
+            if qty > 0:
+                return await self.create_gear_instance(user_id, guild_id, item_id)
+            return None
+        candidates.sort(
+            key=lambda row: (-int(row["enhancement_level"]), int(row["instance_id"])),
+        )
+        return int(candidates[0]["instance_id"])
+
     async def equip_item(self, user_id: int, guild_id: int, slot: str, item_id: str) -> bool:
+        instance_id = await self.pick_gear_instance_for_equip(user_id, guild_id, item_id)
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
@@ -2739,12 +2871,13 @@ class Database:
                     return False
                 await self.conn.execute(
                     """
-                    INSERT INTO equipment (guild_id, user_id, slot, item_id)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO equipment (guild_id, user_id, slot, item_id, gear_instance_id)
+                    VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
-                        item_id = excluded.item_id
+                        item_id = excluded.item_id,
+                        gear_instance_id = excluded.gear_instance_id
                     """,
-                    (guild_id, user_id, slot, item_id),
+                    (guild_id, user_id, slot, item_id, instance_id),
                 )
             except Exception:
                 await self.conn.rollback()
@@ -2762,7 +2895,9 @@ class Database:
             return None
 
         equipment = await self.get_equipment(user_id, guild_id)
+        records = await self.get_equipment_records(user_id, guild_id)
         slot = equip_target_slot(item, equipment)
+        instance_id = await self.pick_gear_instance_for_equip(user_id, guild_id, item_id)
 
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
@@ -2784,24 +2919,28 @@ class Database:
                     current_weapon_id = equipment.get("weapon")
                     current_weapon = get_item(current_weapon_id) if current_weapon_id else None
                     if current_weapon is not None and current_weapon.category == "gun":
+                        weapon_rec = records.get("weapon", {})
+                        off_inst = weapon_rec.get("gear_instance_id")
                         await self.conn.execute(
                             """
-                            INSERT INTO equipment (guild_id, user_id, slot, item_id)
-                            VALUES (?, ?, 'off_hand', ?)
+                            INSERT INTO equipment (guild_id, user_id, slot, item_id, gear_instance_id)
+                            VALUES (?, ?, 'off_hand', ?, ?)
                             ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
-                                item_id = excluded.item_id
+                                item_id = excluded.item_id,
+                                gear_instance_id = excluded.gear_instance_id
                             """,
-                            (guild_id, user_id, current_weapon_id),
+                            (guild_id, user_id, current_weapon_id, off_inst),
                         )
 
                 await self.conn.execute(
                     """
-                    INSERT INTO equipment (guild_id, user_id, slot, item_id)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO equipment (guild_id, user_id, slot, item_id, gear_instance_id)
+                    VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
-                        item_id = excluded.item_id
+                        item_id = excluded.item_id,
+                        gear_instance_id = excluded.gear_instance_id
                     """,
-                    (guild_id, user_id, slot, item_id),
+                    (guild_id, user_id, slot, item_id, instance_id),
                 )
             except Exception:
                 await self.conn.rollback()
@@ -2811,10 +2950,27 @@ class Database:
 
     async def grant_item(
         self, user_id: int, guild_id: int, item_id: str, *, equip_slot: str | None = None
-    ) -> None:
+    ) -> int | None:
+        from items import get_item, is_gear_instance_item
+
+        instance_id: int | None = None
         async with self._write_lock:
             await self.conn.execute("BEGIN IMMEDIATE")
             try:
+                item = get_item(item_id)
+                if item is not None and is_gear_instance_item(item):
+                    import time
+
+                    cursor = await self.conn.execute(
+                        """
+                        INSERT INTO gear_instances (
+                            guild_id, user_id, item_id, enhancement_level, is_broken, created_at
+                        )
+                        VALUES (?, ?, ?, 0, 0, ?)
+                        """,
+                        (guild_id, user_id, item_id, time.time()),
+                    )
+                    instance_id = int(cursor.lastrowid)
                 await self.conn.execute(
                     """
                     INSERT INTO inventory (guild_id, user_id, item_id, quantity)
@@ -2827,17 +2983,19 @@ class Database:
                 if equip_slot is not None:
                     await self.conn.execute(
                         """
-                        INSERT INTO equipment (guild_id, user_id, slot, item_id)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO equipment (guild_id, user_id, slot, item_id, gear_instance_id)
+                        VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
-                            item_id = excluded.item_id
+                            item_id = excluded.item_id,
+                            gear_instance_id = excluded.gear_instance_id
                         """,
-                        (guild_id, user_id, equip_slot, item_id),
+                        (guild_id, user_id, equip_slot, item_id, instance_id),
                     )
             except Exception:
                 await self.conn.rollback()
                 raise
             await self.conn.commit()
+        return instance_id
 
     async def get_equipment(self, user_id: int, guild_id: int) -> dict[str, str]:
         cursor = await self.conn.execute(
@@ -2850,12 +3008,235 @@ class Database:
         )
         return {str(row["slot"]): str(row["item_id"]) for row in await cursor.fetchall()}
 
-    async def get_combat_loadout(self, user_id: int, guild_id: int):
-        from utils.loadout import parse_loadout
+    async def get_equipment_records(self, user_id: int, guild_id: int) -> dict[str, dict[str, str | int | None]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT slot, item_id, gear_instance_id
+            FROM equipment
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        out: dict[str, dict[str, str | int | None]] = {}
+        for row in await cursor.fetchall():
+            inst = row["gear_instance_id"]
+            out[str(row["slot"])] = {
+                "item_id": str(row["item_id"]),
+                "gear_instance_id": int(inst) if inst is not None else None,
+            }
+        return out
 
+    async def create_gear_instance(self, user_id: int, guild_id: int, item_id: str) -> int:
+        import time
+
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO gear_instances (guild_id, user_id, item_id, enhancement_level, is_broken, created_at)
+                VALUES (?, ?, ?, 0, 0, ?)
+                """,
+                (guild_id, user_id, item_id, time.time()),
+            )
+            await self.conn.commit()
+            return int(cursor.lastrowid)
+
+    async def get_gear_instance(self, instance_id: int, guild_id: int) -> aiosqlite.Row | None:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM gear_instances
+            WHERE instance_id = ? AND guild_id = ?
+            """,
+            (instance_id, guild_id),
+        )
+        return await cursor.fetchone()
+
+    async def list_gear_instances(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM gear_instances
+            WHERE guild_id = ? AND user_id = ?
+            ORDER BY instance_id DESC
+            """,
+            (guild_id, user_id),
+        )
+        return list(await cursor.fetchall())
+
+    async def list_broken_gear_instances(self, user_id: int, guild_id: int) -> list[aiosqlite.Row]:
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM gear_instances
+            WHERE guild_id = ? AND user_id = ? AND is_broken = 1
+            ORDER BY instance_id DESC
+            """,
+            (guild_id, user_id),
+        )
+        return list(await cursor.fetchall())
+
+    async def ensure_gear_instance_for_equipped(
+        self, user_id: int, guild_id: int, slot: str, item_id: str,
+    ) -> int:
+        records = await self.get_equipment_records(user_id, guild_id)
+        rec = records.get(slot)
+        if rec and rec.get("gear_instance_id"):
+            return int(rec["gear_instance_id"])
+        instance_id = await self.create_gear_instance(user_id, guild_id, item_id)
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE equipment SET gear_instance_id = ?
+                WHERE guild_id = ? AND user_id = ? AND slot = ?
+                """,
+                (instance_id, guild_id, user_id, slot),
+            )
+            await self.conn.commit()
+        return instance_id
+
+    async def set_gear_instance_level(
+        self, instance_id: int, guild_id: int, level: int, *, broken: bool,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                UPDATE gear_instances
+                SET enhancement_level = ?, is_broken = ?
+                WHERE instance_id = ? AND guild_id = ?
+                """,
+                (level, 1 if broken else 0, instance_id, guild_id),
+            )
+            await self.conn.commit()
+
+    async def repair_gear_instance(self, instance_id: int, guild_id: int) -> bool:
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                UPDATE gear_instances SET is_broken = 0
+                WHERE instance_id = ? AND guild_id = ? AND is_broken = 1
+                """,
+                (instance_id, guild_id),
+            )
+            await self.conn.commit()
+            return cursor.rowcount > 0
+
+    async def equip_gear_instance(self, user_id: int, guild_id: int, instance_id: int) -> str | None:
+        from items import accessory_equip_slot, get_item, is_accessory
+        from utils.loadout import equip_target_slot
+
+        row = await self.get_gear_instance(instance_id, guild_id)
+        if row is None or int(row["user_id"]) != user_id:
+            return None
+        item = get_item(str(row["item_id"]))
+        if item is None:
+            return None
         equipment = await self.get_equipment(user_id, guild_id)
+        if is_accessory(item):
+            slot = accessory_equip_slot(item)
+        else:
+            slot = equip_target_slot(item, equipment)
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO equipment (guild_id, user_id, slot, item_id, gear_instance_id)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, slot) DO UPDATE SET
+                    item_id = excluded.item_id,
+                    gear_instance_id = excluded.gear_instance_id
+                """,
+                (guild_id, user_id, slot, item.id, instance_id),
+            )
+            await self.conn.commit()
+        return slot
+
+    async def list_raid_adds(self, guild_id: int) -> list[aiosqlite.Row]:
+        import time
+
+        now = time.time()
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM boss_raid_adds
+            WHERE guild_id = ? AND expires_at > ?
+            ORDER BY add_id ASC
+            """,
+            (guild_id, now),
+        )
+        return list(await cursor.fetchall())
+
+    async def create_raid_add(
+        self, guild_id: int, add_type: str, hp: float, max_hp: float, expires_at: float,
+    ) -> int:
+        import time
+
+        async with self._write_lock:
+            count_cursor = await self.conn.execute(
+                "SELECT COUNT(*) AS c FROM boss_raid_adds WHERE guild_id = ?",
+                (guild_id,),
+            )
+            count_row = await count_cursor.fetchone()
+            if count_row and int(count_row["c"]) >= config.BOSS_ADD_MAX_CONCURRENT:
+                oldest = await self.conn.execute(
+                    """
+                    SELECT add_id FROM boss_raid_adds
+                    WHERE guild_id = ? ORDER BY add_id ASC LIMIT 1
+                    """,
+                    (guild_id,),
+                )
+                old_row = await oldest.fetchone()
+                if old_row:
+                    await self.conn.execute(
+                        "DELETE FROM boss_raid_adds WHERE add_id = ?",
+                        (int(old_row["add_id"]),),
+                    )
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO boss_raid_adds (guild_id, add_type, hp, max_hp, spawned_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (guild_id, add_type, hp, max_hp, time.time(), expires_at),
+            )
+            await self.conn.commit()
+            return int(cursor.lastrowid)
+
+    async def damage_raid_add(self, add_id: int, guild_id: int, damage: float) -> tuple[float, bool]:
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT hp FROM boss_raid_adds WHERE add_id = ? AND guild_id = ?",
+                (add_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return 0.0, False
+            new_hp = max(0.0, float(row["hp"]) - damage)
+            if new_hp <= 0:
+                await self.conn.execute(
+                    "DELETE FROM boss_raid_adds WHERE add_id = ? AND guild_id = ?",
+                    (add_id, guild_id),
+                )
+                await self.conn.commit()
+                return 0.0, True
+            await self.conn.execute(
+                "UPDATE boss_raid_adds SET hp = ? WHERE add_id = ? AND guild_id = ?",
+                (new_hp, add_id, guild_id),
+            )
+            await self.conn.commit()
+            return new_hp, False
+
+    async def clear_raid_adds(self, guild_id: int) -> None:
+        async with self._write_lock:
+            await self.conn.execute("DELETE FROM boss_raid_adds WHERE guild_id = ?", (guild_id,))
+            await self.conn.commit()
+
+    async def get_combat_loadout(self, user_id: int, guild_id: int):
+        from utils.loadout import parse_resolved_loadout
+
+        records = await self.get_equipment_records(user_id, guild_id)
         unstable = await self.list_unstable_slots(user_id, guild_id)
-        return parse_loadout(equipment, unstable_slots=unstable)
+        instances: dict[int, aiosqlite.Row] = {}
+        for rec in records.values():
+            inst_id = rec.get("gear_instance_id")
+            if inst_id is not None:
+                row = await self.get_gear_instance(int(inst_id), guild_id)
+                if row is not None:
+                    instances[int(inst_id)] = row
+        return parse_resolved_loadout(records, instances=instances, unstable_slots=unstable)
 
     async def sync_combat_hp(self, user_id: int, guild_id: int, max_hp: float) -> aiosqlite.Row:
         async with self._write_lock:
@@ -4453,6 +4834,7 @@ class Database:
                 "DELETE FROM boss_attack_cooldowns WHERE guild_id = ?",
                 (guild_id,),
             )
+            await self.conn.execute("DELETE FROM boss_raid_adds WHERE guild_id = ?", (guild_id,))
             await self.conn.commit()
 
     async def clear_all_bosses(self) -> int:

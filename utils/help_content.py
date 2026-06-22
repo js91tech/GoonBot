@@ -10,8 +10,10 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Raid & boss",
-        "**/boss** — fight panel: Attack, Cast, Items, Heal, Auto-heal, Refresh, Raid LB\n"
+        "**/boss** — fight panel: Attack, **Attack Add**, Cast, Items, Heal, Auto-heal, Refresh, Raid LB\n"
         "**/attack** · **/heal** · **/cast** · **/use** · **/boss-status** · **/raid-leaderboard**\n"
+        "**/enhance** · **/repair-gear** · **/equip-instance** — BDO-style gear enhancement (+1→PENTA)\n"
+        "Raid adds (**Hannah's Henchmen**, **Court of Kitty's Jesters**) drop scrap/hardener — never celestial shards.\n"
         "**/shop** · **/buy** · **/equip** · **/craft** · **/prestige**\n"
         "**/dungeon** — solo standard (**25** energy) · unlock **Gilded Vault** (**50k**, party raid) · **/alchemy** · **/season**",
     ),
@@ -26,8 +28,9 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**/class** · **/cast** · **/mana** · **/aspects** · **/avatar** (upload custom)\n"
         "**/use** — raid potion, energy drink, duel scroll, **Jail Key**, **Pick Key** · **/gift** — chia seeds\n"
         "**/attributes** — interactive stat panel (50 pt pool +5/prestige; 15 + prestige/stat cap)\n"
-        "**/profile** · **/stats** · **/quests** · **/achievements** · **/fix** (unstable gear)\n"
-        "**/guide** — full interactive systems + item catalog (dropdown UI)",
+        "**/profile** · **/stats** · **/inventory** · **/quests** · **/achievements** · **/fix** (unstable gear)\n"
+        "**/guide** — full interactive systems + item catalog (dropdown UI)\n"
+        "Ring + amulet accessory slots. Broken enhanced gear: **/repair-gear** (10% base item price).",
     ),
     (
         "Chaos modules",
