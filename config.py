@@ -584,6 +584,28 @@ CORP_WAR_TICK_SECONDS = 7 * 24 * 3600
 CORP_WAR_TERRITORY_SCORE = 5_000.0
 CORP_WAR_WINNER_TREASURY_BONUS = 250_000.0
 
+# --- Stock market (Phase 6) -------------------------------------------------
+# Share price is derived from a corporation's treasury and headcount, scaled by
+# any active market event.
+STOCK_BASE_PRICE = 10.0
+STOCK_TREASURY_DIVISOR = 1_000.0
+STOCK_PRICE_PER_MEMBER = 5.0
+STOCK_MIN_PRICE = 1.0
+STOCK_SELL_TAX = 0.05
+STOCK_MAX_SHARES_PER_TXN = 100_000
+# Dividends are paid hourly from the corporation treasury to shareholders.
+STOCK_DIVIDEND_RATE = 0.01
+STOCK_DIVIDEND_TICK_SECONDS = 3600
+# Market events temporarily scale all share prices.
+STOCK_MARKET_EVENTS: dict[str, float] = {
+    "tech_boom": 1.25,
+    "economic_crash": 0.70,
+    "tourism_surge": 1.12,
+    "supply_shortage": 0.85,
+}
+STOCK_EVENT_CHANCE_PER_TICK = 0.20
+STOCK_EVENT_DURATION_SECONDS = 6 * 3600
+
 
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""

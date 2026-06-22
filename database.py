@@ -489,6 +489,7 @@ class Database:
         await self._migrate_business_districts()
         await self._migrate_business_competition()
         await self._migrate_corporations()
+        await self._migrate_stock_market()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1160,6 +1161,46 @@ class Database:
                 guild_id BIGINT PRIMARY KEY,
                 last_tick_at REAL NOT NULL DEFAULT 0,
                 current_week INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+        )
+        await self.conn.commit()
+
+    async def _migrate_stock_market(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stock_holdings (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                shares INTEGER NOT NULL DEFAULT 0 CHECK (shares >= 0),
+                PRIMARY KEY (guild_id, user_id, crew_name)
+            )
+            """,
+        )
+        pk = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS stock_transactions (
+                txn_id {pk},
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                shares INTEGER NOT NULL,
+                price REAL NOT NULL,
+                txn_type TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stock_market_event (
+                guild_id BIGINT PRIMARY KEY,
+                event_type TEXT,
+                multiplier REAL NOT NULL DEFAULT 1.0,
+                ends_at REAL NOT NULL DEFAULT 0,
+                last_dividend_at REAL NOT NULL DEFAULT 0
             )
             """,
         )
@@ -8080,6 +8121,269 @@ class Database:
             )
         standings.sort(key=lambda s: s[1], reverse=True)
         return standings[:limit]
+
+    async def get_stock_market_event(self, guild_id: int) -> tuple[str | None, float]:
+        cursor = await self.conn.execute(
+            "SELECT event_type, multiplier, ends_at FROM stock_market_event WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None or row["event_type"] is None or float(row["ends_at"]) <= time.time():
+            return None, 1.0
+        return str(row["event_type"]), float(row["multiplier"])
+
+    async def set_stock_market_event(
+        self, guild_id: int, event_type: str | None, multiplier: float, ends_at: float,
+    ) -> None:
+        async with self._write_lock:
+            await self.conn.execute(
+                """
+                INSERT INTO stock_market_event (guild_id, event_type, multiplier, ends_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    event_type = excluded.event_type,
+                    multiplier = excluded.multiplier,
+                    ends_at = excluded.ends_at
+                """,
+                (guild_id, event_type, multiplier, ends_at),
+            )
+            await self.conn.commit()
+
+    async def get_share_price(self, guild_id: int, crew_name: str) -> float:
+        from utils.stock_market import share_price
+
+        cursor = await self.conn.execute(
+            "SELECT treasury FROM crew_stats WHERE guild_id = ? AND crew_name = ?",
+            (guild_id, crew_name),
+        )
+        stats = await cursor.fetchone()
+        treasury = float(stats["treasury"]) if stats is not None else 0.0
+        members = await self.count_crew_members(guild_id, crew_name)
+        _, mult = await self.get_stock_market_event(guild_id)
+        return share_price(treasury, members, event_mult=mult)
+
+    async def list_stock_market(self, guild_id: int) -> list[dict[str, object]]:
+        from utils.stock_market import share_price
+
+        _, mult = await self.get_stock_market_event(guild_id)
+        cursor = await self.conn.execute(
+            "SELECT crew_name, treasury FROM crew_stats WHERE guild_id = ?",
+            (guild_id,),
+        )
+        rows = await cursor.fetchall()
+        out: list[dict[str, object]] = []
+        for r in rows:
+            crew = str(r["crew_name"])
+            members = await self.count_crew_members(guild_id, crew)
+            out.append({
+                "crew_name": crew,
+                "price": share_price(float(r["treasury"]), members, event_mult=mult),
+                "members": members,
+            })
+        out.sort(key=lambda d: float(d["price"]), reverse=True)
+        return out
+
+    async def get_stock_holdings(
+        self, user_id: int, guild_id: int,
+    ) -> list[dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT crew_name, shares FROM stock_holdings
+            WHERE guild_id = ? AND user_id = ? AND shares > 0
+            ORDER BY shares DESC
+            """,
+            (guild_id, user_id),
+        )
+        out: list[dict[str, object]] = []
+        for r in await cursor.fetchall():
+            crew = str(r["crew_name"])
+            price = await self.get_share_price(guild_id, crew)
+            shares = int(r["shares"])
+            out.append({
+                "crew_name": crew,
+                "shares": shares,
+                "price": price,
+                "value": price * shares,
+            })
+        return out
+
+    async def buy_shares(
+        self, user_id: int, guild_id: int, crew_name: str, shares: int,
+    ) -> tuple[float, str | None]:
+        """Buy shares at the current price. Returns (total_cost, error)."""
+        from utils.stock_market import buy_total
+
+        if shares <= 0 or shares > config.STOCK_MAX_SHARES_PER_TXN:
+            return 0.0, "invalid_amount"
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT 1 FROM crew_stats WHERE guild_id = ? AND crew_name = ?",
+                (guild_id, crew_name),
+            )
+            if await cursor.fetchone() is None:
+                await self.conn.commit()
+                return 0.0, "unknown_corp"
+            price = await self.get_share_price(guild_id, crew_name)
+            total = buy_total(price, shares)
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < total:
+                await self.conn.commit()
+                return total, "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (total, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO stock_holdings (guild_id, user_id, crew_name, shares)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, crew_name) DO UPDATE SET shares = stock_holdings.shares + excluded.shares
+                """,
+                (guild_id, user_id, crew_name, shares),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO stock_transactions (guild_id, user_id, crew_name, shares, price, txn_type, created_at)
+                VALUES (?, ?, ?, ?, ?, 'buy', ?)
+                """,
+                (guild_id, user_id, crew_name, shares, price, time.time()),
+            )
+            await self.conn.commit()
+        return total, None
+
+    async def sell_shares(
+        self, user_id: int, guild_id: int, crew_name: str, shares: int,
+    ) -> tuple[float, str | None]:
+        """Sell shares at the current price (minus tax). Returns (proceeds, error)."""
+        from utils.stock_market import sell_proceeds
+
+        if shares <= 0 or shares > config.STOCK_MAX_SHARES_PER_TXN:
+            return 0.0, "invalid_amount"
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT shares FROM stock_holdings WHERE guild_id = ? AND user_id = ? AND crew_name = ?",
+                (guild_id, user_id, crew_name),
+            )
+            holding = await cursor.fetchone()
+            if holding is None or int(holding["shares"]) < shares:
+                await self.conn.commit()
+                return 0.0, "insufficient_shares"
+            price = await self.get_share_price(guild_id, crew_name)
+            proceeds = sell_proceeds(price, shares)
+            await self.conn.execute(
+                "UPDATE stock_holdings SET shares = shares - ? WHERE guild_id = ? AND user_id = ? AND crew_name = ?",
+                (shares, guild_id, user_id, crew_name),
+            )
+            await self.conn.execute(
+                """
+                UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (proceeds, proceeds, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO stock_transactions (guild_id, user_id, crew_name, shares, price, txn_type, created_at)
+                VALUES (?, ?, ?, ?, ?, 'sell', ?)
+                """,
+                (guild_id, user_id, crew_name, shares, price, time.time()),
+            )
+            await self.conn.commit()
+        return proceeds, None
+
+    async def process_stock_dividends(self, guild_id: int) -> float:
+        """Pay hourly dividends from each corporation treasury to its shareholders."""
+        from utils.stock_market import dividend_amount
+
+        now = time.time()
+        total_paid = 0.0
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT last_dividend_at FROM stock_market_event WHERE guild_id = ?",
+                (guild_id,),
+            )
+            state = await cursor.fetchone()
+            last_at = float(state["last_dividend_at"]) if state is not None else 0.0
+            if state is None:
+                await self.conn.execute(
+                    "INSERT INTO stock_market_event (guild_id, last_dividend_at) VALUES (?, ?)",
+                    (guild_id, now),
+                )
+                await self.conn.commit()
+                return 0.0
+            if now - last_at < config.STOCK_DIVIDEND_TICK_SECONDS:
+                await self.conn.commit()
+                return 0.0
+            cursor = await self.conn.execute(
+                "SELECT DISTINCT crew_name FROM stock_holdings WHERE guild_id = ? AND shares > 0",
+                (guild_id,),
+            )
+            crews = [str(r["crew_name"]) for r in await cursor.fetchall()]
+            for crew in crews:
+                cursor = await self.conn.execute(
+                    "SELECT treasury FROM crew_stats WHERE guild_id = ? AND crew_name = ?",
+                    (guild_id, crew),
+                )
+                stats = await cursor.fetchone()
+                if stats is None:
+                    continue
+                treasury = float(stats["treasury"])
+                price = await self.get_share_price(guild_id, crew)
+                cursor = await self.conn.execute(
+                    "SELECT user_id, shares FROM stock_holdings WHERE guild_id = ? AND crew_name = ? AND shares > 0",
+                    (guild_id, crew),
+                )
+                holders = [(int(r["user_id"]), int(r["shares"])) for r in await cursor.fetchall()]
+                payouts = [(uid, dividend_amount(price, sh)) for uid, sh in holders]
+                needed = sum(p for _, p in payouts)
+                if needed <= 0:
+                    continue
+                # Scale down if the treasury cannot cover all dividends.
+                scale = 1.0 if treasury >= needed else (treasury / needed if needed > 0 else 0.0)
+                actually_paid = 0.0
+                for uid, payout in payouts:
+                    amount = payout * scale
+                    if amount <= 0:
+                        continue
+                    await self.conn.execute(
+                        "UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ? WHERE user_id = ? AND guild_id = ?",
+                        (amount, amount, uid, guild_id),
+                    )
+                    actually_paid += amount
+                if actually_paid > 0:
+                    await self.conn.execute(
+                        "UPDATE crew_stats SET treasury = treasury - ? WHERE guild_id = ? AND crew_name = ?",
+                        (min(actually_paid, treasury), guild_id, crew),
+                    )
+                total_paid += actually_paid
+            await self.conn.execute(
+                "UPDATE stock_market_event SET last_dividend_at = ? WHERE guild_id = ?",
+                (now, guild_id),
+            )
+            await self.conn.commit()
+        return total_paid
+
+    async def maybe_roll_stock_event(self, guild_id: int) -> str | None:
+        """Randomly start a market event if none is active. Returns the new event type."""
+        import random
+
+        current, _ = await self.get_stock_market_event(guild_id)
+        if current is not None:
+            return None
+        if random.random() >= config.STOCK_EVENT_CHANCE_PER_TICK:
+            return None
+        event_type = random.choice(list(config.STOCK_MARKET_EVENTS.keys()))
+        await self.set_stock_market_event(
+            guild_id,
+            event_type,
+            config.STOCK_MARKET_EVENTS[event_type],
+            time.time() + config.STOCK_EVENT_DURATION_SECONDS,
+        )
+        return event_type
 
     async def relocate_business(
         self, user_id: int, guild_id: int, district_id: str,

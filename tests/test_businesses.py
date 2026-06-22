@@ -25,6 +25,7 @@ from utils.businesses import (
     upgrade_cost,
 )
 from utils.districts import DISTRICT_MAP, district_income_mult
+from utils.stock_market import sell_proceeds, share_price
 
 
 class BusinessMathTests(unittest.TestCase):
@@ -436,6 +437,78 @@ class CorporationDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self._setup_crew(200, guild_id, "Beta", 100_000.0)
         standings = await self.db.get_corporate_war_standings(guild_id)
         self.assertEqual(standings[0][0], "Acme")
+
+
+class StockMarketMathTests(unittest.TestCase):
+    def test_price_rises_with_treasury(self) -> None:
+        low = share_price(0.0, 1)
+        high = share_price(1_000_000.0, 1)
+        self.assertGreater(high, low)
+
+    def test_price_floor(self) -> None:
+        self.assertGreaterEqual(share_price(0.0, 0), config.STOCK_MIN_PRICE)
+
+    def test_sell_tax_applied(self) -> None:
+        gross = 100.0 * 10
+        self.assertLess(sell_proceeds(100.0, 10), gross)
+
+
+class StockMarketDatabaseTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.db = Database(self.db_path)
+        await self.db.connect()
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        Path(self.db_path).unlink(missing_ok=True)
+
+    async def _setup_corp(self, uid: int, guild_id: int, crew: str, treasury: float) -> None:
+        await self.db.credit_wallet(uid, guild_id, treasury + 1_000_000.0, apply_bonuses=False)
+        await self.db.join_crew(uid, guild_id, crew)
+        await self.db.deposit_crew_treasury(uid, guild_id, treasury)
+
+    async def test_buy_and_sell_shares(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_corp(uid, guild_id, "Acme", 100_000.0)
+        total, err = await self.db.buy_shares(uid, guild_id, "Acme", 5)
+        self.assertIsNone(err)
+        self.assertGreater(total, 0)
+        holdings = await self.db.get_stock_holdings(uid, guild_id)
+        self.assertEqual(int(holdings[0]["shares"]), 5)
+        proceeds, err = await self.db.sell_shares(uid, guild_id, "Acme", 5)
+        self.assertIsNone(err)
+        self.assertGreater(proceeds, 0)
+
+    async def test_sell_more_than_owned(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_corp(uid, guild_id, "Acme", 100_000.0)
+        _, err = await self.db.sell_shares(uid, guild_id, "Acme", 10)
+        self.assertEqual(err, "insufficient_shares")
+
+    async def test_buy_unknown_corp(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 100_000.0, apply_bonuses=False)
+        _, err = await self.db.buy_shares(uid, guild_id, "Ghost", 5)
+        self.assertEqual(err, "unknown_corp")
+
+    async def test_market_listing(self) -> None:
+        guild_id = 1
+        await self._setup_corp(100, guild_id, "Acme", 500_000.0)
+        market = await self.db.list_stock_market(guild_id)
+        self.assertTrue(any(m["crew_name"] == "Acme" for m in market))
+
+    async def test_market_event_changes_price(self) -> None:
+        guild_id = 1
+        await self._setup_corp(100, guild_id, "Acme", 100_000.0)
+        base = await self.db.get_share_price(guild_id, "Acme")
+        await self.db.set_stock_market_event(
+            guild_id, "tech_boom", config.STOCK_MARKET_EVENTS["tech_boom"],
+            __import__("time").time() + 3600,
+        )
+        boosted = await self.db.get_share_price(guild_id, "Acme")
+        self.assertGreater(boosted, base)
 
 
 if __name__ == "__main__":

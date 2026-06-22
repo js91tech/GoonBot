@@ -20,7 +20,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**/duel** · **/coinflip** · **/blackjack** · **/slots** · **/jackpot**\n"
         "**/crew** — corporation panel (join, vault, loans, corporate upgrades, projects, war standings)\n"
         "**/territory** — map panel with guard hiring, zones, sieges\n"
-        "**/business** — own a business, earn income, upgrade, tier up, relocate to districts, compete & defend\n"
+        "**/business** — own a business, earn income, upgrade, tier up, districts, compete, defend & stock market\n"
     ),
     (
         "Character",

@@ -20,9 +20,11 @@ class Business(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.business_income_tick.start()
+        self.stock_market_tick.start()
 
     def cog_unload(self) -> None:
         self.business_income_tick.cancel()
+        self.stock_market_tick.cancel()
 
     business_group = app_commands.Group(
         name="business",
@@ -171,6 +173,15 @@ class Business(commands.Cog):
             f"🛡️ Defended! The attack's penalty is cut to **−{pct}%**.", ephemeral=True,
         )
 
+    @business_group.command(name="market", description="Open the stock market to invest in corporations.")
+    async def market(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        from utils.stock_ui import send_stock_panel
+
+        await send_stock_panel(interaction, self)
+
     @business_group.command(name="prestige", description="Business prestige (coming soon).")
     async def prestige(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
@@ -190,6 +201,19 @@ class Business(commands.Cog):
 
     @business_income_tick.before_loop
     async def before_business_income_tick(self) -> None:
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(seconds=config.STOCK_DIVIDEND_TICK_SECONDS)
+    async def stock_market_tick(self) -> None:
+        for guild in self.bot.guilds:
+            try:
+                await self.bot.db.process_stock_dividends(guild.id)
+                await self.bot.db.maybe_roll_stock_event(guild.id)
+            except Exception:
+                logger.exception("stock market tick failed guild=%s", guild.id)
+
+    @stock_market_tick.before_loop
+    async def before_stock_market_tick(self) -> None:
         await self.bot.wait_until_ready()
 
 
