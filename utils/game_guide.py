@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import config
 from items import (
+    ACCESSORIES,
     ARMOR,
     CONSUMABLES,
     GUNS,
@@ -72,6 +73,20 @@ def _format_consumable_line(item: ShopItem) -> str:
     return f"**{item.name}** — {price} — {item.description}"
 
 
+def _format_accessory_line(item: ShopItem) -> str:
+    parts: list[str] = []
+    if item.flat_damage:
+        parts.append(f"+{item.flat_damage} dmg")
+    if item.flat_hp:
+        parts.append(f"+{item.flat_hp} HP")
+    if item.flat_crit:
+        parts.append(f"+{int(item.flat_crit * 100)}% crit")
+    if item.flat_mitigation:
+        parts.append(f"+{int(item.flat_mitigation * 100)}% mit")
+    stats = " · ".join(parts) if parts else "flat bonuses"
+    return f"**{item.name}** — {stats} — {item.description}"
+
+
 def _item_catalog_pages(
     title: str,
     items: tuple[ShopItem, ...],
@@ -135,7 +150,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· **Economy** — chat, VC, jobs, daily, pay friends\n"
                     "· **Raid** — boss panels, heals, loot, dungeons\n"
                     "· **PvP** — duels, heists, territories, crews\n"
-                    "· **Build** — craft, aspects, attributes, prestige\n"
+                    "· **Build** — craft, aspects, attributes, prestige, **enhancement**\n"
                     "Use the dropdown below to browse every system and item catalog.",
                 ],
             ),
@@ -181,20 +196,25 @@ def _build_sections() -> tuple[GuideSection, ...]:
             pages=_static_pages(
                 "Boss raids",
                 [
-                    "**Commands** — `/boss` panel · `/attack` · `/heal` · `/cast` · `/use` · "
+                    "**Commands** — `/boss` panel · `/attack` · **Attack Add** · `/heal` · `/cast` · `/use` · "
                     "`/boss-status` · `/raid-leaderboard`",
                     "**How raids work**\n"
                     "· Bosses auto-spawn about every **90** minutes when none is active\n"
                     "· Your weapon sets base damage (+ small roll); armor adds HP and mitigation\n"
                     "· Hannah counters can down you — teammates `/heal` to revive\n"
                     "· Damage share when the boss falls; killing blow shows your avatar pose",
+                    "**Raid adds** (after boss drops below **50%** HP)\n"
+                    "· **Hannah's Henchman** — alchemy scrap (rare void hardener on celestial+ fights)\n"
+                    "· **Court of Kitty's Jester** — void hardener (sometimes scrap)\n"
+                    "· Use **Attack Add** on the `/boss` panel — adds never drop celestial shards",
                     "**Variants** (weakest → strongest)\n"
                     "normal → enraged → shadow → celestial → mythic\n"
                     "Special: **TomAss** (regen), **ZZ Wrath** (40k HP), **Freaky Nikki** (moment counters)",
                     "**Elements** — bosses have fire/frost/storm/void/verdant; your class element "
                     "can boost or reduce `/attack` damage.\n"
                     "**Loot** — battle-worn gear (craft up with `/craft`), epic raid pieces, "
-                    "mythic drops on celestial/mythic, aspect drops",
+                    "mythic drops on celestial/mythic, aspect drops, **accessories**, void hardener, "
+                    "celestial shards (mythic / ZZ Wrath defeat only)",
                 ],
             ),
         ),
@@ -210,7 +230,10 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     f"· **Delver's Depths** — solo, **{config.DUNGEON_ENERGY_COST}** energy per run\n"
                     f"· **Gilded Vault** — unlock **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**, "
                     f"party of **{config.DUNGEON_VAULT_MIN_PARTY_SIZE}**+ raiders",
-                    "**Rewards** — room nuggets, clear bonus, **alchemy scrap** for `/alchemy`\n"
+                    "**Rewards** — room nuggets, clear bonus, **alchemy scrap** for `/alchemy` and **enhancement**\n"
+                    f"· Accessory drop chance on clear (~{int(config.DUNGEON_ACCESSORY_DROP_CHANCE * 100)}% standard, "
+                    f"~{int(config.DUNGEON_VAULT_ACCESSORY_DROP_CHANCE * 100)}% vault)\n"
+                    "· **Gilded Vault** full clear can also roll **void hardener**",
                     "`/alchemy` — craft raid potions, energy drinks, duel scrolls, trap bombs from scrap",
                     f"**Energy** — base cap **{config.ENERGY_BASE_CAP}**, regen every "
                     f"{config.ENERGY_REGEN_INTERVAL_SECONDS // 60} min; `/upgrade-energy` raises max",
@@ -254,7 +277,59 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "**Skills** — `/cast` in raids/duels; mana from damage dealt (healers regen over time)\n"
                     "**Aspects** — `/aspects` Diablo-style rolls; equip slots; `/fuse-aspects` burn 3 for stronger roll",
                     "**Avatars** — `/avatar` victory poses on duel wins and boss killing blows\n"
-                    "`/profile` · `/stats` · `/loadout` · `/equip-best`",
+                    "**Accessories** — **ring** + **amulet** slots; flat dmg/HP/crit/mit bonuses\n"
+                    "`/profile` · `/stats` · `/inventory` · `/loadout` · `/equip-best` · `/equip-instance`",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="enhancement",
+            label="Enhancement",
+            emoji="✨",
+            description="BDO-style +1 to PENTA gear upgrades",
+            pages=_static_pages(
+                "Gear enhancement",
+                [
+                    "**Per-instance enhancement** — levels stick to the gear piece, not the slot. "
+                    "Swap weapons and your +levels travel with the item.",
+                    "**Commands**\n"
+                    "`/enhance` — pick a gear instance; shows material, nugget cost, success %\n"
+                    "`/repair-gear` — fix **broken** gear (10% of base item shop price in nuggets)\n"
+                    "`/equip-instance` — equip a specific instance by id (`/inventory` lists them)",
+                    "**Level ladder**\n"
+                    "· **+1 … +10** — alchemy scrap\n"
+                    "· **+11 … +15** — void hardener\n"
+                    "· **PRI → DUO → TRI → TET → PENTA** — celestial shard",
+                    "**Costs** — every attempt debits materials **and** nuggets (win or lose). "
+                    f"Nugget anchors: ~{fmt_amount(config.ENHANCE_NUGGET_COST_AT_PLUS_10)} at +10, "
+                    f"~{fmt_amount(config.ENHANCE_NUGGET_COST_AT_PLUS_15)} at +15, "
+                    f"~{fmt_amount(config.ENHANCE_NUGGET_COST_AT_PENTA)} at PENTA",
+                    "**Failure rules**\n"
+                    f"· From +{config.ENHANCE_FAIL_DOWNGRADE_FROM}+ failures can **downgrade** 1 level\n"
+                    f"· From +{config.ENHANCE_FAIL_BREAK_FROM}+ failures can **break** gear (0 stats until repaired)\n"
+                    "· **Unstable** gear from bank heist tier 3 is separate — use `/fix` (80% item price)",
+                    "**Material sources**\n"
+                    "· **Alchemy scrap** — dungeons, Freaky Nikki, henchman raid adds\n"
+                    "· **Void hardener** — vault dungeons, jester adds, boss defeat rolls\n"
+                    "· **Celestial shard** — mythic / ZZ Wrath boss defeat only (never from adds or dungeons)",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="accessories",
+            label="Accessories",
+            emoji="💍",
+            description="Ring and amulet drops",
+            pages=_static_pages(
+                "Accessory catalog",
+                [
+                    "Accessories equip in **ring** or **amulet** slots. They grant **flat** combat bonuses. "
+                    "Accessories are enhanceable instances like weapons and armor.",
+                    "",
+                    *[_format_accessory_line(item) for item in ACCESSORIES],
+                    "",
+                    "**Drop sources** — boss defeat (~6%), dungeon clears (2–5% vault), "
+                    "not from raid adds.",
                 ],
             ),
         ),
@@ -300,7 +375,11 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "",
                     "**Usage**\n"
                     "`/use` — raid potion, energy drink, duel scroll, jail/pick keys, HP potions in raids\n"
-                    "Trap bombs — duel consumable from alchemy",
+                    "Trap bombs — duel consumable from alchemy\n"
+                    "**Enhancement materials** (drops, not shop-listed)\n"
+                    "· **Alchemy scrap** — +1–+10 enhancement\n"
+                    "· **Void hardener** — +11–+15 enhancement\n"
+                    "· **Celestial shard** — PRI–PENTA (mythic / ZZ Wrath boss only)",
                 ],
             ),
         ),

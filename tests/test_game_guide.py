@@ -21,6 +21,8 @@ class GameGuideTests(unittest.TestCase):
             "dungeon",
             "pvp",
             "character",
+            "enhancement",
+            "accessories",
             "weapons",
             "guns",
             "armor",
