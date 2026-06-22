@@ -549,6 +549,49 @@ class CrewPanelView(discord.ui.View):
             ephemeral=True,
         )
 
+    @discord.ui.button(label="🏢 Corp Upgrades", style=discord.ButtonStyle.primary, row=4)
+    async def corp_upgrades_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        from utils.corporation_ui import CorporateUpgradeView, build_corporate_upgrade_embed
+
+        crew = await self.cog.bot.db.get_crew_membership(self.user_id, self.guild_id)
+        if crew is None:
+            await interaction.response.send_message("Join a corporation (crew) first.", ephemeral=True)
+            return
+        embed = await build_corporate_upgrade_embed(self.cog, self.guild_id, crew)
+        view = CorporateUpgradeView(self.cog, self.guild_id, self.user_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="🏗️ Projects", style=discord.ButtonStyle.primary, row=4)
+    async def corp_projects_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        from utils.corporation_ui import CorporateProjectView, build_project_embed
+
+        crew = await self.cog.bot.db.get_crew_membership(self.user_id, self.guild_id)
+        if crew is None:
+            await interaction.response.send_message("Join a corporation (crew) first.", ephemeral=True)
+            return
+        embed = await build_project_embed(self.cog, self.guild_id, crew)
+        view = CorporateProjectView(self.cog, self.guild_id, self.user_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="⚔️ War", style=discord.ButtonStyle.secondary, row=4)
+    async def corp_war_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        from utils.corporation_ui import build_war_standings_embed
+
+        if interaction.guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        embed = await build_war_standings_embed(self.cog, interaction.guild)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 async def send_crew_panel(interaction: discord.Interaction, cog: Crews) -> None:
     if interaction.guild_id is None or interaction.guild is None:

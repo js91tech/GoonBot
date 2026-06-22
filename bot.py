@@ -40,6 +40,8 @@ COGS = (
     "cogs.consumables",
     "cogs.crews",
     "cogs.territories",
+    "cogs.business",
+    "cogs.drugs",
     "cogs.dungeon",
     "cogs.season",
     "cogs.alchemy",
