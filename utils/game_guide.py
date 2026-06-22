@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import discord
+
 import config
 from items import (
     ARMOR,
@@ -14,7 +16,12 @@ from items import (
 )
 from utils.alchemy import RECIPES
 from utils.aspects import ASPECT_DEFINITIONS
+from utils.businesses import BUSINESS_TIERS
+from utils.corporations import CORPORATE_PROJECTS, CORPORATE_UPGRADES
+from utils.districts import DISTRICT_MAP
+from utils.drugs import DRUGS
 from utils.helpers import clip_embed_field, fmt_amount
+from utils.mega_projects import MEGA_PROJECTS
 
 MAX_PAGE_CHARS = 3600
 
@@ -112,6 +119,33 @@ def _build_sections() -> tuple[GuideSection, ...]:
         f"**{recipe.name}** — {recipe.scrap_cost} scrap + {fmt_amount(recipe.nugget_cost)} — {recipe.description}"
         for recipe in RECIPES
     ]
+    business_tier_lines = [
+        f"{defn.emoji} **{defn.name}** (T{defn.tier}) — buy {fmt_amount(defn.purchase_cost)} · "
+        f"{fmt_amount(defn.base_income_per_hour)}/hr"
+        for defn in BUSINESS_TIERS
+    ]
+    district_lines = [
+        f"{defn.emoji} **{defn.name}** — {defn.label} (income x{defn.income_mult:.2f})"
+        for defn in DISTRICT_MAP.values()
+    ]
+    corp_upgrade_lines = [
+        f"{defn.emoji} **{defn.name}** — {defn.description}"
+        for defn in CORPORATE_UPGRADES
+    ]
+    corp_project_lines = [
+        f"{defn.emoji} **{defn.name}** — goal {fmt_amount(defn.target_amount)} · "
+        f"reward {fmt_amount(defn.reward_treasury)}"
+        for defn in CORPORATE_PROJECTS
+    ]
+    mega_lines = [
+        f"{defn.emoji} **{defn.name}** — {fmt_amount(defn.cost)} · {defn.reward_label}"
+        for defn in MEGA_PROJECTS
+    ]
+    drug_lines = [
+        f"{defn.emoji} **{defn.name}** — seed {fmt_amount(defn.seed_cost)} · "
+        f"{defn.grow_seconds // 60}m grow · ~{fmt_amount(defn.street_price)}/unit"
+        for defn in DRUGS
+    ]
 
     return (
         GuideSection(
@@ -136,6 +170,8 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· **Raid** — boss panels, heals, loot, dungeons\n"
                     "· **PvP** — duels, heists, territories, crews\n"
                     "· **Build** — craft, aspects, attributes, prestige\n"
+                    "· **Empire** — `/business` tiers, districts, competition, stock market\n"
+                    "· **Contraband** — `/drugs` grow lab and black market\n"
                     "Use the dropdown below to browse every system and item catalog.",
                 ],
             ),
@@ -324,6 +360,75 @@ def _build_sections() -> tuple[GuideSection, ...]:
             ),
         ),
         GuideSection(
+            section_id="business",
+            label="Business Empire",
+            emoji="🏢",
+            description="Businesses, districts, competition, stocks",
+            pages=_static_pages(
+                "Business Empire",
+                [
+                    "**Build an empire** — `/business create` opens a Lemon Stand. Income "
+                    "accrues passively into a capped store; `/business collect` banks it. "
+                    "`/business info` opens the panel (Collect · Upgrade · Tier up · "
+                    "Districts · Compete · Refresh).",
+                    "**Business tiers** (`/business` → Tier up)\n" + "\n".join(business_tier_lines),
+                    "**Attributes & branches** (`/business upgrade`)\n"
+                    "· 🛡️ Security · 📣 Reputation · ⚙️ Efficiency · 📦 Capacity · "
+                    "😀 Employee Satisfaction\n"
+                    "· Branches: 🔒 Security, 📈 Growth (customer traffic), 🏗️ Production (output)",
+                    "**Districts** (`/business districts`) — relocate for an income bonus and "
+                    "buy influence:\n" + "\n".join(district_lines),
+                    "**Competition & defense** (`/business action`, `/business defend`)\n"
+                    "· 📣 Marketing & 🧑\u200d💼 Talent — buff your own revenue\n"
+                    "· 💸 Price War & 📰 Reputation Attack — debuff a rival (mitigated by their "
+                    "security; they get 15 min to **/business defend**)\n"
+                    "· 🗺️ Market Expansion — instant district influence\n"
+                    "_No attack ever permanently destroys a business._",
+                    "**Corporations** (`/crew`) — crews double as corporations:\n"
+                    + "\n".join(corp_upgrade_lines)
+                    + "\n**Projects:** " + ", ".join(p.split(' — ')[0] for p in corp_project_lines)
+                    + "\n**Corporate War** — weekly; top corp by vault + territory wins a treasury bonus.",
+                    "**Stock market** (`/business market`) — buy/sell corporation shares; "
+                    "prices track treasury + headcount and swing with market events "
+                    "(tech boom, crash, tourism surge, supply shortage). Shareholders earn "
+                    "hourly dividends from the corporate vault.",
+                    "**Prestige & endgame**\n"
+                    f"· `/business prestige` at the Corporation tier — reset for a permanent "
+                    f"+{int(config.BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)}%/level income bonus\n"
+                    "· **Mega projects** (`/business megaprojects`):\n"
+                    + "\n".join(mega_lines)
+                    + "\n· Seasonal events (admin `/event`): Summer Festival, Holiday Rush, "
+                    "Economic Crisis, Tech Boom.",
+                ],
+            ),
+        ),
+        GuideSection(
+            section_id="drugs",
+            label="Drug Trade",
+            emoji="🧪",
+            description="Grow lab, street deals, black market",
+            pages=_static_pages(
+                "Drug Trade",
+                [
+                    "**High risk, high reward contraband.** `/drugs lab` opens your grow lab: "
+                    f"plant a strain in one of **{config.DRUG_LAB_SLOTS}** slots, wait for it to "
+                    "mature, then **Harvest** and sell.",
+                    "**Strains**\n" + "\n".join(drug_lines),
+                    "**Selling**\n"
+                    "· **Street** (lab panel) — instant sale at a volatile price, but a "
+                    f"**{int(config.DRUG_RAID_CHANCE * 100)}%** chance of a raid that seizes part of "
+                    "your stash\n"
+                    "· **Black market** (`/drugs market`) — list product for other players or buy "
+                    f"theirs ({int(config.DRUG_MARKET_TAX * 100)}% sale tax)",
+                    "**Tips**\n"
+                    "· Owning a business in the **Industrial Zone** boosts harvest yield by "
+                    f"+{int(config.DRUG_INDUSTRIAL_YIELD_BONUS * 100)}%\n"
+                    "· Higher-tier strains take longer but pay far more per unit\n"
+                    "· Spread sales to avoid big losses to raids",
+                ],
+            ),
+        ),
+        GuideSection(
             section_id="progression",
             label="Progression",
             emoji="🏆",
@@ -356,8 +461,6 @@ def guide_section_options() -> list[tuple[str, str, str]]:
 
 def build_guide_embed(section_id: str, page_index: int) -> tuple[discord.Embed, int, int]:
     """Return embed, current page index, and total pages."""
-    import discord
-
     section = GUIDE_SECTION_MAP[section_id]
     total_pages = len(section.pages)
     page_index = max(0, min(page_index, total_pages - 1))
