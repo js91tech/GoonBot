@@ -18,7 +18,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     (
         "PvP & casino",
         "**/duel** · **/coinflip** · **/blackjack** · **/slots** · **/jackpot**\n"
-        "**/crew** — interactive crew panel (join, deposit, withdraw, loans, repay)\n"
+        "**/crew** — corporation panel (join, vault, loans, corporate upgrades, projects, war standings)\n"
         "**/territory** — map panel with guard hiring, zones, sieges\n"
         "**/business** — own a business, earn income, upgrade, tier up, relocate to districts, compete & defend\n"
     ),

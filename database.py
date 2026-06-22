@@ -488,6 +488,7 @@ class Database:
         await self._migrate_business_empire()
         await self._migrate_business_districts()
         await self._migrate_business_competition()
+        await self._migrate_corporations()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1112,6 +1113,53 @@ class Database:
                 action_type TEXT NOT NULL,
                 last_used_at REAL NOT NULL DEFAULT 0,
                 PRIMARY KEY (guild_id, user_id, action_type)
+            )
+            """,
+        )
+        await self.conn.commit()
+
+    async def _migrate_corporations(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS crew_corporate_upgrades (
+                guild_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                upgrade_type TEXT NOT NULL,
+                level INTEGER NOT NULL DEFAULT 0 CHECK (level >= 0),
+                PRIMARY KEY (guild_id, crew_name, upgrade_type)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS crew_corporate_projects (
+                guild_id BIGINT NOT NULL,
+                crew_name TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                funded_amount REAL NOT NULL DEFAULT 0 CHECK (funded_amount >= 0),
+                completed_at REAL,
+                PRIMARY KEY (guild_id, crew_name, project_id)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS corporate_war_scores (
+                guild_id BIGINT NOT NULL,
+                week_id INTEGER NOT NULL,
+                crew_name TEXT NOT NULL,
+                total_score REAL NOT NULL DEFAULT 0,
+                recorded_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, week_id, crew_name)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS corporate_war_state (
+                guild_id BIGINT PRIMARY KEY,
+                last_tick_at REAL NOT NULL DEFAULT 0,
+                current_week INTEGER NOT NULL DEFAULT 0
             )
             """,
         )
@@ -7258,7 +7306,8 @@ class Database:
         last_at = float(row["last_income_at"]) or current
         elapsed = max(0.0, current - last_at)
         buff_mult = await self._active_buff_multiplier_no_lock(user_id, guild_id, current)
-        hourly = self._business_hourly_from_row(row) * buff_mult
+        corp_mult = await self._corporate_income_mult_no_lock(user_id, guild_id)
+        hourly = self._business_hourly_from_row(row) * buff_mult * corp_mult
         capacity = self._business_capacity_from_row(row)
         new_stored = accrue_income(
             stored=float(row["stored_income"]),
@@ -7606,11 +7655,21 @@ class Database:
                 )
                 result.update({"kind": "buff", "ends_at": ends_at, "magnitude": action.magnitude})
             elif action.kind == "attack":
+                from utils.corporations import defense_bonus
+
+                defender_crew = await self._crew_name_no_lock(int(target_id), guild_id)
+                corp_defense = 0
+                if defender_crew is not None:
+                    corp_defense = defense_bonus(
+                        await self._corporate_upgrade_level_no_lock(
+                            guild_id, defender_crew, "defense",
+                        ),
+                    )
                 rating = security_rating(
                     security_level=int(defender_biz["security"]),
                     branch_security_level=int(defender_biz["branch_security"]),
                     tier=int(defender_biz["tier"]),
-                )
+                ) + corp_defense
                 penalty = effective_penalty(action.magnitude, rating)
                 ends_at = now + action.duration_seconds
                 notify_expires = now + config.BUSINESS_DEFENSE_WINDOW_SECONDS
@@ -7727,6 +7786,301 @@ class Database:
             "new_penalty": new_penalty,
         }
 
+    async def _crew_name_no_lock(self, user_id: int, guild_id: int) -> str | None:
+        cursor = await self.conn.execute(
+            "SELECT crew_name FROM crew_members WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return str(row["crew_name"]) if row is not None else None
+
+    async def _corporate_upgrade_level_no_lock(
+        self, guild_id: int, crew_name: str, upgrade_type: str,
+    ) -> int:
+        cursor = await self.conn.execute(
+            """
+            SELECT level FROM crew_corporate_upgrades
+            WHERE guild_id = ? AND crew_name = ? AND upgrade_type = ?
+            """,
+            (guild_id, crew_name, upgrade_type),
+        )
+        row = await cursor.fetchone()
+        return int(row["level"]) if row is not None else 0
+
+    async def _corporate_income_mult_no_lock(self, user_id: int, guild_id: int) -> float:
+        from utils.corporations import income_bonus_multiplier
+
+        crew = await self._crew_name_no_lock(user_id, guild_id)
+        if crew is None:
+            return 1.0
+        level = await self._corporate_upgrade_level_no_lock(guild_id, crew, "income")
+        return income_bonus_multiplier(level)
+
+    async def get_corporate_defense_bonus(self, user_id: int, guild_id: int) -> int:
+        from utils.corporations import defense_bonus
+
+        crew = await self._crew_name_no_lock(user_id, guild_id)
+        if crew is None:
+            return 0
+        level = await self._corporate_upgrade_level_no_lock(guild_id, crew, "defense")
+        return defense_bonus(level)
+
+    async def get_corporate_territory_mult(self, user_id: int, guild_id: int) -> float:
+        from utils.corporations import territory_bonus_multiplier
+
+        crew = await self._crew_name_no_lock(user_id, guild_id)
+        if crew is None:
+            return 1.0
+        level = await self._corporate_upgrade_level_no_lock(guild_id, crew, "territory")
+        return territory_bonus_multiplier(level)
+
+    async def get_corporate_upgrades(
+        self, guild_id: int, crew_name: str,
+    ) -> dict[str, int]:
+        cursor = await self.conn.execute(
+            """
+            SELECT upgrade_type, level FROM crew_corporate_upgrades
+            WHERE guild_id = ? AND crew_name = ?
+            """,
+            (guild_id, crew_name),
+        )
+        return {str(r["upgrade_type"]): int(r["level"]) for r in await cursor.fetchall()}
+
+    async def buy_corporate_upgrade(
+        self, user_id: int, guild_id: int, upgrade_type: str,
+    ) -> tuple[float, str | None]:
+        """Spend crew treasury to raise a corporate upgrade. Returns (cost, error)."""
+        from utils.corporations import upgrade_by_id, upgrade_cost
+
+        if upgrade_by_id(upgrade_type) is None:
+            return 0.0, "invalid_upgrade"
+        async with self._write_lock:
+            crew = await self._crew_name_no_lock(user_id, guild_id)
+            if crew is None:
+                await self.conn.commit()
+                return 0.0, "not_in_crew"
+            level = await self._corporate_upgrade_level_no_lock(guild_id, crew, upgrade_type)
+            if level >= config.CORP_UPGRADE_MAX_LEVEL:
+                await self.conn.commit()
+                return 0.0, "max_level"
+            cost = upgrade_cost(level)
+            cursor = await self.conn.execute(
+                "SELECT treasury FROM crew_stats WHERE guild_id = ? AND crew_name = ?",
+                (guild_id, crew),
+            )
+            stats = await cursor.fetchone()
+            if stats is None or float(stats["treasury"]) < cost:
+                await self.conn.commit()
+                return cost, "insufficient_treasury"
+            await self.conn.execute(
+                "UPDATE crew_stats SET treasury = treasury - ? WHERE guild_id = ? AND crew_name = ?",
+                (cost, guild_id, crew),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO crew_corporate_upgrades (guild_id, crew_name, upgrade_type, level)
+                VALUES (?, ?, ?, 1)
+                ON CONFLICT(guild_id, crew_name, upgrade_type) DO UPDATE SET level = crew_corporate_upgrades.level + 1
+                """,
+                (guild_id, crew, upgrade_type),
+            )
+            await self.conn.commit()
+        return cost, None
+
+    async def list_corporate_projects(
+        self, guild_id: int, crew_name: str,
+    ) -> dict[str, dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT project_id, funded_amount, completed_at FROM crew_corporate_projects
+            WHERE guild_id = ? AND crew_name = ?
+            """,
+            (guild_id, crew_name),
+        )
+        return {
+            str(r["project_id"]): {
+                "funded_amount": float(r["funded_amount"]),
+                "completed_at": r["completed_at"],
+            }
+            for r in await cursor.fetchall()
+        }
+
+    async def contribute_to_corporate_project(
+        self, user_id: int, guild_id: int, project_id: str, amount: float,
+    ) -> dict[str, object]:
+        """Fund a corporate project from a member's wallet. Returns a result dict."""
+        from utils.corporations import project_by_id
+
+        project = project_by_id(project_id)
+        if project is None:
+            return {"error": "invalid_project"}
+        if amount <= 0:
+            return {"error": "invalid_amount"}
+        async with self._write_lock:
+            crew = await self._crew_name_no_lock(user_id, guild_id)
+            if crew is None:
+                await self.conn.commit()
+                return {"error": "not_in_crew"}
+            cursor = await self.conn.execute(
+                """
+                SELECT funded_amount, completed_at FROM crew_corporate_projects
+                WHERE guild_id = ? AND crew_name = ? AND project_id = ?
+                """,
+                (guild_id, crew, project_id),
+            )
+            existing = await cursor.fetchone()
+            if existing is not None and existing["completed_at"] is not None:
+                await self.conn.commit()
+                return {"error": "already_complete"}
+            funded = float(existing["funded_amount"]) if existing is not None else 0.0
+            remaining = max(0.0, project.target_amount - funded)
+            contribution = min(amount, remaining)
+            if contribution <= 0:
+                await self.conn.commit()
+                return {"error": "already_complete"}
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < contribution:
+                await self.conn.commit()
+                return {"error": "insufficient_funds", "needed": contribution}
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (contribution, user_id, guild_id),
+            )
+            new_funded = funded + contribution
+            completed = new_funded >= project.target_amount
+            completed_at = time.time() if completed else None
+            await self.conn.execute(
+                """
+                INSERT INTO crew_corporate_projects (guild_id, crew_name, project_id, funded_amount, completed_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, crew_name, project_id) DO UPDATE SET
+                    funded_amount = excluded.funded_amount,
+                    completed_at = excluded.completed_at
+                """,
+                (guild_id, crew, project_id, new_funded, completed_at),
+            )
+            reward = 0.0
+            if completed:
+                reward = project.reward_treasury
+                await self.conn.execute(
+                    """
+                    INSERT INTO crew_stats (guild_id, crew_name, treasury, level, xp)
+                    VALUES (?, ?, ?, 1, 0)
+                    ON CONFLICT(guild_id, crew_name) DO UPDATE SET treasury = crew_stats.treasury + excluded.treasury
+                    """,
+                    (guild_id, crew, reward),
+                )
+            await self.conn.commit()
+        return {
+            "error": None,
+            "contribution": contribution,
+            "funded": new_funded,
+            "target": project.target_amount,
+            "completed": completed,
+            "reward": reward,
+            "crew": crew,
+        }
+
+    async def record_corporate_war_tick(self, guild_id: int) -> dict[str, object] | None:
+        """Weekly war scoring: snapshot scores, award the leader, advance the week.
+
+        Returns a result dict when a war week resolved, else None (not due yet).
+        """
+        from utils.territories import TERRITORY_MAP
+
+        now = time.time()
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT last_tick_at, current_week FROM corporate_war_state WHERE guild_id = ?",
+                (guild_id,),
+            )
+            state = await cursor.fetchone()
+            if state is None:
+                await self.conn.execute(
+                    "INSERT INTO corporate_war_state (guild_id, last_tick_at, current_week) VALUES (?, ?, 1)",
+                    (guild_id, now),
+                )
+                await self.conn.commit()
+                return None
+            last_tick = float(state["last_tick_at"])
+            week = int(state["current_week"]) or 1
+            if now - last_tick < config.CORP_WAR_TICK_SECONDS:
+                await self.conn.commit()
+                return None
+            # Score = treasury + territory holdings.
+            cursor = await self.conn.execute(
+                "SELECT crew_name, treasury FROM crew_stats WHERE guild_id = ?",
+                (guild_id,),
+            )
+            crews = [(str(r["crew_name"]), float(r["treasury"])) for r in await cursor.fetchall()]
+            scores: list[tuple[str, float]] = []
+            for crew_name, treasury in crews:
+                cursor = await self.conn.execute(
+                    "SELECT COUNT(*) AS c FROM territory_control WHERE guild_id = ? AND owner_crew_name = ?",
+                    (guild_id, crew_name),
+                )
+                trow = await cursor.fetchone()
+                territory_count = int(trow["c"]) if trow is not None else 0
+                _ = TERRITORY_MAP  # territory scoring uses the live map count
+                score = treasury + territory_count * config.CORP_WAR_TERRITORY_SCORE
+                scores.append((crew_name, score))
+                await self.conn.execute(
+                    """
+                    INSERT INTO corporate_war_scores (guild_id, week_id, crew_name, total_score, recorded_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(guild_id, week_id, crew_name) DO UPDATE SET
+                        total_score = excluded.total_score, recorded_at = excluded.recorded_at
+                    """,
+                    (guild_id, week, crew_name, score, now),
+                )
+            winner = max(scores, key=lambda s: s[1], default=None)
+            if winner is not None and winner[1] > 0:
+                await self.conn.execute(
+                    "UPDATE crew_stats SET treasury = treasury + ? WHERE guild_id = ? AND crew_name = ?",
+                    (config.CORP_WAR_WINNER_TREASURY_BONUS, guild_id, winner[0]),
+                )
+            await self.conn.execute(
+                "UPDATE corporate_war_state SET last_tick_at = ?, current_week = ? WHERE guild_id = ?",
+                (now, week + 1, guild_id),
+            )
+            await self.conn.commit()
+        return {
+            "week": week,
+            "winner": winner[0] if winner else None,
+            "winner_score": winner[1] if winner else 0.0,
+            "reward": config.CORP_WAR_WINNER_TREASURY_BONUS if winner else 0.0,
+        }
+
+    async def get_corporate_war_standings(
+        self, guild_id: int, *, limit: int = 10,
+    ) -> list[tuple[str, float]]:
+        """Live standings for the current week (treasury + territory)."""
+        from utils.territories import TERRITORY_MAP
+
+        _ = TERRITORY_MAP
+        cursor = await self.conn.execute(
+            "SELECT crew_name, treasury FROM crew_stats WHERE guild_id = ?",
+            (guild_id,),
+        )
+        rows = [(str(r["crew_name"]), float(r["treasury"])) for r in await cursor.fetchall()]
+        standings: list[tuple[str, float]] = []
+        for crew_name, treasury in rows:
+            cursor = await self.conn.execute(
+                "SELECT COUNT(*) AS c FROM territory_control WHERE guild_id = ? AND owner_crew_name = ?",
+                (guild_id, crew_name),
+            )
+            trow = await cursor.fetchone()
+            territory_count = int(trow["c"]) if trow is not None else 0
+            standings.append(
+                (crew_name, treasury + territory_count * config.CORP_WAR_TERRITORY_SCORE),
+            )
+        standings.sort(key=lambda s: s[1], reverse=True)
+        return standings[:limit]
+
     async def relocate_business(
         self, user_id: int, guild_id: int, district_id: str,
     ) -> tuple[float, str | None]:
@@ -7821,8 +8175,9 @@ class Database:
         ok = await self.debit_wallet(user_id, guild_id, cost)
         if not ok:
             return cost, 0.0, "insufficient_funds"
+        territory_mult = await self.get_corporate_territory_mult(user_id, guild_id)
         new_value = await self.add_district_influence(
-            guild_id, district_id, "user", str(user_id), float(points),
+            guild_id, district_id, "user", str(user_id), float(points) * territory_mult,
         )
         return cost, new_value, None
 

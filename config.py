@@ -571,6 +571,19 @@ BUSINESS_ACTION_REPUTATION_DURATION = 6 * 3600
 BUSINESS_ACTION_MARKET_EXPANSION_COST = 3_000.0
 BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE = 10
 
+# --- Corporations (crew extensions, Phase 5) --------------------------------
+# Corporate upgrades are funded from the crew treasury and benefit all members.
+CORP_UPGRADE_MAX_LEVEL = 10
+CORP_UPGRADE_BASE_COST = 50_000.0
+CORP_UPGRADE_COST_GROWTH = 1.5
+CORP_UPGRADE_INCOME_BONUS_PER_LEVEL = 0.03   # +% member business income
+CORP_UPGRADE_DEFENSE_BONUS_PER_LEVEL = 5     # +security rating for members
+CORP_UPGRADE_TERRITORY_BONUS_PER_LEVEL = 0.02
+# Corporate wars run on a weekly cadence; the top corporation earns a treasury bonus.
+CORP_WAR_TICK_SECONDS = 7 * 24 * 3600
+CORP_WAR_TERRITORY_SCORE = 5_000.0
+CORP_WAR_WINNER_TREASURY_BONUS = 250_000.0
+
 
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""

@@ -373,5 +373,70 @@ class BusinessCompetitionDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(base * mult, base)
 
 
+class CorporationDatabaseTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.db = Database(self.db_path)
+        await self.db.connect()
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        Path(self.db_path).unlink(missing_ok=True)
+
+    async def _setup_crew(self, uid: int, guild_id: int, crew: str, treasury: float) -> None:
+        await self.db.credit_wallet(uid, guild_id, treasury + 1_000.0, apply_bonuses=False)
+        await self.db.join_crew(uid, guild_id, crew)
+        await self.db.deposit_crew_treasury(uid, guild_id, treasury)
+
+    async def test_buy_corporate_upgrade(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_crew(uid, guild_id, "Acme", 200_000.0)
+        cost, err = await self.db.buy_corporate_upgrade(uid, guild_id, "income")
+        self.assertIsNone(err)
+        self.assertGreater(cost, 0)
+        levels = await self.db.get_corporate_upgrades(guild_id, "Acme")
+        self.assertEqual(levels.get("income"), 1)
+
+    async def test_corporate_income_bonus_applies(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_crew(uid, guild_id, "Acme", 200_000.0)
+        await self.db.credit_wallet(uid, guild_id, 1_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        await self.db.buy_corporate_upgrade(uid, guild_id, "income")
+        mult = await self.db._corporate_income_mult_no_lock(uid, guild_id)
+        self.assertGreater(mult, 1.0)
+
+    async def test_corporate_upgrade_insufficient_treasury(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_crew(uid, guild_id, "Acme", 100.0)
+        _, err = await self.db.buy_corporate_upgrade(uid, guild_id, "income")
+        self.assertEqual(err, "insufficient_treasury")
+
+    async def test_contribute_completes_project(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.join_crew(uid, guild_id, "Acme")
+        await self.db.credit_wallet(uid, guild_id, 3_000_000.0, apply_bonuses=False)
+        result = await self.db.contribute_to_corporate_project(uid, guild_id, "mega_mall", 2_000_000.0)
+        self.assertIsNone(result["error"])
+        self.assertTrue(result["completed"])
+        self.assertGreater(float(result["reward"]), 0)
+
+    async def test_contribute_partial(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.join_crew(uid, guild_id, "Acme")
+        await self.db.credit_wallet(uid, guild_id, 50_000.0, apply_bonuses=False)
+        result = await self.db.contribute_to_corporate_project(uid, guild_id, "mega_mall", 50_000.0)
+        self.assertIsNone(result["error"])
+        self.assertFalse(result["completed"])
+
+    async def test_war_standings(self) -> None:
+        guild_id = 1
+        await self._setup_crew(100, guild_id, "Acme", 500_000.0)
+        await self._setup_crew(200, guild_id, "Beta", 100_000.0)
+        standings = await self.db.get_corporate_war_standings(guild_id)
+        self.assertEqual(standings[0][0], "Acme")
+
+
 if __name__ == "__main__":
     unittest.main()
