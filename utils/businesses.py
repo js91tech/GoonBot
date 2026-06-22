@@ -117,6 +117,11 @@ def production_branch_multiplier(branch_level: int) -> float:
     return 1.0 + max(0, int(branch_level)) * config.BUSINESS_PRODUCTION_BRANCH_BONUS_PER_LEVEL
 
 
+def growth_branch_multiplier(branch_level: int) -> float:
+    """Growth branch boosts customer traffic -> income."""
+    return 1.0 + max(0, int(branch_level)) * config.BUSINESS_GROWTH_BRANCH_BONUS_PER_LEVEL
+
+
 def prestige_multiplier(business_prestige: int) -> float:
     return 1.0 + max(0, int(business_prestige)) * config.BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL
 
@@ -156,11 +161,22 @@ def hourly_income(
     efficiency_level: int = 0,
     reputation_level: int = 0,
     production_branch_level: int = 0,
+    growth_branch_level: int = 0,
     satisfaction: int = 50,
     business_prestige: int = 0,
     district_mult: float = 1.0,
 ) -> float:
-    """Effective income per hour after all multipliers."""
+    """Effective income per hour after all multipliers.
+
+    Attribute/branch effects:
+    - Efficiency: +output per level (production)
+    - Reputation: +customer traffic per level
+    - Production branch: +output per level (Better Equipment .. AI Management)
+    - Growth branch: +customer traffic per level (Flyers .. National Branding)
+    - Employee satisfaction: -/+ swing around a neutral 50
+    - Business prestige: permanent global business income bonus
+    - District: placement bonus (Phase 3)
+    """
     defn = tier_def(tier)
     if defn is None:
         return 0.0
@@ -169,6 +185,7 @@ def hourly_income(
         * efficiency_multiplier(efficiency_level)
         * reputation_multiplier(reputation_level)
         * production_branch_multiplier(production_branch_level)
+        * growth_branch_multiplier(growth_branch_level)
         * satisfaction_multiplier(satisfaction)
         * prestige_multiplier(business_prestige)
         * max(0.0, district_mult)

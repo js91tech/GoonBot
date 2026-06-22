@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import config
 from database import Database
 from utils.businesses import (
     BUSINESS_TIERS,
@@ -39,6 +40,16 @@ class BusinessMathTests(unittest.TestCase):
         self.assertAlmostEqual(base, 20.0)
         boosted = hourly_income(tier=1, efficiency_level=5, reputation_level=5)
         self.assertGreater(boosted, base)
+
+    def test_growth_branch_boosts_income(self) -> None:
+        base = hourly_income(tier=4)
+        grown = hourly_income(tier=4, growth_branch_level=3)
+        self.assertGreater(grown, base)
+
+    def test_production_branch_boosts_income(self) -> None:
+        base = hourly_income(tier=4)
+        produced = hourly_income(tier=4, production_branch_level=3)
+        self.assertGreater(produced, base)
 
     def test_satisfaction_swing(self) -> None:
         low = hourly_income(tier=3, satisfaction=0)
@@ -155,6 +166,25 @@ class BusinessDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(cost, 0)
         row = await self.db.get_business(uid, guild_id)
         self.assertEqual(int(row["efficiency"]), 1)
+
+    async def test_upgrade_branch_growth(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        _, err = await self.db.upgrade_business_attribute(uid, guild_id, "branch_growth")
+        self.assertIsNone(err)
+        row = await self.db.get_business(uid, guild_id)
+        self.assertEqual(int(row["branch_growth"]), 1)
+
+    async def test_branch_cap_enforced(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        for _ in range(config.BUSINESS_BRANCH_MAX):
+            _, err = await self.db.upgrade_business_attribute(uid, guild_id, "branch_production")
+            self.assertIsNone(err)
+        _, err = await self.db.upgrade_business_attribute(uid, guild_id, "branch_production")
+        self.assertEqual(err, "max_level")
 
     async def test_upgrade_invalid_attribute(self) -> None:
         guild_id, uid = 1, 100

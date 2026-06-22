@@ -37,6 +37,7 @@ def _hourly_from_row(row: object) -> float:
         efficiency_level=int(row["efficiency"]),
         reputation_level=int(row["reputation"]),
         production_branch_level=int(row["branch_production"]),
+        growth_branch_level=int(row["branch_growth"]),
         satisfaction=int(row["employee_satisfaction"]),
         business_prestige=int(row["business_prestige"]),
     )
