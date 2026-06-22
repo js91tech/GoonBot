@@ -25,6 +25,7 @@ from utils.businesses import (
     upgrade_cost,
 )
 from utils.districts import DISTRICT_MAP, district_income_mult
+from utils.drugs import DRUGS, drug_by_id, roll_yield
 from utils.mega_projects import MEGA_PROJECTS, income_bonus_from_completed
 from utils.stock_market import sell_proceeds, share_price
 
@@ -582,6 +583,137 @@ class EndgameDatabaseTests(unittest.IsolatedAsyncioTestCase):
         result = await self.db.contribute_to_mega_project(uid, guild_id, "space_program", 1_000_000.0)
         self.assertIsNone(result["error"])
         self.assertFalse(result["completed"])
+
+
+class DrugMathTests(unittest.TestCase):
+    def test_catalog(self) -> None:
+        self.assertEqual(len(DRUGS), 4)
+        self.assertEqual(drug_by_id("greenleaf").name, "Greenleaf")
+        self.assertIsNone(drug_by_id("nope"))
+
+    def test_yield_bonus(self) -> None:
+        defn = DRUGS[0]
+        import random
+
+        rng = random.Random(1)
+        base = roll_yield(defn, yield_bonus=0.0, rng=random.Random(1))
+        bonus = roll_yield(defn, yield_bonus=1.0, rng=rng)
+        self.assertGreaterEqual(bonus, base)
+
+
+class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.db = Database(self.db_path)
+        await self.db.connect()
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        Path(self.db_path).unlink(missing_ok=True)
+
+    async def test_plant_requires_funds(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        _, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+        self.assertEqual(err, "insufficient_funds")
+
+    async def test_plant_and_harvest(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 10_000.0, apply_bonuses=False)
+        cost, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+        self.assertIsNone(err)
+        self.assertGreater(cost, 0)
+        # Fast-forward the grow.
+        async with self.db._write_lock:
+            await self.db.conn.execute(
+                "UPDATE drug_grows SET ready_at = ready_at - 100000 WHERE user_id = ? AND guild_id = ?",
+                (uid, guild_id),
+            )
+            await self.db.conn.commit()
+        harvested = await self.db.harvest_drugs(uid, guild_id)
+        self.assertIn("greenleaf", harvested)
+        inv = await self.db.get_drug_inventory(uid, guild_id)
+        self.assertGreater(inv.get("greenleaf", 0), 0)
+
+    async def test_lab_slot_cap(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 100_000.0, apply_bonuses=False)
+        for _ in range(config.DRUG_LAB_SLOTS):
+            _, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+            self.assertIsNone(err)
+        _, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+        self.assertEqual(err, "no_slots")
+
+    async def _stock_product(self, uid: int, guild_id: int, drug_id: str, qty: int) -> None:
+        async with self.db._write_lock:
+            await self.db.conn.execute(
+                """
+                INSERT INTO drug_inventory (user_id, guild_id, drug_id, quantity)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, guild_id, drug_id) DO UPDATE SET quantity = drug_inventory.quantity + excluded.quantity
+                """,
+                (uid, guild_id, drug_id, qty),
+            )
+            await self.db.conn.commit()
+
+    async def test_street_sell(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        await self._stock_product(uid, guild_id, "greenleaf", 10)
+        # Force no-raid by patching the raid chance to 0 via config is global; retry a few times.
+        import config as cfg
+
+        old = cfg.DRUG_RAID_CHANCE
+        cfg.DRUG_RAID_CHANCE = 0.0
+        try:
+            result = await self.db.sell_drugs_street(uid, guild_id, "greenleaf", 5)
+        finally:
+            cfg.DRUG_RAID_CHANCE = old
+        self.assertIsNone(result["error"])
+        self.assertFalse(result["raided"])
+        self.assertGreater(float(result["total"]), 0)
+
+    async def test_street_sell_insufficient(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        result = await self.db.sell_drugs_street(uid, guild_id, "greenleaf", 5)
+        self.assertEqual(result["error"], "insufficient_product")
+
+    async def test_market_list_and_buy(self) -> None:
+        guild_id, seller, buyer = 1, 100, 200
+        await self.db.ensure_user(seller, guild_id)
+        await self.db.credit_wallet(buyer, guild_id, 100_000.0, apply_bonuses=False)
+        await self._stock_product(seller, guild_id, "greenleaf", 10)
+        err = await self.db.create_drug_listing(seller, guild_id, "greenleaf", 5, 200.0)
+        self.assertIsNone(err)
+        listings = await self.db.list_drug_market(guild_id)
+        self.assertEqual(len(listings), 1)
+        listing_id = int(listings[0]["listing_id"])
+        result = await self.db.buy_drug_listing(buyer, guild_id, listing_id, 5)
+        self.assertIsNone(result["error"])
+        buyer_inv = await self.db.get_drug_inventory(buyer, guild_id)
+        self.assertEqual(buyer_inv.get("greenleaf"), 5)
+
+    async def test_market_cannot_buy_own(self) -> None:
+        guild_id, seller = 1, 100
+        await self.db.ensure_user(seller, guild_id)
+        await self._stock_product(seller, guild_id, "greenleaf", 10)
+        await self.db.create_drug_listing(seller, guild_id, "greenleaf", 5, 200.0)
+        listings = await self.db.list_drug_market(guild_id)
+        result = await self.db.buy_drug_listing(seller, guild_id, int(listings[0]["listing_id"]), 1)
+        self.assertEqual(result["error"], "own_listing")
+
+    async def test_cancel_listing_returns_product(self) -> None:
+        guild_id, seller = 1, 100
+        await self.db.ensure_user(seller, guild_id)
+        await self._stock_product(seller, guild_id, "greenleaf", 10)
+        await self.db.create_drug_listing(seller, guild_id, "greenleaf", 5, 200.0)
+        listings = await self.db.list_drug_market(guild_id)
+        err = await self.db.cancel_drug_listing(seller, guild_id, int(listings[0]["listing_id"]))
+        self.assertIsNone(err)
+        inv = await self.db.get_drug_inventory(seller, guild_id)
+        self.assertEqual(inv.get("greenleaf"), 10)
 
 
 if __name__ == "__main__":

@@ -617,6 +617,17 @@ BUSINESS_SEASONAL_EVENTS: dict[str, float] = {
 # Personal mega projects grant a permanent business income bonus on completion.
 MEGA_PROJECT_INCOME_BONUS_CAP = 1.0
 
+# --- Drug trade (Phase 8) ---------------------------------------------------
+# In-fiction contraband economy: grow product in a lab, then sell on the street
+# or to other players. Risky, high-reward, consistent with the heist/bounty tone.
+DRUG_LAB_SLOTS = 3
+DRUG_STREET_PRICE_VARIANCE = 0.25
+DRUG_RAID_CHANCE = 0.10
+DRUG_RAID_LOSS_FRACTION = 0.5
+DRUG_MARKET_TAX = 0.05
+DRUG_INDUSTRIAL_YIELD_BONUS = 0.20
+DRUG_MAX_LISTING_QTY = 100_000
+
 
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""

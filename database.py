@@ -491,6 +491,7 @@ class Database:
         await self._migrate_corporations()
         await self._migrate_stock_market()
         await self._migrate_mega_projects()
+        await self._migrate_drug_trade()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1217,6 +1218,60 @@ class Database:
                 funded_amount REAL NOT NULL DEFAULT 0 CHECK (funded_amount >= 0),
                 completed_at REAL,
                 PRIMARY KEY (user_id, guild_id, project_id)
+            )
+            """,
+        )
+        await self.conn.commit()
+
+    async def _migrate_drug_trade(self) -> None:
+        pk = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS drug_grows (
+                grow_id {pk},
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                drug_id TEXT NOT NULL,
+                planted_at REAL NOT NULL,
+                ready_at REAL NOT NULL
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS drug_inventory (
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                drug_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+                PRIMARY KEY (user_id, guild_id, drug_id)
+            )
+            """,
+        )
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS drug_market_listings (
+                listing_id {pk},
+                guild_id BIGINT NOT NULL,
+                seller_id BIGINT NOT NULL,
+                drug_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                price_per_unit REAL NOT NULL CHECK (price_per_unit > 0),
+                created_at REAL NOT NULL
+            )
+            """,
+        )
+        await self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS drug_transactions (
+                txn_id {pk},
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                drug_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                txn_type TEXT NOT NULL,
+                created_at REAL NOT NULL
             )
             """,
         )
@@ -7696,6 +7751,299 @@ class Database:
             "completed": completed,
             "income_bonus": project.income_bonus,
         }
+
+    # --- Drug trade ---------------------------------------------------------
+
+    async def get_drug_inventory(self, user_id: int, guild_id: int) -> dict[str, int]:
+        cursor = await self.conn.execute(
+            "SELECT drug_id, quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND quantity > 0",
+            (user_id, guild_id),
+        )
+        return {str(r["drug_id"]): int(r["quantity"]) for r in await cursor.fetchall()}
+
+    async def list_drug_grows(self, user_id: int, guild_id: int) -> list[dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT grow_id, drug_id, planted_at, ready_at FROM drug_grows
+            WHERE user_id = ? AND guild_id = ?
+            ORDER BY ready_at ASC
+            """,
+            (user_id, guild_id),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def plant_drug(
+        self, user_id: int, guild_id: int, drug_id: str,
+    ) -> tuple[float, str | None]:
+        """Plant a strain in a free lab slot. Returns (seed_cost, error)."""
+        from utils.drugs import drug_by_id
+
+        defn = drug_by_id(drug_id)
+        if defn is None:
+            return 0.0, "invalid_drug"
+        now = time.time()
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT COUNT(*) AS c FROM drug_grows WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            row = await cursor.fetchone()
+            if row is not None and int(row["c"]) >= config.DRUG_LAB_SLOTS:
+                await self.conn.commit()
+                return 0.0, "no_slots"
+            await self._ensure_user_no_lock(user_id, guild_id)
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < defn.seed_cost:
+                await self.conn.commit()
+                return defn.seed_cost, "insufficient_funds"
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (defn.seed_cost, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO drug_grows (user_id, guild_id, drug_id, planted_at, ready_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, guild_id, defn.drug_id, now, now + defn.grow_seconds),
+            )
+            await self.conn.commit()
+        return defn.seed_cost, None
+
+    async def harvest_drugs(self, user_id: int, guild_id: int) -> dict[str, int]:
+        """Harvest all ready grows. Returns {drug_id: quantity_added}."""
+        import random
+
+        from utils.drugs import drug_by_id, roll_yield
+
+        now = time.time()
+        # Industrial district gives a yield bonus.
+        yield_bonus = 0.0
+        biz = await self.get_business(user_id, guild_id)
+        if biz is not None and str(biz["district_id"] or "") == "industrial":
+            yield_bonus = config.DRUG_INDUSTRIAL_YIELD_BONUS
+        harvested: dict[str, int] = {}
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                SELECT grow_id, drug_id FROM drug_grows
+                WHERE user_id = ? AND guild_id = ? AND ready_at <= ?
+                """,
+                (user_id, guild_id, now),
+            )
+            ready = [(int(r["grow_id"]), str(r["drug_id"])) for r in await cursor.fetchall()]
+            for grow_id, drug_id in ready:
+                defn = drug_by_id(drug_id)
+                if defn is None:
+                    await self.conn.execute("DELETE FROM drug_grows WHERE grow_id = ?", (grow_id,))
+                    continue
+                amount = roll_yield(defn, yield_bonus=yield_bonus, rng=random)
+                await self.conn.execute(
+                    """
+                    INSERT INTO drug_inventory (user_id, guild_id, drug_id, quantity)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(user_id, guild_id, drug_id) DO UPDATE SET quantity = drug_inventory.quantity + excluded.quantity
+                    """,
+                    (user_id, guild_id, drug_id, amount),
+                )
+                await self.conn.execute("DELETE FROM drug_grows WHERE grow_id = ?", (grow_id,))
+                harvested[drug_id] = harvested.get(drug_id, 0) + amount
+            await self.conn.commit()
+        return harvested
+
+    async def sell_drugs_street(
+        self, user_id: int, guild_id: int, drug_id: str, quantity: int,
+    ) -> dict[str, object]:
+        """Sell product on the street. Volatile price with a raid risk."""
+        import random
+
+        from utils.drugs import drug_by_id, sale_total
+
+        defn = drug_by_id(drug_id)
+        if defn is None:
+            return {"error": "invalid_drug"}
+        if quantity <= 0:
+            return {"error": "invalid_amount"}
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                (user_id, guild_id, drug_id),
+            )
+            inv = await cursor.fetchone()
+            if inv is None or int(inv["quantity"]) < quantity:
+                await self.conn.commit()
+                return {"error": "insufficient_product"}
+            # Raid risk: lose part of the product, no payout.
+            raided = random.random() < config.DRUG_RAID_CHANCE
+            if raided:
+                lost = max(1, int(quantity * config.DRUG_RAID_LOSS_FRACTION))
+                await self.conn.execute(
+                    "UPDATE drug_inventory SET quantity = quantity - ? WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                    (lost, user_id, guild_id, drug_id),
+                )
+                await self.conn.execute(
+                    """
+                    INSERT INTO drug_transactions (guild_id, user_id, drug_id, quantity, amount, txn_type, created_at)
+                    VALUES (?, ?, ?, ?, 0, 'raid', ?)
+                    """,
+                    (guild_id, user_id, drug_id, lost, time.time()),
+                )
+                await self.conn.commit()
+                return {"error": None, "raided": True, "lost": lost}
+            total = sale_total(defn, quantity, rng=random)
+            await self.conn.execute(
+                "UPDATE drug_inventory SET quantity = quantity - ? WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                (quantity, user_id, guild_id, drug_id),
+            )
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ? WHERE user_id = ? AND guild_id = ?",
+                (total, total, user_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO drug_transactions (guild_id, user_id, drug_id, quantity, amount, txn_type, created_at)
+                VALUES (?, ?, ?, ?, ?, 'street_sell', ?)
+                """,
+                (guild_id, user_id, drug_id, quantity, total, time.time()),
+            )
+            await self.conn.commit()
+        return {"error": None, "raided": False, "total": total, "quantity": quantity}
+
+    async def create_drug_listing(
+        self, user_id: int, guild_id: int, drug_id: str, quantity: int, price_per_unit: float,
+    ) -> str | None:
+        from utils.drugs import drug_by_id
+
+        if drug_by_id(drug_id) is None:
+            return "invalid_drug"
+        if quantity <= 0 or quantity > config.DRUG_MAX_LISTING_QTY or price_per_unit <= 0:
+            return "invalid_amount"
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                (user_id, guild_id, drug_id),
+            )
+            inv = await cursor.fetchone()
+            if inv is None or int(inv["quantity"]) < quantity:
+                await self.conn.commit()
+                return "insufficient_product"
+            await self.conn.execute(
+                "UPDATE drug_inventory SET quantity = quantity - ? WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                (quantity, user_id, guild_id, drug_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO drug_market_listings (guild_id, seller_id, drug_id, quantity, price_per_unit, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (guild_id, user_id, drug_id, quantity, price_per_unit, time.time()),
+            )
+            await self.conn.commit()
+        return None
+
+    async def list_drug_market(self, guild_id: int, *, limit: int = 20) -> list[dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT listing_id, seller_id, drug_id, quantity, price_per_unit FROM drug_market_listings
+            WHERE guild_id = ?
+            ORDER BY price_per_unit ASC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def cancel_drug_listing(self, user_id: int, guild_id: int, listing_id: int) -> str | None:
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT seller_id, drug_id, quantity FROM drug_market_listings WHERE listing_id = ? AND guild_id = ?",
+                (listing_id, guild_id),
+            )
+            listing = await cursor.fetchone()
+            if listing is None:
+                await self.conn.commit()
+                return "not_found"
+            if int(listing["seller_id"]) != user_id:
+                await self.conn.commit()
+                return "not_owner"
+            await self.conn.execute(
+                """
+                INSERT INTO drug_inventory (user_id, guild_id, drug_id, quantity)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, guild_id, drug_id) DO UPDATE SET quantity = drug_inventory.quantity + excluded.quantity
+                """,
+                (user_id, guild_id, str(listing["drug_id"]), int(listing["quantity"])),
+            )
+            await self.conn.execute("DELETE FROM drug_market_listings WHERE listing_id = ?", (listing_id,))
+            await self.conn.commit()
+        return None
+
+    async def buy_drug_listing(
+        self, user_id: int, guild_id: int, listing_id: int, quantity: int,
+    ) -> dict[str, object]:
+        """Buy from a market listing. Seller receives proceeds minus market tax."""
+        if quantity <= 0:
+            return {"error": "invalid_amount"}
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                "SELECT seller_id, drug_id, quantity, price_per_unit FROM drug_market_listings WHERE listing_id = ? AND guild_id = ?",
+                (listing_id, guild_id),
+            )
+            listing = await cursor.fetchone()
+            if listing is None:
+                await self.conn.commit()
+                return {"error": "not_found"}
+            seller_id = int(listing["seller_id"])
+            if seller_id == user_id:
+                await self.conn.commit()
+                return {"error": "own_listing"}
+            available = int(listing["quantity"])
+            if quantity > available:
+                await self.conn.commit()
+                return {"error": "not_enough_listed"}
+            price = float(listing["price_per_unit"])
+            drug_id = str(listing["drug_id"])
+            total = price * quantity
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < total:
+                await self.conn.commit()
+                return {"error": "insufficient_funds", "total": total}
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (total, user_id, guild_id),
+            )
+            proceeds = total * (1.0 - config.DRUG_MARKET_TAX)
+            await self._ensure_user_no_lock(seller_id, guild_id)
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ? WHERE user_id = ? AND guild_id = ?",
+                (proceeds, proceeds, seller_id, guild_id),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO drug_inventory (user_id, guild_id, drug_id, quantity)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, guild_id, drug_id) DO UPDATE SET quantity = drug_inventory.quantity + excluded.quantity
+                """,
+                (user_id, guild_id, drug_id, quantity),
+            )
+            remaining = available - quantity
+            if remaining > 0:
+                await self.conn.execute(
+                    "UPDATE drug_market_listings SET quantity = ? WHERE listing_id = ?",
+                    (remaining, listing_id),
+                )
+            else:
+                await self.conn.execute("DELETE FROM drug_market_listings WHERE listing_id = ?", (listing_id,))
+            await self.conn.commit()
+        return {"error": None, "total": total, "quantity": quantity, "drug_id": drug_id}
 
     async def _active_buff_multiplier_no_lock(
         self, user_id: int, guild_id: int, now: float,
