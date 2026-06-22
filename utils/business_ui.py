@@ -273,6 +273,68 @@ class BusinessPanelView(discord.ui.View):
         await _refresh_panel(interaction, self.cog, self.guild_id, self.user_id)
 
 
+def build_prestige_embed(row: object) -> discord.Embed:
+    prestige = int(row["business_prestige"])
+    next_bonus = int((prestige + 1) * config.BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)
+    embed = discord.Embed(
+        title="⭐ Business Prestige",
+        description=(
+            "Prestiging resets your **Corporation back to a Lemon Stand** and clears "
+            "stored revenue, but grants a **permanent** business income bonus.\n\n"
+            f"Current prestige: **{prestige}** / {config.BUSINESS_PRESTIGE_MAX_LEVEL}\n"
+            f"After prestige: **+{next_bonus}%** total permanent business income"
+        ),
+        color=discord.Color.purple(),
+    )
+    if prestige + 1 >= config.BUSINESS_PRESTIGE_MAX_LEVEL:
+        embed.add_field(
+            name="Legendary",
+            value="Reaching max prestige cements your legendary business empire status!",
+            inline=False,
+        )
+    embed.set_footer(text="This cannot be undone. Press Confirm to prestige.")
+    return embed
+
+
+class PrestigeConfirmView(discord.ui.View):
+    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+        super().__init__(timeout=60.0)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your panel.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Confirm prestige", style=discord.ButtonStyle.danger)
+    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        err, new_prestige = await self.cog.bot.db.prestige_business(self.user_id, self.guild_id)
+        messages = {
+            "no_business": "You don't own a business.",
+            "not_max_tier": "You must reach the Corporation tier first.",
+            "max_prestige": "You've already reached max business prestige.",
+        }
+        if err:
+            await interaction.response.edit_message(
+                content=messages.get(err, "Could not prestige."), embed=None, view=None,
+            )
+            return
+        await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "business_prestige")
+        bonus = int(new_prestige * config.BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)
+        await interaction.response.edit_message(
+            content=(
+                f"⭐ **Prestige {new_prestige}!** Your empire restarts as a Lemon Stand "
+                f"with a permanent **+{bonus}%** business income bonus."
+            ),
+            embed=None,
+            view=None,
+        )
+
+
 ATTRIBUTE_LABELS: dict[str, tuple[str, str]] = {
     "security": ("🛡️ Security", "security"),
     "reputation": ("📣 Reputation", "reputation"),

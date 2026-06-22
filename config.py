@@ -606,6 +606,17 @@ STOCK_MARKET_EVENTS: dict[str, float] = {
 STOCK_EVENT_CHANCE_PER_TICK = 0.20
 STOCK_EVENT_DURATION_SECONDS = 6 * 3600
 
+# --- Seasonal business events & mega projects (Phase 7) ---------------------
+# Seasonal events scale business income while active (set via /event).
+BUSINESS_SEASONAL_EVENTS: dict[str, float] = {
+    "summer_festival": 1.15,
+    "holiday_rush": 1.25,
+    "economic_crisis": 0.90,
+    "tech_boom": 1.20,
+}
+# Personal mega projects grant a permanent business income bonus on completion.
+MEGA_PROJECT_INCOME_BONUS_CAP = 1.0
+
 
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""
@@ -629,6 +640,10 @@ SEASONAL_EVENT_TYPES: tuple[str, ...] = (
     "festival_boss",
     "trivia_fiesta",
     "world_boss_week",
+    "summer_festival",
+    "holiday_rush",
+    "economic_crisis",
+    "tech_boom",
 )
 
 

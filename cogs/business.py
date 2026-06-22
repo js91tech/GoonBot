@@ -182,13 +182,51 @@ class Business(commands.Cog):
 
         await send_stock_panel(interaction, self)
 
-    @business_group.command(name="prestige", description="Business prestige (coming soon).")
+    @business_group.command(
+        name="prestige",
+        description="Prestige your maxed business for a permanent income bonus.",
+    )
     async def prestige(self, interaction: discord.Interaction) -> None:
+        guild_id = interaction.guild_id
+        if guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        from utils.business_ui import build_prestige_embed
+
+        row = await self.bot.db.get_business(interaction.user.id, guild_id)
+        if row is None:
+            await interaction.response.send_message(
+                "You don't own a business. Use **/business create**.", ephemeral=True,
+            )
+            return
+        from utils.businesses import MAX_TIER
+
+        if int(row["tier"]) < MAX_TIER:
+            await interaction.response.send_message(
+                "Business prestige unlocks at the **Corporation** tier (tier 7). "
+                "Keep tiering up first!",
+                ephemeral=True,
+            )
+            return
+        from utils.business_ui import PrestigeConfirmView
+
         await interaction.response.send_message(
-            "Business prestige unlocks once you reach the Corporation tier. "
-            "This endgame reset is coming in a future update.",
+            embed=build_prestige_embed(row),
+            view=PrestigeConfirmView(self, guild_id, interaction.user.id),
             ephemeral=True,
         )
+
+    @business_group.command(
+        name="megaprojects",
+        description="Fund massive personal endgame projects for permanent bonuses.",
+    )
+    async def megaprojects(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        from utils.mega_project_ui import send_mega_project_panel
+
+        await send_mega_project_panel(interaction, self)
 
     @tasks.loop(seconds=config.BUSINESS_INCOME_TICK_SECONDS)
     async def business_income_tick(self) -> None:

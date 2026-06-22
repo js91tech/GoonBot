@@ -25,6 +25,7 @@ from utils.businesses import (
     upgrade_cost,
 )
 from utils.districts import DISTRICT_MAP, district_income_mult
+from utils.mega_projects import MEGA_PROJECTS, income_bonus_from_completed
 from utils.stock_market import sell_proceeds, share_price
 
 
@@ -509,6 +510,78 @@ class StockMarketDatabaseTests(unittest.IsolatedAsyncioTestCase):
         )
         boosted = await self.db.get_share_price(guild_id, "Acme")
         self.assertGreater(boosted, base)
+
+
+class MegaProjectMathTests(unittest.TestCase):
+    def test_income_bonus_sum(self) -> None:
+        ids = {p.project_id for p in MEGA_PROJECTS}
+        total = income_bonus_from_completed(ids)
+        self.assertAlmostEqual(total, sum(p.income_bonus for p in MEGA_PROJECTS))
+
+    def test_unknown_ignored(self) -> None:
+        self.assertEqual(income_bonus_from_completed({"nope"}), 0.0)
+
+
+class EndgameDatabaseTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.db = Database(self.db_path)
+        await self.db.connect()
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        Path(self.db_path).unlink(missing_ok=True)
+
+    async def _maxed_business(self, uid: int, guild_id: int) -> None:
+        await self.db.credit_wallet(uid, guild_id, 50_000_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        for _ in range(6):
+            err, _ = await self.db.tier_up_business(uid, guild_id)
+            self.assertIsNone(err)
+
+    async def test_prestige_requires_max_tier(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 1_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        err, _ = await self.db.prestige_business(uid, guild_id)
+        self.assertEqual(err, "not_max_tier")
+
+    async def test_prestige_resets_and_increments(self) -> None:
+        guild_id, uid = 1, 100
+        await self._maxed_business(uid, guild_id)
+        err, new_prestige = await self.db.prestige_business(uid, guild_id)
+        self.assertIsNone(err)
+        self.assertEqual(new_prestige, 1)
+        row = await self.db.get_business(uid, guild_id)
+        self.assertEqual(int(row["tier"]), 1)
+        self.assertEqual(int(row["business_prestige"]), 1)
+
+    async def test_seasonal_event_affects_income(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 1_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        base = await self.db._business_event_mult_no_lock(guild_id)
+        self.assertEqual(base, 1.0)
+        await self.db.set_guild_event(guild_id, "holiday_rush", 1.25, __import__("time").time() + 3600)
+        boosted = await self.db._business_event_mult_no_lock(guild_id)
+        self.assertGreater(boosted, 1.0)
+
+    async def test_mega_project_completion_grants_bonus(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 2_000_000_000.0, apply_bonuses=False)
+        result = await self.db.contribute_to_mega_project(uid, guild_id, "space_program", 1_000_000_000.0)
+        self.assertIsNone(result["error"])
+        self.assertTrue(result["completed"])
+        mult = await self.db._mega_income_mult_no_lock(uid, guild_id)
+        self.assertGreater(mult, 1.0)
+
+    async def test_mega_project_partial(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 1_000_000.0, apply_bonuses=False)
+        result = await self.db.contribute_to_mega_project(uid, guild_id, "space_program", 1_000_000.0)
+        self.assertIsNone(result["error"])
+        self.assertFalse(result["completed"])
 
 
 if __name__ == "__main__":

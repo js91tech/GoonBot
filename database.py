@@ -490,6 +490,7 @@ class Database:
         await self._migrate_business_competition()
         await self._migrate_corporations()
         await self._migrate_stock_market()
+        await self._migrate_mega_projects()
 
 
     async def _migrate_character_attributes(self) -> None:
@@ -1201,6 +1202,21 @@ class Database:
                 multiplier REAL NOT NULL DEFAULT 1.0,
                 ends_at REAL NOT NULL DEFAULT 0,
                 last_dividend_at REAL NOT NULL DEFAULT 0
+            )
+            """,
+        )
+        await self.conn.commit()
+
+    async def _migrate_mega_projects(self) -> None:
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_mega_projects (
+                user_id BIGINT NOT NULL,
+                guild_id BIGINT NOT NULL,
+                project_id TEXT NOT NULL,
+                funded_amount REAL NOT NULL DEFAULT 0 CHECK (funded_amount >= 0),
+                completed_at REAL,
+                PRIMARY KEY (user_id, guild_id, project_id)
             )
             """,
         )
@@ -7348,7 +7364,15 @@ class Database:
         elapsed = max(0.0, current - last_at)
         buff_mult = await self._active_buff_multiplier_no_lock(user_id, guild_id, current)
         corp_mult = await self._corporate_income_mult_no_lock(user_id, guild_id)
-        hourly = self._business_hourly_from_row(row) * buff_mult * corp_mult
+        event_mult = await self._business_event_mult_no_lock(guild_id)
+        mega_mult = await self._mega_income_mult_no_lock(user_id, guild_id)
+        hourly = (
+            self._business_hourly_from_row(row)
+            * buff_mult
+            * corp_mult
+            * event_mult
+            * mega_mult
+        )
         capacity = self._business_capacity_from_row(row)
         new_stored = accrue_income(
             stored=float(row["stored_income"]),
@@ -7560,6 +7584,119 @@ class Database:
                 await self._settle_business_income_no_lock(uid, guild_id, now=now)
             await self.conn.commit()
 
+    async def prestige_business(
+        self, user_id: int, guild_id: int,
+    ) -> tuple[str | None, int]:
+        """Prestige a maxed business: reset to tier 1, bank a permanent income bonus."""
+        from utils.businesses import MAX_TIER, tier_def
+
+        async with self._write_lock:
+            row = await self._settle_business_income_no_lock(user_id, guild_id)
+            if row is None:
+                await self.conn.commit()
+                return "no_business", 0
+            if int(row["tier"]) < MAX_TIER:
+                await self.conn.commit()
+                return "not_max_tier", int(row["business_prestige"])
+            if int(row["business_prestige"]) >= config.BUSINESS_PRESTIGE_MAX_LEVEL:
+                await self.conn.commit()
+                return "max_prestige", int(row["business_prestige"])
+            new_prestige = int(row["business_prestige"]) + 1
+            tier1 = tier_def(1)
+            await self.conn.execute(
+                """
+                UPDATE user_businesses
+                SET tier = 1, tier_id = ?, stored_income = 0,
+                    business_prestige = ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (tier1.tier_id if tier1 else "lemon_stand", new_prestige, user_id, guild_id),
+            )
+            await self.conn.commit()
+        return None, new_prestige
+
+    async def list_user_mega_projects(
+        self, user_id: int, guild_id: int,
+    ) -> dict[str, dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT project_id, funded_amount, completed_at FROM user_mega_projects
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (user_id, guild_id),
+        )
+        return {
+            str(r["project_id"]): {
+                "funded_amount": float(r["funded_amount"]),
+                "completed_at": r["completed_at"],
+            }
+            for r in await cursor.fetchall()
+        }
+
+    async def contribute_to_mega_project(
+        self, user_id: int, guild_id: int, project_id: str, amount: float,
+    ) -> dict[str, object]:
+        """Fund a personal mega project from the wallet. Returns a result dict."""
+        from utils.mega_projects import mega_project_by_id
+
+        project = mega_project_by_id(project_id)
+        if project is None:
+            return {"error": "invalid_project"}
+        if amount <= 0:
+            return {"error": "invalid_amount"}
+        async with self._write_lock:
+            cursor = await self.conn.execute(
+                """
+                SELECT funded_amount, completed_at FROM user_mega_projects
+                WHERE user_id = ? AND guild_id = ? AND project_id = ?
+                """,
+                (user_id, guild_id, project_id),
+            )
+            existing = await cursor.fetchone()
+            if existing is not None and existing["completed_at"] is not None:
+                await self.conn.commit()
+                return {"error": "already_complete"}
+            funded = float(existing["funded_amount"]) if existing is not None else 0.0
+            remaining = max(0.0, project.cost - funded)
+            contribution = min(amount, remaining)
+            if contribution <= 0:
+                await self.conn.commit()
+                return {"error": "already_complete"}
+            cursor = await self.conn.execute(
+                "SELECT wallet FROM users WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id),
+            )
+            wallet_row = await cursor.fetchone()
+            if wallet_row is None or float(wallet_row["wallet"]) < contribution:
+                await self.conn.commit()
+                return {"error": "insufficient_funds", "needed": contribution}
+            await self.conn.execute(
+                "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
+                (contribution, user_id, guild_id),
+            )
+            new_funded = funded + contribution
+            completed = new_funded >= project.cost
+            completed_at = time.time() if completed else None
+            await self.conn.execute(
+                """
+                INSERT INTO user_mega_projects (user_id, guild_id, project_id, funded_amount, completed_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, guild_id, project_id) DO UPDATE SET
+                    funded_amount = excluded.funded_amount,
+                    completed_at = excluded.completed_at
+                """,
+                (user_id, guild_id, project_id, new_funded, completed_at),
+            )
+            await self.conn.commit()
+        return {
+            "error": None,
+            "contribution": contribution,
+            "funded": new_funded,
+            "target": project.cost,
+            "completed": completed,
+            "income_bonus": project.income_bonus,
+        }
+
     async def _active_buff_multiplier_no_lock(
         self, user_id: int, guild_id: int, now: float,
     ) -> float:
@@ -7574,6 +7711,30 @@ class Database:
         for r in await cursor.fetchall():
             mult *= float(r["multiplier"])
         return max(0.0, mult)
+
+    async def _business_event_mult_no_lock(self, guild_id: int) -> float:
+        cursor = await self.conn.execute(
+            "SELECT event_type, ends_at FROM guild_events WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None or float(row["ends_at"]) <= time.time():
+            return 1.0
+        return config.BUSINESS_SEASONAL_EVENTS.get(str(row["event_type"]), 1.0)
+
+    async def _mega_income_mult_no_lock(self, user_id: int, guild_id: int) -> float:
+        from utils.mega_projects import income_bonus_from_completed
+
+        cursor = await self.conn.execute(
+            """
+            SELECT project_id FROM user_mega_projects
+            WHERE user_id = ? AND guild_id = ? AND completed_at IS NOT NULL
+            """,
+            (user_id, guild_id),
+        )
+        completed = {str(r["project_id"]) for r in await cursor.fetchall()}
+        bonus = min(config.MEGA_PROJECT_INCOME_BONUS_CAP, income_bonus_from_completed(completed))
+        return 1.0 + bonus
 
     async def list_active_business_buffs(
         self, user_id: int, guild_id: int,
