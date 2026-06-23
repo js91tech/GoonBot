@@ -1281,6 +1281,11 @@ class Boss(commands.Cog):
         if await self.bot.db.take_pending_consumable(member.id, guild_id, "raid_potion"):
             ctx = replace(ctx, damage_mult=ctx.damage_mult * 1.2)
             spell_note += " · **Raid Potion** +20%"
+        drug_buff = await self.bot.db.take_pending_drug_buff(member.id, guild_id)
+        if drug_buff is not None and float(drug_buff["boss_mult"]) > 1.0:
+            mult = float(drug_buff["boss_mult"])
+            ctx = replace(ctx, damage_mult=ctx.damage_mult * mult)
+            spell_note += f" · **{drug_buff['name']}** +{int((mult - 1.0) * 100)}%"
         damage, attack_critical, attack_verb = roll_player_damage(
             loadout.primary,
             off_hand=loadout.off_hand,

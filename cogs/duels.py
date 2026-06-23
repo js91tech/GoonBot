@@ -245,6 +245,12 @@ class Duels(commands.Cog):
             attacker.id, guild_id, "duel_scroll",
         ):
             attacker_fighter.consumable_boost = 1.15
+        drug_buff = await self.bot.db.take_pending_drug_buff(attacker.id, guild_id)
+        if drug_buff is not None and float(drug_buff["duel_mult"]) > 1.0:
+            attacker_fighter.consumable_boost = max(
+                attacker_fighter.consumable_boost,
+                float(drug_buff["duel_mult"]),
+            )
         for fighter, uid in (
             (attacker_fighter, attacker.id),
             (defender_fighter, opponent.id),
