@@ -532,6 +532,127 @@ TERRITORY_PERK_DOCKS_HEIST_LOOT = 0.05
 TERRITORY_PERK_VAULT_HEIST_SUCCESS = 0.03
 TERRITORY_PERK_CITADEL_INCOME_BONUS = 0.10
 
+# --- Business Empire ---------------------------------------------------------
+# Passive business income accrues into a capped store; players collect it with
+# /business collect. All values are in nuggets.
+BUSINESS_INCOME_TICK_SECONDS = 5 * 60
+# Per-level multiplier contributions for the upgradeable attributes.
+BUSINESS_EFFICIENCY_BONUS_PER_LEVEL = 0.05
+BUSINESS_REPUTATION_BONUS_PER_LEVEL = 0.04
+BUSINESS_PRODUCTION_BRANCH_BONUS_PER_LEVEL = 0.06
+# Growth branch drives customer traffic (an income multiplier, like reputation).
+BUSINESS_GROWTH_BRANCH_BONUS_PER_LEVEL = 0.08
+# Employee satisfaction is 0-100; this is the max +/- income swing at the edges.
+BUSINESS_SATISFACTION_SWING = 0.15
+BUSINESS_SATISFACTION_START = 50
+# Stored-income capacity: a base buffer of N hours plus extra per capacity level.
+BUSINESS_BASE_CAPACITY_HOURS = 8.0
+BUSINESS_CAPACITY_HOURS_PER_LEVEL = 4.0
+BUSINESS_MIN_CAPACITY = 100.0
+# Attribute / branch upgrade pricing (cost scales off the tier purchase price).
+BUSINESS_UPGRADE_BASE_COST = 500.0
+BUSINESS_UPGRADE_COST_FRACTION = 0.15
+BUSINESS_UPGRADE_COST_GROWTH = 1.6
+BUSINESS_ATTRIBUTE_MAX = 25
+BUSINESS_BRANCH_MAX = 5
+# Security rating inputs (used by the Phase 4 defense system).
+BUSINESS_SECURITY_PER_LEVEL = 2
+BUSINESS_SECURITY_PER_BRANCH_LEVEL = 5
+# Business prestige is separate from combat prestige.
+BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL = 0.05
+BUSINESS_PRESTIGE_MAX_LEVEL = 10
+# Districts: relocation fee (scales with tier) and a cooldown between moves.
+BUSINESS_DISTRICT_RELOCATE_BASE_COST = 1_000.0
+BUSINESS_DISTRICT_RELOCATE_COOLDOWN_SECONDS = 6 * 3600
+# Influence: cost per point and the 0-100 cap.
+BUSINESS_DISTRICT_INFLUENCE_COST_PER_POINT = 250.0
+BUSINESS_DISTRICT_INFLUENCE_MAX = 100
+
+# --- Competition & defense (Phase 4) ----------------------------------------
+# All competitive actions are temporary income multipliers; no permanent loss.
+BUSINESS_ACTION_COOLDOWN_SECONDS = 3600
+BUSINESS_DEFENSE_WINDOW_SECONDS = 15 * 60
+# Active defense removes this fraction of an incoming debuff's remaining penalty.
+BUSINESS_DEFENSE_MITIGATION = 0.5
+# Passive defense: mitigation = security_rating / (security_rating + K).
+BUSINESS_SECURITY_MITIGATION_K = 120
+BUSINESS_SECURITY_MITIGATION_CAP = 0.75
+# Self-buff actions.
+BUSINESS_ACTION_MARKETING_COST = 5_000.0
+BUSINESS_ACTION_MARKETING_BONUS = 0.10
+BUSINESS_ACTION_MARKETING_DURATION = 12 * 3600
+BUSINESS_ACTION_TALENT_COST = 6_000.0
+BUSINESS_ACTION_TALENT_BONUS = 0.08
+BUSINESS_ACTION_TALENT_DURATION = 8 * 3600
+# Attack actions (penalty applied to the opponent's income).
+BUSINESS_ACTION_PRICE_WAR_COST = 4_000.0
+BUSINESS_ACTION_PRICE_WAR_PENALTY = 0.05
+BUSINESS_ACTION_PRICE_WAR_DURATION = 6 * 3600
+BUSINESS_ACTION_REPUTATION_COST = 4_500.0
+BUSINESS_ACTION_REPUTATION_PENALTY = 0.10
+BUSINESS_ACTION_REPUTATION_DURATION = 6 * 3600
+# Market Expansion is an instant influence purchase in your current district.
+BUSINESS_ACTION_MARKET_EXPANSION_COST = 3_000.0
+BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE = 10
+
+# --- Corporations (crew extensions, Phase 5) --------------------------------
+# Corporate upgrades are funded from the crew treasury and benefit all members.
+CORP_UPGRADE_MAX_LEVEL = 10
+CORP_UPGRADE_BASE_COST = 50_000.0
+CORP_UPGRADE_COST_GROWTH = 1.5
+CORP_UPGRADE_INCOME_BONUS_PER_LEVEL = 0.03   # +% member business income
+CORP_UPGRADE_DEFENSE_BONUS_PER_LEVEL = 5     # +security rating for members
+CORP_UPGRADE_TERRITORY_BONUS_PER_LEVEL = 0.02
+# Corporate wars run on a weekly cadence; the top corporation earns a treasury bonus.
+CORP_WAR_TICK_SECONDS = 7 * 24 * 3600
+CORP_WAR_TERRITORY_SCORE = 5_000.0
+CORP_WAR_WINNER_TREASURY_BONUS = 250_000.0
+
+# --- Stock market (Phase 6) -------------------------------------------------
+# Share price is derived from a corporation's treasury and headcount, scaled by
+# any active market event.
+STOCK_BASE_PRICE = 10.0
+STOCK_TREASURY_DIVISOR = 1_000.0
+STOCK_PRICE_PER_MEMBER = 5.0
+STOCK_MIN_PRICE = 1.0
+STOCK_SELL_TAX = 0.05
+STOCK_MAX_SHARES_PER_TXN = 100_000
+# Dividends are paid hourly from the corporation treasury to shareholders.
+STOCK_DIVIDEND_RATE = 0.01
+STOCK_DIVIDEND_TICK_SECONDS = 3600
+# Market events temporarily scale all share prices.
+STOCK_MARKET_EVENTS: dict[str, float] = {
+    "tech_boom": 1.25,
+    "economic_crash": 0.70,
+    "tourism_surge": 1.12,
+    "supply_shortage": 0.85,
+}
+STOCK_EVENT_CHANCE_PER_TICK = 0.20
+STOCK_EVENT_DURATION_SECONDS = 6 * 3600
+
+# --- Seasonal business events & mega projects (Phase 7) ---------------------
+# Seasonal events scale business income while active (set via /event).
+BUSINESS_SEASONAL_EVENTS: dict[str, float] = {
+    "summer_festival": 1.15,
+    "holiday_rush": 1.25,
+    "economic_crisis": 0.90,
+    "tech_boom": 1.20,
+}
+# Personal mega projects grant a permanent business income bonus on completion.
+MEGA_PROJECT_INCOME_BONUS_CAP = 1.0
+
+# --- Drug trade (Phase 8) ---------------------------------------------------
+# In-fiction contraband economy: grow product in a lab, then sell on the street
+# or to other players. Risky, high-reward, consistent with the heist/bounty tone.
+DRUG_LAB_SLOTS = 3
+DRUG_STREET_PRICE_VARIANCE = 0.25
+DRUG_RAID_CHANCE = 0.10
+DRUG_RAID_LOSS_FRACTION = 0.5
+DRUG_MARKET_TAX = 0.05
+DRUG_INDUSTRIAL_YIELD_BONUS = 0.20
+DRUG_MAX_LISTING_QTY = 100_000
+
+
 def custom_avatar_max_size_label() -> str:
     """Human-readable upload cap for command messages."""
     n = CUSTOM_AVATAR_MAX_BYTES
@@ -554,6 +675,10 @@ SEASONAL_EVENT_TYPES: tuple[str, ...] = (
     "festival_boss",
     "trivia_fiesta",
     "world_boss_week",
+    "summer_festival",
+    "holiday_rush",
+    "economic_crisis",
+    "tech_boom",
 )
 
 

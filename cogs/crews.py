@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 import config
 from utils.crew_ui import build_crew_leaderboard_embed, send_crew_panel
-from utils.helpers import fmt_amount, guild_only_message, send_error, valid_amount
+from utils.helpers import (
+    fmt_amount,
+    guild_only_message,
+    resolve_main_channel,
+    send_error,
+    valid_amount,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +23,41 @@ logger = logging.getLogger(__name__)
 class Crews(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        # Guard so unit tests that construct the cog with a stub bot don't start loops.
+        if hasattr(bot, "wait_until_ready"):
+            self.corporate_war_tick.start()
+
+    def cog_unload(self) -> None:
+        self.corporate_war_tick.cancel()
+
+    @tasks.loop(seconds=3600)
+    async def corporate_war_tick(self) -> None:
+        for guild in self.bot.guilds:
+            try:
+                result = await self.bot.db.record_corporate_war_tick(guild.id)
+            except Exception:
+                logger.exception("corporate war tick failed guild=%s", guild.id)
+                continue
+            if not result or not result.get("winner"):
+                continue
+            channel = await resolve_main_channel(guild, self.bot.db)
+            if channel is None:
+                continue
+            embed = discord.Embed(
+                title=f"⚔️ Corporate War — Week {result['week']} results",
+                description=(
+                    f"**{result['winner']}** wins with a score of "
+                    f"**{fmt_amount(float(result['winner_score']))}** and earns a "
+                    f"**{fmt_amount(float(result['reward']))}** treasury bonus!"
+                ),
+                color=discord.Color.gold(),
+            )
+            with contextlib.suppress(discord.HTTPException):
+                await channel.send(embed=embed)
+
+    @corporate_war_tick.before_loop
+    async def before_corporate_war_tick(self) -> None:
+        await self.bot.wait_until_ready()
 
     async def crew_name_autocomplete(
         self,

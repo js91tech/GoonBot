@@ -19,6 +19,10 @@ EVENT_LABELS: dict[str, tuple[str, float]] = {
     "festival_boss": ("Festival boss HP (+25%)", 1.25),
     "trivia_fiesta": ("Double trivia rewards", 2.0),
     "world_boss_week": ("World boss HP (+50%)", 1.5),
+    "summer_festival": ("Summer Festival (business +15%)", 1.15),
+    "holiday_rush": ("Holiday Rush (business +25%)", 1.25),
+    "economic_crisis": ("Economic Crisis (business -10%)", 0.90),
+    "tech_boom": ("Tech Boom (business +20%)", 1.20),
 }
 
 
