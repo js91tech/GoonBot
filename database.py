@@ -8622,6 +8622,40 @@ class Database:
                 "duel_mult": duel_mult,
             }
 
+    async def peek_pending_drug_buff(self, user_id: int, guild_id: int) -> dict[str, object] | None:
+        """Return active drug combat buff without consuming it."""
+        from utils.drugs import drug_by_id, parse_drug_buff_key
+
+        row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+        try:
+            pending = row["pending_consumable"]
+            expires = float(row["pending_consumable_expires"] or 0)
+        except (KeyError, TypeError):
+            return None
+        drug_id = parse_drug_buff_key(str(pending) if pending else None)
+        if drug_id is None:
+            return None
+        if expires < time.time():
+            return None
+        defn = drug_by_id(drug_id)
+        if defn is None:
+            return None
+        pending_str = str(pending)
+        variant = pending_str.split(":", 2)[2] if pending_str.count(":") >= 2 else None
+        boss_mult = defn.effect_boss_mult
+        duel_mult = defn.effect_duel_mult
+        if defn.drug_id == "lsd" and variant == "boss":
+            duel_mult = 1.0
+        elif defn.drug_id == "lsd" and variant == "duel":
+            boss_mult = 1.0
+        return {
+            "drug_id": defn.drug_id,
+            "name": defn.name,
+            "boss_mult": boss_mult,
+            "duel_mult": duel_mult,
+            "expires": expires,
+        }
+
     async def _active_buff_multiplier_no_lock(
         self, user_id: int, guild_id: int, now: float,
     ) -> float:

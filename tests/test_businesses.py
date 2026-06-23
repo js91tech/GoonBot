@@ -754,6 +754,30 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         inv = await self.db.get_drug_inventory(uid, guild_id)
         self.assertEqual(inv.get("og_kush"), 1)
 
+    async def test_consume_legacy_stash_id(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        await self._stock_product(uid, guild_id, "greenleaf", 1)
+        result = await self.db.consume_drug(uid, guild_id, "blue_dream", max_hp=200.0)
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["name"], "Blue Dream")
+        inv = await self.db.get_drug_inventory(uid, guild_id)
+        self.assertEqual(inv.get("blue_dream", 0), 0)
+
+    async def test_pending_drug_buff(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        await self._stock_product(uid, guild_id, "girl_scout_cookies", 1)
+        consumed = await self.db.consume_drug(uid, guild_id, "girl_scout_cookies", max_hp=200.0)
+        self.assertIsNone(consumed["error"])
+        pending = await self.db.peek_pending_drug_buff(uid, guild_id)
+        self.assertIsNotNone(pending)
+        self.assertEqual(pending["name"], "Girl Scout Cookies")
+        self.assertGreater(float(pending["boss_mult"]), 1.0)
+        taken = await self.db.take_pending_drug_buff(uid, guild_id)
+        self.assertIsNotNone(taken)
+        self.assertIsNone(await self.db.peek_pending_drug_buff(uid, guild_id))
+
     async def test_market_list_and_buy(self) -> None:
         guild_id, seller, buyer = 1, 100, 200
         await self.db.ensure_user(seller, guild_id)

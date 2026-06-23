@@ -493,7 +493,10 @@ def _build_sections() -> tuple[GuideSection, ...]:
                 [
                     "**High risk, high reward contraband.** `/drugs lab` opens your grow lab: "
                     f"plant a strain in one of **{config.DRUG_LAB_SLOTS}** slots, wait for it to "
-                    "mature, then **Harvest** and sell.",
+                    "mature, then **Harvest** and sell or **Use** for effects.\n"
+                    "· `/drugs catalog` — all strains, prices, and effects\n"
+                    "· `/drugs stash` — your inventory and active buffs\n"
+                    "· `/drugs use` — consume product from stash",
                     "**Strains**\n" + "\n".join(drug_lines),
                     "**Selling**\n"
                     "· **Street** (lab panel) — instant sale at a volatile price, but a "

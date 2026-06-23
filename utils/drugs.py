@@ -190,3 +190,35 @@ def sale_total(defn: DrugDef, quantity: int, *, rng: random.Random | None = None
 
 def format_drug_effect(defn: DrugDef) -> str:
     return defn.effect_summary
+
+
+def format_consume_message(result: dict[str, object]) -> str:
+    parts = [f"{result['emoji']} **{result['name']}** — {result['effect_summary']}"]
+    if result.get("overdosed"):
+        parts.append(f"☠️ **Overdose!** Took **{int(result['damage_amount'])}** damage.")
+    else:
+        if float(result.get("heal_amount") or 0) > 0:
+            parts.append(f"❤️ Healed **{int(result['heal_amount'])}** HP.")
+        if float(result.get("damage_amount") or 0) > 0:
+            parts.append(f"💔 Took **{int(result['damage_amount'])}** damage.")
+    energy_delta = int(result.get("energy_delta") or 0)
+    if energy_delta > 0:
+        parts.append(f"⚡ +**{energy_delta}** energy.")
+    elif energy_delta < 0:
+        parts.append(f"⚡ **{energy_delta}** energy.")
+    if result.get("boss_buff"):
+        pct = int((float(result["boss_buff"]) - 1.0) * 100)
+        mins = int(float(result.get("buff_duration") or 300) // 60)
+        parts.append(f"Next **/attack** +**{pct}%** boss damage ({mins} min).")
+    if result.get("duel_buff"):
+        pct = int((float(result["duel_buff"]) - 1.0) * 100)
+        mins = int(float(result.get("buff_duration") or 300) // 60)
+        parts.append(f"Next **/duel** +**{pct}%** strike damage ({mins} min).")
+    return "💨 " + " ".join(parts)
+
+
+def drugs_by_category() -> dict[str, list[DrugDef]]:
+    grouped: dict[str, list[DrugDef]] = {}
+    for defn in DRUGS:
+        grouped.setdefault(defn.category, []).append(defn)
+    return grouped
