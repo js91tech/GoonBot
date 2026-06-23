@@ -177,8 +177,17 @@ class InfluenceModal(discord.ui.Modal, title="Expand influence"):
         guild = interaction.guild
         view = DistrictMapView(self.cog, self.guild_id, self.user_id)
         embed, files = await build_district_payload(self.cog, guild, self.user_id)
+        territory_mult = await self.cog.bot.db.get_corporate_territory_mult(
+            self.user_id, self.guild_id,
+        )
+        gained = amount * territory_mult
+        gain_text = (
+            f"📈 +{gained:.1f} influence"
+            if territory_mult > 1.001
+            else f"📈 +{int(gained)} influence"
+        )
         embed.description = (
-            f"📈 +{amount} influence in **{defn.name if defn else self.district_id}** "
+            f"{gain_text} in **{defn.name if defn else self.district_id}** "
             f"for **{fmt_amount(cost)}** — now **{int(new_inf)}%**."
         )
         await interaction.response.edit_message(embed=embed, view=view, attachments=files)

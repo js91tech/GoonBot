@@ -9,12 +9,16 @@ import discord
 import config
 from utils.business_art import render_business_image
 from utils.businesses import (
+    UPGRADE_EFFECT_HINTS,
+    BusinessIncomeBreakdown,
     capacity_for_level,
     hourly_income,
+    hourly_income_from_row,
     next_tier_def,
     security_rating,
     tier_def,
     upgrade_cost,
+    upgrade_income_delta,
 )
 from utils.helpers import fmt_amount
 from utils.quests import record_quest_event
@@ -32,26 +36,43 @@ def _bar(current: float, total: float, *, length: int = 12) -> str:
 
 
 def _hourly_from_row(row: object) -> float:
-    from utils.districts import district_income_mult
-
-    return hourly_income(
-        tier=int(row["tier"]),
-        efficiency_level=int(row["efficiency"]),
-        reputation_level=int(row["reputation"]),
-        production_branch_level=int(row["branch_production"]),
-        growth_branch_level=int(row["branch_growth"]),
-        satisfaction=int(row["employee_satisfaction"]),
-        business_prestige=int(row["business_prestige"]),
-        district_mult=district_income_mult(row["district_id"]),
-    )
+    return hourly_income_from_row(row)
 
 
-def build_business_embed(member: discord.Member, row: object) -> tuple[discord.Embed, discord.File]:
+def _format_income_bonus_lines(income: BusinessIncomeBreakdown) -> list[str]:
+    lines: list[str] = []
+    if income.corp_mult > 1.001:
+        pct = int(round((income.corp_mult - 1.0) * 100))
+        lines.append(f"💹 Corp Income Division +{pct}%")
+    if income.buff_mult > 1.001:
+        pct = int(round((income.buff_mult - 1.0) * 100))
+        lines.append(f"📣 Active buff +{pct}%")
+    elif income.buff_mult < 0.999:
+        pct = int(round((1.0 - income.buff_mult) * 100))
+        lines.append(f"📉 Active debuff −{pct}%")
+    if income.event_mult > 1.001:
+        pct = int(round((income.event_mult - 1.0) * 100))
+        lines.append(f"🎉 Seasonal event +{pct}%")
+    elif income.event_mult < 0.999:
+        pct = int(round((1.0 - income.event_mult) * 100))
+        lines.append(f"📉 Seasonal event −{pct}%")
+    if income.mega_mult > 1.001:
+        pct = int(round((income.mega_mult - 1.0) * 100))
+        lines.append(f"🏗️ Mega projects +{pct}%")
+    return lines
+
+
+def build_business_embed(
+    member: discord.Member,
+    row: object,
+    *,
+    income: BusinessIncomeBreakdown | None = None,
+) -> tuple[discord.Embed, discord.File]:
     tier = int(row["tier"])
     defn = tier_def(tier)
     name = defn.name if defn else "Business"
     emoji = defn.emoji if defn else "🏪"
-    hourly = _hourly_from_row(row)
+    hourly = income.effective_hourly if income is not None else _hourly_from_row(row)
     capacity = capacity_for_level(tier, int(row["capacity"]))
     stored = float(row["stored_income"])
 
@@ -63,7 +84,17 @@ def build_business_embed(member: discord.Member, row: object) -> tuple[discord.E
         embed.description = f"_{defn.blurb}_"
 
     embed.add_field(name="Tier", value=f"**{tier}** / 7", inline=True)
-    embed.add_field(name="Income", value=f"{fmt_amount(hourly)}/hr", inline=True)
+    if income is not None and abs(income.bonus_mult - 1.0) > 0.001:
+        embed.add_field(
+            name="Income",
+            value=(
+                f"**{fmt_amount(hourly)}/hr** effective\n"
+                f"Base {fmt_amount(income.base_hourly)}/hr"
+            ),
+            inline=True,
+        )
+    else:
+        embed.add_field(name="Income", value=f"**{fmt_amount(hourly)}/hr**", inline=True)
     prestige = int(row["business_prestige"])
     if prestige > 0:
         embed.add_field(name="Prestige", value=f"⭐ {prestige}", inline=True)
@@ -77,6 +108,11 @@ def build_business_embed(member: discord.Member, row: object) -> tuple[discord.E
             value=f"{district.emoji} {district.name} · {district.label}",
             inline=False,
         )
+
+    if income is not None:
+        bonus_lines = _format_income_bonus_lines(income)
+        if bonus_lines:
+            embed.add_field(name="Income bonuses", value="\n".join(bonus_lines), inline=False)
 
     fill_pct = int((min(stored, capacity) / capacity) * 100) if capacity > 0 else 0
     embed.add_field(
@@ -138,7 +174,8 @@ async def build_business_payload(
     row = await cog.bot.db.get_business(user_id, guild_id)
     if row is None:
         return None
-    embed, file = build_business_embed(member, row)
+    income = await cog.bot.db.get_business_income_breakdown(user_id, guild_id, row)
+    embed, file = build_business_embed(member, row, income=income)
     files = [file]
     from utils.districts import district_image_path
 
@@ -356,29 +393,41 @@ BRANCH_LABELS: dict[str, tuple[str, str]] = {
 }
 
 
+def _upgrade_line(row: object, label: str, column: str, attribute: str, tier: int) -> str:
+    lvl = int(row[column])
+    cost = upgrade_cost(tier, lvl)
+    cap = config.BUSINESS_ATTRIBUTE_MAX if column in {
+        "security", "reputation", "efficiency", "capacity",
+    } else config.BUSINESS_BRANCH_MAX
+    suffix = "MAX" if lvl >= cap else f"{fmt_amount(cost)}"
+    effect = UPGRADE_EFFECT_HINTS.get(attribute)
+    if effect is None:
+        delta = upgrade_income_delta(row, attribute)
+        if delta is not None and delta > 0:
+            effect = f"+{fmt_amount(delta)}/hr per level"
+    return f"{label} — Lv **{lvl}**/{cap} · next {suffix}" + (f" · _{effect}_" if effect else "")
+
+
 def build_upgrade_embed(row: object) -> discord.Embed:
     tier = int(row["tier"])
+    hourly = hourly_income_from_row(row)
     embed = discord.Embed(
         title="Business upgrades",
-        description="Spend nuggets to improve your business. Costs rise per level.",
+        description=(
+            "Spend nuggets to improve your business. Costs rise per level.\n"
+            f"Current business income: **{fmt_amount(hourly)}/hr** "
+            "(corp/event bonuses apply on top — see **/business info**)."
+        ),
         color=discord.Color.blurple(),
     )
     attr_lines = []
-    for _key, (label, column) in ATTRIBUTE_LABELS.items():
-        lvl = int(row[column])
-        cost = upgrade_cost(tier, lvl)
-        cap = config.BUSINESS_ATTRIBUTE_MAX
-        suffix = "MAX" if lvl >= cap else f"{fmt_amount(cost)}"
-        attr_lines.append(f"{label} — Lv **{lvl}**/{cap} · next {suffix}")
+    for attribute, (label, column) in ATTRIBUTE_LABELS.items():
+        attr_lines.append(_upgrade_line(row, label, column, attribute, tier))
     embed.add_field(name="Attributes", value="\n".join(attr_lines), inline=False)
 
     branch_lines = []
-    for _key, (label, column) in BRANCH_LABELS.items():
-        lvl = int(row[column])
-        cost = upgrade_cost(tier, lvl)
-        cap = config.BUSINESS_BRANCH_MAX
-        suffix = "MAX" if lvl >= cap else f"{fmt_amount(cost)}"
-        branch_lines.append(f"{label} — Lv **{lvl}**/{cap} · next {suffix}")
+    for attribute, (label, column) in BRANCH_LABELS.items():
+        branch_lines.append(_upgrade_line(row, label, column, attribute, tier))
     embed.add_field(name="Upgrade branches", value="\n".join(branch_lines), inline=False)
     return embed
 
@@ -411,7 +460,16 @@ class UpgradeButton(discord.ui.Button):
         view = UpgradeBranchView(self.cog, self.guild_id, self.user_id)
         embed = build_upgrade_embed(row) if row is not None else discord.Embed(title="Upgrades")
         nice = self.label.split(" ", 1)[-1] if self.label else self.attribute
-        embed.description = f"✅ Upgraded **{nice}** for **{fmt_amount(cost)}**."
+        delta = upgrade_income_delta(row, self.attribute) if row is not None else None
+        income_note = (
+            f" Income is now **{fmt_amount(hourly_income_from_row(row))}/hr** "
+            f"(+{fmt_amount(delta)}/hr from this level)."
+            if row is not None and delta is not None and delta > 0
+            else ""
+        )
+        embed.description = (
+            f"✅ Upgraded **{nice}** for **{fmt_amount(cost)}**.{income_note}"
+        )
         await interaction.response.edit_message(embed=embed, view=view)
 
 

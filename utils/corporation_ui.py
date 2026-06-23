@@ -67,9 +67,16 @@ class CorporateUpgradeButton(discord.ui.Button):
         defn = upgrade_by_id(self.upgrade_id)
         view = CorporateUpgradeView(self.cog, self.guild_id, self.user_id)
         embed = await build_corporate_upgrade_embed(self.cog, self.guild_id, crew)
+        extra = ""
+        if self.upgrade_id == "income":
+            extra = " Member business income (see **/business info**) is now higher."
+        elif self.upgrade_id == "defense":
+            extra = " Member security rating vs attacks is now higher."
+        elif self.upgrade_id == "territory":
+            extra = " District influence purchases and Market Expansion now grant more points."
         embed.description = (
             f"✅ Upgraded **{defn.name if defn else self.upgrade_id}** for "
-            f"**{fmt_amount(cost)}** from the vault."
+            f"**{fmt_amount(cost)}** from the vault.{extra}"
         ) + "\n" + (embed.description or "")
         await interaction.response.edit_message(embed=embed, view=view)
 

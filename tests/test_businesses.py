@@ -19,10 +19,12 @@ from utils.businesses import (
     accrue_income,
     capacity_for_level,
     hourly_income,
+    hourly_income_from_row,
     next_tier_def,
     tier_def,
     tier_def_by_id,
     upgrade_cost,
+    upgrade_income_delta,
 )
 from utils.districts import DISTRICT_MAP, district_income_mult
 from utils.drugs import DRUGS, drug_by_id, roll_yield
@@ -171,11 +173,41 @@ class BusinessDatabaseTests(unittest.IsolatedAsyncioTestCase):
         guild_id, uid = 1, 100
         await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
         await self.db.create_business(uid, guild_id)
+        row = await self.db.get_business(uid, guild_id)
+        before = self.db._business_hourly_from_row(row)
         cost, err = await self.db.upgrade_business_attribute(uid, guild_id, "efficiency")
         self.assertIsNone(err)
         self.assertGreater(cost, 0)
         row = await self.db.get_business(uid, guild_id)
         self.assertEqual(int(row["efficiency"]), 1)
+        after = self.db._business_hourly_from_row(row)
+        self.assertGreater(after, before)
+
+    async def test_upgrade_reputation_increases_hourly(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        row = await self.db.get_business(uid, guild_id)
+        delta = upgrade_income_delta(row, "reputation")
+        self.assertIsNotNone(delta)
+        self.assertGreater(delta, 0)
+        _, err = await self.db.upgrade_business_attribute(uid, guild_id, "reputation")
+        self.assertIsNone(err)
+        row = await self.db.get_business(uid, guild_id)
+        self.assertAlmostEqual(
+            self.db._business_hourly_from_row(row),
+            hourly_income_from_row(row),
+        )
+
+    async def test_security_upgrade_does_not_change_hourly(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.credit_wallet(uid, guild_id, 5_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        before = self.db._business_hourly_from_row(await self.db.get_business(uid, guild_id))
+        _, err = await self.db.upgrade_business_attribute(uid, guild_id, "security")
+        self.assertIsNone(err)
+        after = self.db._business_hourly_from_row(await self.db.get_business(uid, guild_id))
+        self.assertEqual(after, before)
 
     async def test_upgrade_branch_growth(self) -> None:
         guild_id, uid = 1, 100
@@ -366,6 +398,21 @@ class BusinessCompetitionDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result["error"])
         self.assertGreater(float(result["influence"]), 0)
 
+    async def test_market_expansion_territory_bonus(self) -> None:
+        guild_id, uid = 1, 100
+        await self._setup_business(uid, guild_id, 300_000.0)
+        await self.db.join_crew(uid, guild_id, "Acme")
+        await self.db.deposit_crew_treasury(uid, guild_id, 200_000.0)
+        await self.db.buy_corporate_upgrade(uid, guild_id, "territory")
+        await self.db.relocate_business(uid, guild_id, "downtown")
+        before = await self.db.get_user_district_influence(uid, guild_id, "downtown")
+        result = await self.db.perform_business_action(uid, guild_id, "market_expansion")
+        self.assertIsNone(result["error"])
+        after = await self.db.get_user_district_influence(uid, guild_id, "downtown")
+        gain = after - before
+        expected = config.BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE * 1.02
+        self.assertAlmostEqual(gain, expected, places=4)
+
     async def test_buff_affects_income(self) -> None:
         guild_id, uid = 1, 100
         await self._setup_business(uid, guild_id, 20_000.0)
@@ -406,9 +453,16 @@ class CorporationDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self._setup_crew(uid, guild_id, "Acme", 200_000.0)
         await self.db.credit_wallet(uid, guild_id, 1_000.0, apply_bonuses=False)
         await self.db.create_business(uid, guild_id)
+        row = await self.db.get_business(uid, guild_id)
+        base_breakdown = await self.db.get_business_income_breakdown(uid, guild_id, row)
+        assert base_breakdown is not None
         await self.db.buy_corporate_upgrade(uid, guild_id, "income")
         mult = await self.db._corporate_income_mult_no_lock(uid, guild_id)
         self.assertGreater(mult, 1.0)
+        upgraded = await self.db.get_business_income_breakdown(uid, guild_id, row)
+        assert upgraded is not None
+        self.assertGreater(upgraded.effective_hourly, base_breakdown.effective_hourly)
+        self.assertEqual(upgraded.base_hourly, base_breakdown.base_hourly)
 
     async def test_corporate_upgrade_insufficient_treasury(self) -> None:
         guild_id, uid = 1, 100

@@ -217,6 +217,68 @@ def upgrade_cost(tier: int, current_level: int) -> float:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class BusinessIncomeBreakdown:
+    """Hourly income from business stats vs. all active multipliers."""
+
+    base_hourly: float
+    effective_hourly: float
+    corp_mult: float = 1.0
+    buff_mult: float = 1.0
+    event_mult: float = 1.0
+    mega_mult: float = 1.0
+
+    @property
+    def bonus_mult(self) -> float:
+        return self.corp_mult * self.buff_mult * self.event_mult * self.mega_mult
+
+
+def row_income_kwargs(row: object) -> dict[str, int | float]:
+    """Keyword args for ``hourly_income`` from a ``user_businesses`` row."""
+    from utils.districts import district_income_mult
+
+    return {
+        "tier": int(row["tier"]),
+        "efficiency_level": int(row["efficiency"]),
+        "reputation_level": int(row["reputation"]),
+        "production_branch_level": int(row["branch_production"]),
+        "growth_branch_level": int(row["branch_growth"]),
+        "satisfaction": int(row["employee_satisfaction"]),
+        "business_prestige": int(row["business_prestige"]),
+        "district_mult": district_income_mult(row["district_id"]),
+    }
+
+
+def hourly_income_from_row(row: object) -> float:
+    """Effective hourly income from a ``user_businesses`` row (no external multipliers)."""
+    return hourly_income(**row_income_kwargs(row))
+
+
+def upgrade_income_delta(row: object, attribute: str) -> float | None:
+    """Return the +1 level income gain, or ``None`` if the upgrade is not income-related."""
+    column_map = {
+        "reputation": "reputation_level",
+        "efficiency": "efficiency_level",
+        "branch_growth": "growth_branch_level",
+        "branch_production": "production_branch_level",
+    }
+    kwarg = column_map.get(attribute)
+    if kwarg is None:
+        return None
+    kwargs = row_income_kwargs(row)
+    before = hourly_income(**kwargs)
+    kwargs[kwarg] = int(kwargs[kwarg]) + 1  # type: ignore[assignment]
+    after = hourly_income(**kwargs)
+    return after - before
+
+
+UPGRADE_EFFECT_HINTS: dict[str, str] = {
+    "security": "Defense only — raises security rating",
+    "capacity": "Storage only — raises revenue cap",
+    "branch_security": "Defense only — raises security rating",
+}
+
+
 def security_rating(
     *,
     security_level: int,
