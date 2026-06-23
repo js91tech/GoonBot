@@ -641,8 +641,10 @@ class EndgameDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
 class DrugMathTests(unittest.TestCase):
     def test_catalog(self) -> None:
-        self.assertEqual(len(DRUGS), 4)
-        self.assertEqual(drug_by_id("greenleaf").name, "Greenleaf")
+        self.assertEqual(len(DRUGS), 14)
+        self.assertEqual(drug_by_id("blue_dream").name, "Blue Dream")
+        self.assertEqual(drug_by_id("greenleaf").name, "Blue Dream")
+        self.assertEqual(drug_by_id("cocaine").category, "stimulant")
         self.assertIsNone(drug_by_id("nope"))
 
     def test_yield_bonus(self) -> None:
@@ -669,13 +671,13 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_plant_requires_funds(self) -> None:
         guild_id, uid = 1, 100
         await self.db.ensure_user(uid, guild_id)
-        _, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+        _, err = await self.db.plant_drug(uid, guild_id, "blue_dream")
         self.assertEqual(err, "insufficient_funds")
 
     async def test_plant_and_harvest(self) -> None:
         guild_id, uid = 1, 100
         await self.db.credit_wallet(uid, guild_id, 10_000.0, apply_bonuses=False)
-        cost, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+        cost, err = await self.db.plant_drug(uid, guild_id, "blue_dream")
         self.assertIsNone(err)
         self.assertGreater(cost, 0)
         # Fast-forward the grow.
@@ -686,17 +688,24 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
             )
             await self.db.conn.commit()
         harvested = await self.db.harvest_drugs(uid, guild_id)
-        self.assertIn("greenleaf", harvested)
+        self.assertIn("blue_dream", harvested)
         inv = await self.db.get_drug_inventory(uid, guild_id)
-        self.assertGreater(inv.get("greenleaf", 0), 0)
+        self.assertGreater(inv.get("blue_dream", 0), 0)
+
+    async def test_legacy_stash_alias(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        await self._stock_product(uid, guild_id, "greenleaf", 3)
+        inv = await self.db.get_drug_inventory(uid, guild_id)
+        self.assertEqual(inv.get("blue_dream"), 3)
 
     async def test_lab_slot_cap(self) -> None:
         guild_id, uid = 1, 100
         await self.db.credit_wallet(uid, guild_id, 100_000.0, apply_bonuses=False)
         for _ in range(config.DRUG_LAB_SLOTS):
-            _, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+            _, err = await self.db.plant_drug(uid, guild_id, "blue_dream")
             self.assertIsNone(err)
-        _, err = await self.db.plant_drug(uid, guild_id, "greenleaf")
+        _, err = await self.db.plant_drug(uid, guild_id, "blue_dream")
         self.assertEqual(err, "no_slots")
 
     async def _stock_product(self, uid: int, guild_id: int, drug_id: str, qty: int) -> None:
@@ -714,14 +723,14 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_street_sell(self) -> None:
         guild_id, uid = 1, 100
         await self.db.ensure_user(uid, guild_id)
-        await self._stock_product(uid, guild_id, "greenleaf", 10)
+        await self._stock_product(uid, guild_id, "blue_dream", 10)
         # Force no-raid by patching the raid chance to 0 via config is global; retry a few times.
         import config as cfg
 
         old = cfg.DRUG_RAID_CHANCE
         cfg.DRUG_RAID_CHANCE = 0.0
         try:
-            result = await self.db.sell_drugs_street(uid, guild_id, "greenleaf", 5)
+            result = await self.db.sell_drugs_street(uid, guild_id, "blue_dream", 5)
         finally:
             cfg.DRUG_RAID_CHANCE = old
         self.assertIsNone(result["error"])
@@ -731,15 +740,26 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_street_sell_insufficient(self) -> None:
         guild_id, uid = 1, 100
         await self.db.ensure_user(uid, guild_id)
-        result = await self.db.sell_drugs_street(uid, guild_id, "greenleaf", 5)
+        result = await self.db.sell_drugs_street(uid, guild_id, "blue_dream", 5)
         self.assertEqual(result["error"], "insufficient_product")
+
+    async def test_consume_drug(self) -> None:
+        guild_id, uid = 1, 100
+        await self.db.ensure_user(uid, guild_id)
+        await self._stock_product(uid, guild_id, "og_kush", 2)
+        result = await self.db.consume_drug(uid, guild_id, "og_kush", max_hp=200.0)
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["name"], "OG Kush")
+        self.assertGreater(float(result["heal_amount"]), 0)
+        inv = await self.db.get_drug_inventory(uid, guild_id)
+        self.assertEqual(inv.get("og_kush"), 1)
 
     async def test_market_list_and_buy(self) -> None:
         guild_id, seller, buyer = 1, 100, 200
         await self.db.ensure_user(seller, guild_id)
         await self.db.credit_wallet(buyer, guild_id, 100_000.0, apply_bonuses=False)
-        await self._stock_product(seller, guild_id, "greenleaf", 10)
-        err = await self.db.create_drug_listing(seller, guild_id, "greenleaf", 5, 200.0)
+        await self._stock_product(seller, guild_id, "blue_dream", 10)
+        err = await self.db.create_drug_listing(seller, guild_id, "blue_dream", 5, 200.0)
         self.assertIsNone(err)
         listings = await self.db.list_drug_market(guild_id)
         self.assertEqual(len(listings), 1)
@@ -747,13 +767,13 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         result = await self.db.buy_drug_listing(buyer, guild_id, listing_id, 5)
         self.assertIsNone(result["error"])
         buyer_inv = await self.db.get_drug_inventory(buyer, guild_id)
-        self.assertEqual(buyer_inv.get("greenleaf"), 5)
+        self.assertEqual(buyer_inv.get("blue_dream"), 5)
 
     async def test_market_cannot_buy_own(self) -> None:
         guild_id, seller = 1, 100
         await self.db.ensure_user(seller, guild_id)
-        await self._stock_product(seller, guild_id, "greenleaf", 10)
-        await self.db.create_drug_listing(seller, guild_id, "greenleaf", 5, 200.0)
+        await self._stock_product(seller, guild_id, "blue_dream", 10)
+        await self.db.create_drug_listing(seller, guild_id, "blue_dream", 5, 200.0)
         listings = await self.db.list_drug_market(guild_id)
         result = await self.db.buy_drug_listing(seller, guild_id, int(listings[0]["listing_id"]), 1)
         self.assertEqual(result["error"], "own_listing")
@@ -761,13 +781,13 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_listing_returns_product(self) -> None:
         guild_id, seller = 1, 100
         await self.db.ensure_user(seller, guild_id)
-        await self._stock_product(seller, guild_id, "greenleaf", 10)
-        await self.db.create_drug_listing(seller, guild_id, "greenleaf", 5, 200.0)
+        await self._stock_product(seller, guild_id, "blue_dream", 10)
+        await self.db.create_drug_listing(seller, guild_id, "blue_dream", 5, 200.0)
         listings = await self.db.list_drug_market(guild_id)
         err = await self.db.cancel_drug_listing(seller, guild_id, int(listings[0]["listing_id"]))
         self.assertIsNone(err)
         inv = await self.db.get_drug_inventory(seller, guild_id)
-        self.assertEqual(inv.get("greenleaf"), 10)
+        self.assertEqual(inv.get("blue_dream"), 10)
 
 
 if __name__ == "__main__":

@@ -8167,11 +8167,38 @@ class Database:
     # --- Drug trade ---------------------------------------------------------
 
     async def get_drug_inventory(self, user_id: int, guild_id: int) -> dict[str, int]:
+        from utils.drugs import drug_by_id
+
         cursor = await self.conn.execute(
             "SELECT drug_id, quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND quantity > 0",
             (user_id, guild_id),
         )
-        return {str(r["drug_id"]): int(r["quantity"]) for r in await cursor.fetchall()}
+        merged: dict[str, int] = {}
+        for r in await cursor.fetchall():
+            drug_id = str(r["drug_id"])
+            qty = int(r["quantity"])
+            defn = drug_by_id(drug_id)
+            key = defn.drug_id if defn is not None else drug_id
+            merged[key] = merged.get(key, 0) + qty
+        return merged
+
+    async def _find_drug_inventory_qty(
+        self, user_id: int, guild_id: int, drug_id: str,
+    ) -> tuple[str | None, int]:
+        from utils.drugs import drug_by_id, inventory_lookup_ids
+
+        defn = drug_by_id(drug_id)
+        if defn is None:
+            return None, 0
+        for lookup_id in inventory_lookup_ids(defn):
+            cursor = await self.conn.execute(
+                "SELECT quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                (user_id, guild_id, lookup_id),
+            )
+            row = await cursor.fetchone()
+            if row is not None and int(row["quantity"]) > 0:
+                return lookup_id, int(row["quantity"])
+        return None, 0
 
     async def list_drug_grows(self, user_id: int, guild_id: int) -> list[dict[str, object]]:
         cursor = await self.conn.execute(
@@ -8280,13 +8307,10 @@ class Database:
             return {"error": "invalid_drug"}
         if quantity <= 0:
             return {"error": "invalid_amount"}
+        canonical_id = defn.drug_id
         async with self._write_lock:
-            cursor = await self.conn.execute(
-                "SELECT quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
-                (user_id, guild_id, drug_id),
-            )
-            inv = await cursor.fetchone()
-            if inv is None or int(inv["quantity"]) < quantity:
+            stored_id, available = await self._find_drug_inventory_qty(user_id, guild_id, canonical_id)
+            if stored_id is None or available < quantity:
                 await self.conn.commit()
                 return {"error": "insufficient_product"}
             # Raid risk: lose part of the product, no payout.
@@ -8295,21 +8319,21 @@ class Database:
                 lost = max(1, int(quantity * config.DRUG_RAID_LOSS_FRACTION))
                 await self.conn.execute(
                     "UPDATE drug_inventory SET quantity = quantity - ? WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
-                    (lost, user_id, guild_id, drug_id),
+                    (lost, user_id, guild_id, stored_id),
                 )
                 await self.conn.execute(
                     """
                     INSERT INTO drug_transactions (guild_id, user_id, drug_id, quantity, amount, txn_type, created_at)
                     VALUES (?, ?, ?, ?, 0, 'raid', ?)
                     """,
-                    (guild_id, user_id, drug_id, lost, time.time()),
+                    (guild_id, user_id, canonical_id, lost, time.time()),
                 )
                 await self.conn.commit()
                 return {"error": None, "raided": True, "lost": lost}
             total = sale_total(defn, quantity, rng=random)
             await self.conn.execute(
                 "UPDATE drug_inventory SET quantity = quantity - ? WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
-                (quantity, user_id, guild_id, drug_id),
+                (quantity, user_id, guild_id, stored_id),
             )
             await self.conn.execute(
                 "UPDATE users SET wallet = wallet + ?, total_earned = total_earned + ? WHERE user_id = ? AND guild_id = ?",
@@ -8320,7 +8344,7 @@ class Database:
                 INSERT INTO drug_transactions (guild_id, user_id, drug_id, quantity, amount, txn_type, created_at)
                 VALUES (?, ?, ?, ?, ?, 'street_sell', ?)
                 """,
-                (guild_id, user_id, drug_id, quantity, total, time.time()),
+                (guild_id, user_id, canonical_id, quantity, total, time.time()),
             )
             await self.conn.commit()
         return {"error": None, "raided": False, "total": total, "quantity": quantity}
@@ -8330,29 +8354,27 @@ class Database:
     ) -> str | None:
         from utils.drugs import drug_by_id
 
-        if drug_by_id(drug_id) is None:
+        defn = drug_by_id(drug_id)
+        if defn is None:
             return "invalid_drug"
         if quantity <= 0 or quantity > config.DRUG_MAX_LISTING_QTY or price_per_unit <= 0:
             return "invalid_amount"
+        canonical_id = defn.drug_id
         async with self._write_lock:
-            cursor = await self.conn.execute(
-                "SELECT quantity FROM drug_inventory WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
-                (user_id, guild_id, drug_id),
-            )
-            inv = await cursor.fetchone()
-            if inv is None or int(inv["quantity"]) < quantity:
+            stored_id, available = await self._find_drug_inventory_qty(user_id, guild_id, canonical_id)
+            if stored_id is None or available < quantity:
                 await self.conn.commit()
                 return "insufficient_product"
             await self.conn.execute(
                 "UPDATE drug_inventory SET quantity = quantity - ? WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
-                (quantity, user_id, guild_id, drug_id),
+                (quantity, user_id, guild_id, stored_id),
             )
             await self.conn.execute(
                 """
                 INSERT INTO drug_market_listings (guild_id, seller_id, drug_id, quantity, price_per_unit, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (guild_id, user_id, drug_id, quantity, price_per_unit, time.time()),
+                (guild_id, user_id, canonical_id, quantity, price_per_unit, time.time()),
             )
             await self.conn.commit()
         return None
@@ -8456,6 +8478,149 @@ class Database:
                 await self.conn.execute("DELETE FROM drug_market_listings WHERE listing_id = ?", (listing_id,))
             await self.conn.commit()
         return {"error": None, "total": total, "quantity": quantity, "drug_id": drug_id}
+
+    async def consume_drug(
+        self,
+        user_id: int,
+        guild_id: int,
+        drug_id: str,
+        *,
+        max_hp: float,
+    ) -> dict[str, object]:
+        """Consume one unit from the stash and apply immediate effects."""
+        import random
+
+        from utils.drugs import drug_buff_key, drug_by_id
+
+        defn = drug_by_id(drug_id)
+        if defn is None:
+            return {"error": "invalid_drug"}
+        canonical_id = defn.drug_id
+        overdosed = False
+        heal_amount = 0.0
+        damage_amount = 0.0
+        energy_delta = 0
+        boss_mult = defn.effect_boss_mult
+        duel_mult = defn.effect_duel_mult
+        buff_variant: str | None = None
+        if defn.drug_id == "lsd":
+            if random.random() < 0.5:
+                buff_variant = "boss"
+                duel_mult = 1.0
+            else:
+                buff_variant = "duel"
+                boss_mult = 1.0
+        async with self._write_lock:
+            stored_id, available = await self._find_drug_inventory_qty(user_id, guild_id, canonical_id)
+            if stored_id is None or available < 1:
+                await self.conn.commit()
+                return {"error": "insufficient_product"}
+            await self.conn.execute(
+                "UPDATE drug_inventory SET quantity = quantity - 1 WHERE user_id = ? AND guild_id = ? AND drug_id = ?",
+                (user_id, guild_id, stored_id),
+            )
+            if defn.overdose_chance > 0 and random.random() < defn.overdose_chance:
+                overdosed = True
+                damage_amount = max(1.0, max_hp * defn.overdose_damage_pct)
+            elif defn.effect_heal_pct > 0:
+                heal_amount = max(1.0, max_hp * defn.effect_heal_pct)
+            if defn.effect_damage_pct > 0 and not overdosed:
+                damage_amount = max(1.0, max_hp * defn.effect_damage_pct)
+            energy_delta = defn.effect_energy
+            if energy_delta != 0:
+                await self._ensure_character_no_lock(user_id, guild_id)
+                row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+                cap = int(row["energy_cap"])
+                new_energy = max(0, min(cap, int(row["energy"]) + energy_delta))
+                await self.conn.execute(
+                    "UPDATE user_character SET energy = ? WHERE user_id = ? AND guild_id = ?",
+                    (new_energy, user_id, guild_id),
+                )
+            if boss_mult > 1.0 or duel_mult > 1.0:
+                expires = time.time() + defn.effect_duration
+                await self._ensure_character_no_lock(user_id, guild_id)
+                await self.conn.execute(
+                    """
+                    UPDATE user_character
+                    SET pending_consumable = ?, pending_consumable_expires = ?
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (drug_buff_key(canonical_id, buff_variant), expires, user_id, guild_id),
+                )
+            await self.conn.commit()
+        new_hp: float | None = None
+        if heal_amount > 0:
+            new_hp, _ = await self.heal_player(user_id, guild_id, heal_amount, max_hp)
+        if damage_amount > 0:
+            new_hp, _ = await self.damage_player(user_id, guild_id, damage_amount, max_hp)
+        return {
+            "error": None,
+            "drug_id": canonical_id,
+            "name": defn.name,
+            "emoji": defn.emoji,
+            "effect_summary": defn.effect_summary,
+            "energy_delta": energy_delta,
+            "heal_amount": heal_amount,
+            "damage_amount": damage_amount,
+            "new_hp": new_hp,
+            "max_hp": max_hp,
+            "overdosed": overdosed,
+            "boss_buff": boss_mult if boss_mult > 1.0 else None,
+            "duel_buff": duel_mult if duel_mult > 1.0 else None,
+            "buff_duration": defn.effect_duration if boss_mult > 1.0 or duel_mult > 1.0 else None,
+        }
+
+    async def take_pending_drug_buff(self, user_id: int, guild_id: int) -> dict[str, object] | None:
+        """Consume an active drug combat buff if present and not expired."""
+        from utils.drugs import DRUG_BUFF_PREFIX, drug_by_id, parse_drug_buff_key
+
+        async with self._write_lock:
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            try:
+                pending = row["pending_consumable"]
+                expires = float(row["pending_consumable_expires"] or 0)
+            except (KeyError, TypeError):
+                return None
+            drug_id = parse_drug_buff_key(str(pending) if pending else None)
+            if drug_id is None:
+                return None
+            if expires < time.time():
+                await self.conn.execute(
+                    """
+                    UPDATE user_character
+                    SET pending_consumable = NULL, pending_consumable_expires = NULL
+                    WHERE user_id = ? AND guild_id = ?
+                    """,
+                    (user_id, guild_id),
+                )
+                await self.conn.commit()
+                return None
+            defn = drug_by_id(drug_id)
+            if defn is None:
+                return None
+            pending_str = str(pending)
+            variant = pending_str.split(":", 2)[2] if pending_str.count(":") >= 2 else None
+            boss_mult = defn.effect_boss_mult
+            duel_mult = defn.effect_duel_mult
+            if defn.drug_id == "lsd" and variant == "boss":
+                duel_mult = 1.0
+            elif defn.drug_id == "lsd" and variant == "duel":
+                boss_mult = 1.0
+            await self.conn.execute(
+                """
+                UPDATE user_character
+                SET pending_consumable = NULL, pending_consumable_expires = NULL
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (user_id, guild_id),
+            )
+            await self.conn.commit()
+            return {
+                "drug_id": defn.drug_id,
+                "name": defn.name,
+                "boss_mult": boss_mult,
+                "duel_mult": duel_mult,
+            }
 
     async def _active_buff_multiplier_no_lock(
         self, user_id: int, guild_id: int, now: float,

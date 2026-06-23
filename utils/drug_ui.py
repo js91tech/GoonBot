@@ -27,8 +27,8 @@ async def build_lab_embed(
     embed = discord.Embed(
         title="🧪 Grow Lab",
         description=(
-            "Plant strains, wait for them to mature, then harvest and sell on the "
-            "street or to other players. Watch out for raids!"
+            "Plant strains and cook product, wait for it to mature, then harvest and sell on the "
+            "street or to other players — or **use** it for effects. Watch out for raids!"
         ),
         color=discord.Color.dark_green(),
     )
@@ -65,7 +65,8 @@ async def build_lab_embed(
             name = defn.name if defn else drug_id
             emoji = defn.emoji if defn else "📦"
             price = defn.street_price if defn else 0
-            inv_lines.append(f"{emoji} **{name}** ×{qty} · ~{fmt_amount(price)}/unit")
+            effect = f" · _{defn.effect_summary}_" if defn else ""
+            inv_lines.append(f"{emoji} **{name}** ×{qty} · ~{fmt_amount(price)}/unit{effect}")
         embed.add_field(name="Stash", value="\n".join(inv_lines), inline=False)
 
     png = render_lab_image()
@@ -80,7 +81,7 @@ class PlantSelect(discord.ui.Select):
             discord.SelectOption(
                 label=defn.name,
                 value=defn.drug_id,
-                description=f"Seed {fmt_amount(defn.seed_cost)} · {defn.grow_seconds // 60}m grow"[:100],
+                description=f"{defn.category.title()} · seed {fmt_amount(defn.seed_cost)} · {defn.grow_seconds // 60}m"[:100],
                 emoji=defn.emoji,
             )
             for defn in DRUGS
@@ -105,6 +106,77 @@ class PlantSelect(discord.ui.Select):
         view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
         embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
         embed.description = f"🌱 Planted **{defn.name if defn else 'a strain'}** for **{fmt_amount(cost)}**."
+        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+
+
+class UseSelect(discord.ui.Select):
+    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int, options: list[discord.SelectOption]) -> None:
+        super().__init__(
+            placeholder="Use product (consume for effects)…",
+            options=options or [discord.SelectOption(label="Empty stash", value="_none")],
+            disabled=not options,
+            row=2,
+        )
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.values[0] == "_none":
+            await interaction.response.send_message("Nothing to use.", ephemeral=True)
+            return
+        from utils.combat_engine import max_hp_from_armor
+        from utils.classes import get_modifiers
+        from utils.stats import combat_bonuses_from_attributes
+
+        loadout = await self.cog.bot.db.get_combat_loadout(self.user_id, self.guild_id)
+        class_id = await self.cog.bot.db.get_class_id(self.user_id, self.guild_id)
+        attrs = await self.cog.bot.db.get_character_attributes(self.user_id, self.guild_id)
+        attr_bonuses = combat_bonuses_from_attributes(attrs)
+        max_hp = float(
+            max_hp_from_armor(
+                loadout.armor,
+                class_modifiers=get_modifiers(class_id),
+                attr_hp_bonus=attr_bonuses.hp_bonus,
+                accessory_bonuses=loadout.accessory_bonuses,
+            ),
+        )
+        result = await self.cog.bot.db.consume_drug(
+            self.user_id, self.guild_id, self.values[0], max_hp=max_hp,
+        )
+        if result.get("error"):
+            messages = {
+                "invalid_drug": "Unknown product.",
+                "insufficient_product": "You don't have any of that left.",
+            }
+            await interaction.response.send_message(
+                messages.get(str(result["error"]), "Could not use."), ephemeral=True,
+            )
+            return
+        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
+        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
+        parts = [f"{result['emoji']} **{result['name']}** — {result['effect_summary']}"]
+        if result.get("overdosed"):
+            parts.append(f"☠️ **Overdose!** Took **{int(result['damage_amount'])}** damage.")
+        else:
+            if float(result.get("heal_amount") or 0) > 0:
+                parts.append(f"❤️ Healed **{int(result['heal_amount'])}** HP.")
+            if float(result.get("damage_amount") or 0) > 0:
+                parts.append(f"💔 Took **{int(result['damage_amount'])}** damage.")
+        energy_delta = int(result.get("energy_delta") or 0)
+        if energy_delta > 0:
+            parts.append(f"⚡ +**{energy_delta}** energy.")
+        elif energy_delta < 0:
+            parts.append(f"⚡ **{energy_delta}** energy.")
+        if result.get("boss_buff"):
+            pct = int((float(result["boss_buff"]) - 1.0) * 100)
+            mins = int(float(result.get("buff_duration") or 300) // 60)
+            parts.append(f"Next **/attack** +**{pct}%** boss damage ({mins} min).")
+        if result.get("duel_buff"):
+            pct = int((float(result["duel_buff"]) - 1.0) * 100)
+            mins = int(float(result.get("buff_duration") or 300) // 60)
+            parts.append(f"Next **/duel** +**{pct}%** strike damage ({mins} min).")
+        embed.description = "💨 " + " ".join(parts)
         await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
 
 
@@ -196,6 +268,7 @@ class DrugLabView(discord.ui.View):
                 ),
             )
         view.add_item(SellSelect(cog, guild_id, user_id, options))
+        view.add_item(UseSelect(cog, guild_id, user_id, options))
         return view
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -204,7 +277,7 @@ class DrugLabView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="🌾 Harvest", style=discord.ButtonStyle.success, row=2)
+    @discord.ui.button(label="🌾 Harvest", style=discord.ButtonStyle.success, row=3)
     async def harvest_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         harvested = await self.cog.bot.db.harvest_drugs(self.user_id, self.guild_id)
@@ -221,14 +294,14 @@ class DrugLabView(discord.ui.View):
             embed.description = "Nothing ready to harvest yet."
         await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
 
-    @discord.ui.button(label="🏪 Market", style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label="🏪 Market", style=discord.ButtonStyle.primary, row=3)
     async def market_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         embed = await build_drug_market_embed(self.cog, interaction.guild, self.user_id)
         view = await DrugMarketView.build(self.cog, self.guild_id, self.user_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=3)
     async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
@@ -265,7 +338,7 @@ async def build_drug_market_embed(
 
 
 class ListProductModal(discord.ui.Modal, title="List product for sale"):
-    drug = discord.ui.TextInput(label="Strain id", placeholder="greenleaf / bluecrystal / whitedust / goldenpoppy", required=True, max_length=20)
+    drug = discord.ui.TextInput(label="Product id", placeholder="blue_dream / cocaine / lsd / fentanyl …", required=True, max_length=24)
     quantity = discord.ui.TextInput(label="Quantity", placeholder="e.g. 5", required=True, max_length=8)
     price = discord.ui.TextInput(label="Price per unit", placeholder="e.g. 150", required=True, max_length=12)
 

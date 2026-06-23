@@ -52,6 +52,21 @@ def _fonts() -> tuple[ImageFont.ImageFont, ImageFont.ImageFont]:
 
 
 _STRAIN_COLORS: dict[str, tuple[int, int, int]] = {
+    "blue_dream": (86, 176, 96),
+    "og_kush": (72, 140, 68),
+    "girl_scout_cookies": (168, 120, 72),
+    "purple_haze": (148, 88, 196),
+    "sour_diesel": (196, 196, 72),
+    "gorilla_glue": (96, 120, 88),
+    "white_widow": (210, 210, 220),
+    "cocaine": (224, 224, 232),
+    "crystal_meth": (96, 156, 224),
+    "mdma": (224, 96, 160),
+    "heroin": (224, 176, 70),
+    "fentanyl": (196, 72, 72),
+    "lsd": (96, 220, 196),
+    "shrooms": (168, 104, 56),
+    # Legacy ids still in old stashes.
     "greenleaf": (86, 176, 96),
     "bluecrystal": (96, 156, 224),
     "whitedust": (224, 224, 232),
@@ -89,7 +104,7 @@ def _label_bar(canvas: Image.Image, name: str, defn: object, color: tuple[int, i
 def render_drug_image(drug_id: str) -> bytes:
     defn = drug_by_id(drug_id)
     name = defn.name if defn else "Product"
-    color = _STRAIN_COLORS.get(drug_id, (160, 160, 170))
+    color = _STRAIN_COLORS.get(drug_id, _STRAIN_COLORS.get(defn.drug_id if defn else "", (160, 160, 170)))
     rng = _rng(drug_id)
 
     base = _static_asset(drug_id)
@@ -145,8 +160,9 @@ def render_lab_image() -> bytes:
     for y in range(HEIGHT):
         t = y / HEIGHT
         draw.line([(0, y), (WIDTH, y)], fill=(int(18 + t * 10), int(30 + t * 20), int(26 + t * 14)))
-    # Grow lamps and plant rows.
-    for i, defn in enumerate(DRUGS):
+    # Show a sample of catalog strains under the grow lamps.
+    showcase = DRUGS[:4]
+    for i, defn in enumerate(showcase):
         x = 60 + i * 110
         draw.rectangle([x - 36, 30, x + 36, 44], fill=(240, 230, 150))
         for _ in range(40):

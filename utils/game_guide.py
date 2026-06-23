@@ -157,8 +157,8 @@ def _build_sections() -> tuple[GuideSection, ...]:
         for defn in MEGA_PROJECTS
     ]
     drug_lines = [
-        f"{defn.emoji} **{defn.name}** — seed {fmt_amount(defn.seed_cost)} · "
-        f"{defn.grow_seconds // 60}m grow · ~{fmt_amount(defn.street_price)}/unit"
+        f"{defn.emoji} **{defn.name}** ({defn.category}) — seed {fmt_amount(defn.seed_cost)} · "
+        f"{defn.grow_seconds // 60}m grow · ~{fmt_amount(defn.street_price)}/unit · _{defn.effect_summary}_"
         for defn in DRUGS
     ]
 
@@ -505,6 +505,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· Owning a business in the **Industrial Zone** boosts harvest yield by "
                     f"+{int(config.DRUG_INDUSTRIAL_YIELD_BONUS * 100)}%\n"
                     "· Higher-tier strains take longer but pay far more per unit\n"
+                    "· **Use** product from your stash for energy, healing, or combat buffs\n"
                     "· Spread sales to avoid big losses to raids",
                 ],
             ),
