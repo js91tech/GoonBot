@@ -7375,24 +7375,42 @@ class Database:
 
     @staticmethod
     def _business_hourly_from_row(row: aiosqlite.Row, *, district_mult: float | None = None) -> float:
-        from utils.businesses import hourly_income
-        from utils.districts import district_income_mult
+        from utils.businesses import hourly_income, row_income_kwargs
 
-        if district_mult is None:
-            try:
-                district_id = row["district_id"]
-            except (KeyError, IndexError):
-                district_id = None
-            district_mult = district_income_mult(district_id)
-        return hourly_income(
-            tier=int(row["tier"]),
-            efficiency_level=int(row["efficiency"]),
-            reputation_level=int(row["reputation"]),
-            production_branch_level=int(row["branch_production"]),
-            growth_branch_level=int(row["branch_growth"]),
-            satisfaction=int(row["employee_satisfaction"]),
-            business_prestige=int(row["business_prestige"]),
-            district_mult=district_mult,
+        kwargs = row_income_kwargs(row)
+        if district_mult is not None:
+            kwargs["district_mult"] = district_mult
+        return hourly_income(**kwargs)
+
+    async def get_business_income_breakdown(
+        self,
+        user_id: int,
+        guild_id: int,
+        row: aiosqlite.Row | None = None,
+        *,
+        now: float | None = None,
+    ) -> "BusinessIncomeBreakdown | None":
+        """Full hourly income: business stats plus corp, buffs, events, and mega projects."""
+        from utils.businesses import BusinessIncomeBreakdown
+
+        if row is None:
+            row = await self.get_business(user_id, guild_id)
+        if row is None:
+            return None
+        current = time.time() if now is None else now
+        base = self._business_hourly_from_row(row)
+        corp_mult = await self._corporate_income_mult_no_lock(user_id, guild_id)
+        buff_mult = await self._active_buff_multiplier_no_lock(user_id, guild_id, current)
+        event_mult = await self._business_event_mult_no_lock(guild_id)
+        mega_mult = await self._mega_income_mult_no_lock(user_id, guild_id)
+        effective = base * corp_mult * buff_mult * event_mult * mega_mult
+        return BusinessIncomeBreakdown(
+            base_hourly=base,
+            effective_hourly=effective,
+            corp_mult=corp_mult,
+            buff_mult=buff_mult,
+            event_mult=event_mult,
+            mega_mult=mega_mult,
         )
 
     @staticmethod
@@ -8271,7 +8289,11 @@ class Database:
                 existing = await cursor.fetchone()
                 cap = float(config.BUSINESS_DISTRICT_INFLUENCE_MAX)
                 current = float(existing["influence"]) if existing is not None else 0.0
-                new_value = min(cap, current + config.BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE)
+                territory_mult = await self.get_corporate_territory_mult(attacker_id, guild_id)
+                influence_gain = (
+                    config.BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE * territory_mult
+                )
+                new_value = min(cap, current + influence_gain)
                 await self.conn.execute(
                     """
                     INSERT INTO district_influence (
@@ -8286,6 +8308,7 @@ class Database:
                     "kind": "influence",
                     "district_id": str(district_id),
                     "influence": new_value,
+                    "influence_gain": influence_gain,
                 })
             await self.conn.commit()
         return result
