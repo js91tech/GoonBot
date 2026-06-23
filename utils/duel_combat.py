@@ -15,7 +15,8 @@ from utils.combat_engine import (
     roll_player_damage,
 )
 from utils.gear_sets import SetBonus, detect_set_bonus
-from utils.loadout import parse_loadout
+from utils.enhancement import AccessoryBonuses, EffectiveGear
+from utils.loadout import PlayerLoadout, parse_loadout
 from utils.spell_effects import CombatSpellState
 from utils.trap_bombs import TrapBombProc
 
@@ -24,9 +25,9 @@ from utils.trap_bombs import TrapBombProc
 class DuelFighter:
     user_id: int
     display_name: str
-    weapon: ShopItem | None
-    off_hand: ShopItem | None
-    armor: ShopItem | None
+    weapon: EffectiveGear | ShopItem | None
+    off_hand: EffectiveGear | ShopItem | None
+    armor: EffectiveGear | ShopItem | None
     set_bonus: SetBonus | None
     prestige_level: int
     max_hp: int
@@ -40,6 +41,7 @@ class DuelFighter:
     trap_bomb_count: int = 0
     consumable_boost: float = 1.0
     consumable_boost_used: bool = False
+    accessory_bonuses: AccessoryBonuses | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,58 @@ class DuelResult:
     loser_id: int
     strikes: list[DuelStrike] = field(default_factory=list)
     jester_steals: list[tuple[int, int, float]] = field(default_factory=list)
+
+
+def fighter_from_loadout(
+    user_id: int,
+    display_name: str,
+    loadout: PlayerLoadout,
+    *,
+    prestige_level: int,
+    class_id: str | None = None,
+    class_modifiers=None,
+    aspect_instance: AspectInstance | None = None,
+    aspect_bonuses: AspectBonuses | None = None,
+    attr_bonuses: AttributeCombatBonuses | None = None,
+    trap_bomb_count: int = 0,
+) -> DuelFighter:
+    from utils.classes import get_modifiers
+
+    set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
+    mods = class_modifiers if class_modifiers is not None else get_modifiers(class_id)
+    ab = aspect_bonuses
+    if ab is None and aspect_instance is not None:
+        ab = bonuses_from_instance(aspect_instance)
+    if ab is None:
+        ab = AspectBonuses()
+    attr = attr_bonuses or AttributeCombatBonuses()
+    acc: AccessoryBonuses = loadout.accessory_bonuses
+    max_hp = (
+        max_hp_from_armor(
+            loadout.armor,
+            class_modifiers=mods,
+            attr_hp_bonus=attr.hp_bonus,
+            accessory_bonuses=acc,
+        )
+        + ab.hp_bonus
+    )
+    has_aspect = ab != AspectBonuses()
+    return DuelFighter(
+        user_id=user_id,
+        display_name=display_name,
+        weapon=loadout.primary,
+        off_hand=loadout.off_hand,
+        armor=loadout.armor,
+        set_bonus=set_bonus,
+        prestige_level=prestige_level,
+        class_id=class_id,
+        max_hp=max_hp,
+        hp=max_hp,
+        aspect_bonuses=ab if has_aspect else None,
+        attr_bonuses=attr if attr != AttributeCombatBonuses() else None,
+        trap_bomb_count=trap_bomb_count,
+        accessory_bonuses=acc,
+    )
 
 
 def fighter_from_equipment(
@@ -90,8 +144,14 @@ def fighter_from_equipment(
     if ab is None:
         ab = AspectBonuses()
     attr = attr_bonuses or AttributeCombatBonuses()
+    acc = loadout.accessory_bonuses
     max_hp = (
-        max_hp_from_armor(loadout.armor, class_modifiers=mods, attr_hp_bonus=attr.hp_bonus)
+        max_hp_from_armor(
+            loadout.armor,
+            class_modifiers=mods,
+            attr_hp_bonus=attr.hp_bonus,
+            accessory_bonuses=acc,
+        )
         + ab.hp_bonus
     )
     has_aspect = ab != AspectBonuses()
@@ -109,6 +169,7 @@ def fighter_from_equipment(
         aspect_bonuses=ab if has_aspect else None,
         attr_bonuses=attr if attr != AttributeCombatBonuses() else None,
         trap_bomb_count=trap_bomb_count,
+        accessory_bonuses=acc,
     )
 
 
@@ -171,6 +232,7 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         off_hand=attacker.off_hand,
         ctx=ctx,
         set_bonus=attacker.set_bonus,
+        accessory_bonuses=attacker.accessory_bonuses,
     )
     if not attacker.consumable_boost_used and attacker.consumable_boost > 1.0:
         raw = int(raw * attacker.consumable_boost)
@@ -194,6 +256,7 @@ def _one_strike(attacker: DuelFighter, defender: DuelFighter) -> DuelStrike:
         set_bonus=defender.set_bonus,
         class_modifiers=get_modifiers(defender.class_id),
         attr_mitigation_bonus=attr_mit,
+        accessory_bonuses=defender.accessory_bonuses,
     )
     if extra_mit > 0:
         reduced = max(1, int(damage * (1.0 - extra_mit)))

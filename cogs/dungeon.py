@@ -7,7 +7,8 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from utils.combat_engine import AttackContext, roll_player_damage
+from items import BOSS_ACCESSORY_POOL, get_item
+from utils.combat_engine import AttackContext, max_hp_from_armor, roll_player_damage
 from utils.dungeon_tiers import (
     DUNGEON_TIERS,
     NORMAL_TIER,
@@ -32,10 +33,41 @@ class Dungeon(commands.Cog):
 
     async def _player_max_hp(self, user_id: int, guild_id: int) -> float:
         loadout = await self.bot.db.get_combat_loadout(user_id, guild_id)
-        hp = float(config.PLAYER_BASE_HP)
-        if loadout.armor:
-            hp += float(loadout.armor.hp_bonus)
-        return hp
+        return float(
+            max_hp_from_armor(
+                loadout.armor,
+                accessory_bonuses=loadout.accessory_bonuses,
+            )
+        )
+
+    async def _maybe_roll_accessory_drop(
+        self,
+        user_id: int,
+        guild_id: int,
+        *,
+        tier_id: str,
+    ) -> str | None:
+        chance = (
+            config.DUNGEON_VAULT_ACCESSORY_DROP_CHANCE
+            if tier_id == VAULT_TIER.tier_id
+            else config.DUNGEON_ACCESSORY_DROP_CHANCE
+        )
+        if random.random() >= chance:
+            return None
+        accessory_id = random.choice(BOSS_ACCESSORY_POOL)
+        item = get_item(accessory_id)
+        if item is None:
+            return None
+        await self.bot.db.grant_item(user_id, guild_id, accessory_id)
+        return item.name
+
+    async def _maybe_roll_vault_hardener(self, user_id: int, guild_id: int, tier_id: str) -> str | None:
+        if tier_id != VAULT_TIER.tier_id:
+            return None
+        if random.random() >= 0.35:
+            return None
+        await self.bot.db.grant_item(user_id, guild_id, "void_hardener")
+        return "Void Hardener"
 
     async def _energy_display(self, user_id: int, guild_id: int) -> tuple[str, int, int]:
         row = await self.bot.db.get_user_character(user_id, guild_id)
@@ -282,6 +314,7 @@ class Dungeon(commands.Cog):
             loadout.primary,
             off_hand=loadout.off_hand,
             ctx=ctx,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         player_hp = float(run["player_hp"])
         enemy_hp = float(run["enemy_hp"]) - damage
@@ -322,13 +355,22 @@ class Dungeon(commands.Cog):
             await record_quest_event(self.bot.db, guild_id, user_id, "dungeon_clear")
             for _ in range(tier.scrap_per_clear):
                 await self.bot.db.grant_item(user_id, guild_id, "alchemy_scrap")
+            accessory_name = await self._maybe_roll_accessory_drop(
+                user_id, guild_id, tier_id=tier.tier_id,
+            )
+            hardener_name = await self._maybe_roll_vault_hardener(user_id, guild_id, tier.tier_id)
+            bonus_loot = ""
+            if accessory_name:
+                bonus_loot += f" · **{accessory_name}**"
+            if hardener_name:
+                bonus_loot += f" · **{hardener_name}**"
             embed, _, _ = await self.build_dungeon_embed(guild_id, user_id)
             return DungeonActionResult(
                 embed=embed,
                 message=(
                     "\n".join(lines)
                     + f"\n**{tier.name} cleared!** +{fmt_amount(reward)} · "
-                    f"+{tier.scrap_per_clear} alchemy scrap"
+                    f"+{tier.scrap_per_clear} alchemy scrap{bonus_loot}"
                 ),
                 finished=True,
             )
@@ -451,7 +493,10 @@ class Dungeon(commands.Cog):
         progress = await self.bot.db.get_user_progress(user_id, guild_id)
         ctx = AttackContext(prestige_level=int(progress["prestige_level"]))
         damage, critical, verb = roll_player_damage(
-            loadout.primary, off_hand=loadout.off_hand, ctx=ctx,
+            loadout.primary,
+            off_hand=loadout.off_hand,
+            ctx=ctx,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         enemy_hp = float(party["enemy_hp"]) - damage
         room = int(party["room"])
@@ -480,6 +525,7 @@ class Dungeon(commands.Cog):
         if room >= config.DUNGEON_ROOMS:
             reward_each += tier.clear_bonus / max(1, len(members))
             await self.bot.db.clear_dungeon_party(guild_id, lid)
+            bonus_notes: list[str] = []
             for m in members:
                 mid = int(m["user_id"])
                 if float(m["player_hp"]) > 0:
@@ -489,12 +535,23 @@ class Dungeon(commands.Cog):
                     )
                     for _ in range(tier.scrap_per_clear):
                         await self.bot.db.grant_item(mid, guild_id, "alchemy_scrap")
+                    accessory_name = await self._maybe_roll_accessory_drop(
+                        mid, guild_id, tier_id=tier.tier_id,
+                    )
+                    hardener_name = await self._maybe_roll_vault_hardener(
+                        mid, guild_id, tier.tier_id,
+                    )
+                    if accessory_name:
+                        bonus_notes.append(accessory_name)
+                    if hardener_name:
+                        bonus_notes.append(hardener_name)
+            bonus_text = f" · {', '.join(bonus_notes)}" if bonus_notes else ""
             return DungeonActionResult(
                 message=(
                     "\n".join(lines)
                     + f"\n**{tier.name} cleared!** "
                     f"+{fmt_amount(reward_each)} each "
-                    f"({fmt_amount(room_total)} room pool split) · scrap for survivors."
+                    f"({fmt_amount(room_total)} room pool split) · scrap for survivors{bonus_text}."
                 ),
             )
 

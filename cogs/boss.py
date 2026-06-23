@@ -14,6 +14,7 @@ from discord.ext import commands, tasks
 
 import config
 from items import (
+    BOSS_ACCESSORY_POOL,
     BOSS_SLAYER_BLADE,
     BOSS_SLAYER_MAIL,
     BOSS_WEAK_ITEMS,
@@ -30,6 +31,15 @@ from utils.aspects import (
     roll_pct_for_threat,
 )
 from utils.avatars import build_avatar_embed_files, get_avatar
+from utils.boss_adds import (
+    ADD_DISPLAY_NAMES,
+    ADD_SPAWN_ANNOUNCEMENTS,
+    add_expires_at,
+    add_max_hp,
+    pick_add_type,
+    roll_add_loot,
+    should_spawn_add,
+)
 from utils.boss_art import attach_boss_art, attach_boss_moment_art, moment_for_move
 from utils.boss_element_effects import element_hazard_text, roll_element_proc
 from utils.character_attributes import (
@@ -278,6 +288,83 @@ class Boss(commands.Cog):
         )
         label = f"**{defn.name}** ({roll_pct:g}%)"
         return [(uid, label)]
+
+    async def _roll_accessory_loot(
+        self,
+        guild_id: int,
+        rows: list[Any],
+    ) -> list[tuple[int, ShopItem]]:
+        if not rows:
+            return []
+        drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
+        if random.random() >= config.BOSS_ACCESSORY_DROP_CHANCE * drop_mult:
+            return []
+        uid = Boss._weighted_random_damage_user(rows)
+        if uid is None:
+            return []
+        accessory_id = random.choice(BOSS_ACCESSORY_POOL)
+        item = get_item(accessory_id)
+        if item is None:
+            return []
+        await self.bot.db.grant_item(uid, guild_id, accessory_id)
+        return [(uid, item)]
+
+    async def _roll_enhancement_material_loot(
+        self,
+        guild_id: int,
+        rows: list[Any],
+        variant: str,
+    ) -> list[tuple[int, str]]:
+        if not rows:
+            return []
+        drop_mult = await self.bot.db.get_drop_multiplier(guild_id)
+        granted: list[tuple[int, str]] = []
+        if random.random() < config.BOSS_HARDENER_DROP_CHANCE * drop_mult:
+            uid = Boss._weighted_random_damage_user(rows)
+            if uid is not None:
+                await self.bot.db.grant_item(uid, guild_id, "void_hardener")
+                granted.append((uid, "Void Hardener"))
+        if variant in ("mythic", "zz_wrath"):
+            if random.random() < config.BOSS_CELESTIAL_SHARD_DROP_CHANCE * drop_mult:
+                uid = Boss._weighted_random_damage_user(rows)
+                if uid is not None:
+                    await self.bot.db.grant_item(uid, guild_id, "celestial_shard")
+                    granted.append((uid, "Celestial Shard"))
+        return granted
+
+    async def _maybe_spawn_raid_add(
+        self,
+        guild: discord.Guild,
+        *,
+        variant: str,
+        boss_hp_ratio: float,
+        boss_max_hp: float,
+        phase_pct: int | None = None,
+    ) -> str | None:
+        phase_crossed = phase_pct in (50, 25)
+        if not should_spawn_add(boss_hp_ratio=boss_hp_ratio, phase_crossed=phase_crossed):
+            return None
+        add_type = pick_add_type(variant)
+        threat = int(config.BOSS_VARIANTS.get(variant, {}).get("threat", 1))
+        max_hp = add_max_hp(boss_max_hp, threat)
+        await self.bot.db.create_raid_add(
+            guild.id,
+            add_type,
+            max_hp,
+            max_hp,
+            add_expires_at(),
+        )
+        announcement = ADD_SPAWN_ANNOUNCEMENTS.get(add_type, "A raid add appeared!")
+        channel = await resolve_bot_announcement_channel(guild, self.bot.db)
+        if channel is not None:
+            gate = getattr(self.bot, "outbound_gate", None)
+            await safe_channel_send(
+                channel,
+                announcement,
+                allowed_mentions=discord.AllowedMentions.none(),
+                gate=gate,
+            )
+        return announcement
 
     async def _grant_freaky_nikki_bonuses(
         self,
@@ -567,6 +654,8 @@ class Boss(commands.Cog):
 
         loot_rows = await self._roll_boss_loot(guild_id, rows)
         loot_rows.extend(await self._roll_mythic_loot(guild_id, rows, variant))
+        loot_rows.extend(await self._roll_accessory_loot(guild_id, rows))
+        material_rows = await self._roll_enhancement_material_loot(guild_id, rows, variant)
         if variant == "zz_wrath":
             loot_rows.extend(await self._roll_ultra_loot(guild_id, rows))
         aspect_rows = await self._roll_aspect_loot(guild_id, rows, variant)
@@ -574,6 +663,10 @@ class Boss(commands.Cog):
             f"**{self._display_name(guild, uid)}** · **{item.name}** (`{item.id}`)"
             for uid, item in loot_rows
         ]
+        gear_lines.extend(
+            f"**{self._display_name(guild, uid)}** · **{label}**"
+            for uid, label in material_rows
+        )
         gear_lines.extend(
             f"**{self._display_name(guild, uid)}** · Aspect {label}"
             for uid, label in aspect_rows
@@ -659,6 +752,7 @@ class Boss(commands.Cog):
                 loadout.armor,
                 class_modifiers=get_modifiers(class_id),
                 attr_hp_bonus=attr_bonuses.hp_bonus,
+                accessory_bonuses=loadout.accessory_bonuses,
             )
         )
 
@@ -703,6 +797,7 @@ class Boss(commands.Cog):
         set_bonus: SetBonus | None = None,
         defense_retention: float = 1.0,
         attr_mitigation_bonus: float = 0.0,
+        accessory_bonuses=None,
     ) -> tuple[int, int]:
         from utils.combat_engine import apply_armor_mitigation
 
@@ -712,6 +807,7 @@ class Boss(commands.Cog):
             set_bonus=set_bonus,
             defense_retention=defense_retention,
             attr_mitigation_bonus=attr_mitigation_bonus,
+            accessory_bonuses=accessory_bonuses,
         )
 
     @staticmethod
@@ -723,6 +819,7 @@ class Boss(commands.Cog):
         defense_retention: float = 1.0,
         hp_ratio: float = 1.0,
         attr_mitigation_bonus: float = 0.0,
+        accessory_bonuses=None,
     ) -> tuple[int, int, bool, str]:
         variant_config = config.BOSS_VARIANTS[variant]
         raw_damage = roll_counter_damage(variant, hp_ratio=hp_ratio)
@@ -735,6 +832,7 @@ class Boss(commands.Cog):
             set_bonus=set_bonus,
             defense_retention=defense_retention,
             attr_mitigation_bonus=attr_mitigation_bonus,
+            accessory_bonuses=accessory_bonuses,
         )
         moves = {
             "normal": ("backhands", "shoulder-checks", "bonks"),
@@ -995,6 +1093,18 @@ class Boss(commands.Cog):
                 value=f"<@{summoner_id}> — {summoner_penalty_summary()}",
                 inline=False,
             )
+        raid_adds = await self.bot.db.list_raid_adds(guild_id)
+        if raid_adds:
+            add_lines: list[str] = []
+            for add_row in raid_adds:
+                add_type = str(add_row["add_type"])
+                add_name = ADD_DISPLAY_NAMES.get(add_type, add_type)
+                add_bar = hp_bar(float(add_row["hp"]), float(add_row["max_hp"]))
+                add_lines.append(
+                    f"**{add_name}** `{add_bar}` "
+                    f"{fmt_amount(float(add_row['hp']))}/{fmt_amount(float(add_row['max_hp']))}"
+                )
+            embed.add_field(name="Raid adds", value="\n".join(add_lines), inline=False)
         if member is not None:
             loadout = await self._loadout(member.id, guild_id)
             weapon = loadout.primary.name if loadout.primary else "bare hands"
@@ -1070,7 +1180,7 @@ class Boss(commands.Cog):
             if buff_lines:
                 embed.add_field(name="Active buffs", value="\n".join(buff_lines), inline=False)
         embed.set_footer(
-            text="⚔️ Attack · ✨ Cast · 💊 Items · ❤️ Heal · 🧪 Auto-heal · Refresh · Raid LB",
+            text="⚔️ Attack · 👹 Attack Add · ✨ Cast · 💊 Items · ❤️ Heal · 🧪 Auto-heal · Refresh · Raid LB",
         )
         return embed, None
 
@@ -1177,6 +1287,7 @@ class Boss(commands.Cog):
             ctx=ctx,
             set_bonus=set_bonus,
             crit_chance_multiplier=crit_mult,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         if summoner_debuff:
             damage = apply_summoner_attack_debuff(damage)
@@ -1234,6 +1345,16 @@ class Boss(commands.Cog):
         phase_note = ""
         if phase_pct is not None:
             phase_note = f"\n**Phase {phase_pct}%** — {BOSS_NAME} enrages!"
+        hp_ratio_after = boss_hp / boss_max if boss_max > 0 else 1.0
+        add_note = await self._maybe_spawn_raid_add(
+            guild,
+            variant=variant,
+            boss_hp_ratio=hp_ratio_after,
+            boss_max_hp=boss_max,
+            phase_pct=phase_pct,
+        )
+        if add_note:
+            phase_note = f"{phase_note}\n{add_note}".strip()
 
         counter_result = await self._maybe_counterattack(guild_id, updated)
         counter_text = counter_result.text
@@ -1316,6 +1437,100 @@ class Boss(commands.Cog):
             if art is not None:
                 attack_files = [art]
         return BossAttackResult(embed=embed, files=attack_files)
+
+    async def execute_raid_add_attack(
+        self,
+        member: discord.Member,
+        guild: discord.Guild,
+        *,
+        add_id: int | None = None,
+    ) -> BossAttackResult:
+        guild_id = guild.id
+        if await self.bot.db.is_restricted(member.id, guild_id):
+            return BossAttackResult(error="You cannot attack right now.")
+
+        boss = await self.bot.db.get_active_boss(guild_id)
+        if boss is None:
+            return BossAttackResult(error="No boss is active right now.")
+
+        adds = await self.bot.db.list_raid_adds(guild_id)
+        if not adds:
+            return BossAttackResult(error="No raid adds are up — focus on the boss.")
+        target = adds[0]
+        if add_id is not None:
+            for row in adds:
+                if int(row["add_id"]) == add_id:
+                    target = row
+                    break
+
+        cooldown = await self.bot.db.boss_attack_cooldown_remaining(guild_id, member.id)
+        if cooldown is not None and cooldown > 0:
+            return BossAttackResult(
+                error=f"Recovering — **{cooldown:.1f}s** until your next strike.",
+            )
+
+        loadout = await self._loadout(member.id, guild_id)
+        set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
+        progress = await self.bot.db.get_user_progress(member.id, guild_id)
+        prestige = int(progress["prestige_level"])
+        await self.bot.db.ensure_jester_class(member.id, guild_id)
+        class_id = await self.bot.db.get_class_id(member.id, guild_id)
+        ctx = attack_context_for_class(class_id, prestige_level=prestige, for_boss=True)
+        attrs = await self.bot.db.get_character_attributes(member.id, guild_id)
+        attr_bonuses = combat_bonuses_from_attributes(attrs)
+        ctx = replace(
+            ctx,
+            damage_mult=ctx.damage_mult * attr_bonuses.damage_mult,
+            extra_crit=ctx.extra_crit + attr_bonuses.extra_crit,
+        )
+        damage, attack_critical, attack_verb = roll_player_damage(
+            loadout.primary,
+            off_hand=loadout.off_hand,
+            ctx=ctx,
+            set_bonus=set_bonus,
+            accessory_bonuses=loadout.accessory_bonuses,
+        )
+        damage = max(1, damage)
+
+        await self.bot.db.record_boss_attack_time(guild_id, member.id)
+        add_type = str(target["add_type"])
+        add_name = ADD_DISPLAY_NAMES.get(add_type, add_type)
+        new_hp, killed = await self.bot.db.damage_raid_add(
+            int(target["add_id"]), guild_id, float(damage),
+        )
+        loot_note = ""
+        if killed:
+            variant = str(boss["variant"])
+            drops = roll_add_loot(add_type, variant)
+            drop_parts: list[str] = []
+            for item_id, qty in drops:
+                item = get_item(item_id)
+                label = item.name if item is not None else item_id
+                for _ in range(qty):
+                    await self.bot.db.grant_item(member.id, guild_id, item_id)
+                drop_parts.append(f"**{qty}×** {label}")
+            if drop_parts:
+                loot_note = f"\nLoot: {', '.join(drop_parts)}"
+
+        bar = hp_bar(new_hp, float(target["max_hp"])) if not killed else "░░░░░░░░░░░░"
+        embed = discord.Embed(
+            title=f"{member.display_name} → {add_name}",
+            description=(
+                f"{'**Killed!**' if killed else f'`{bar}` **{fmt_amount(new_hp)}** HP remaining'}"
+                f"{loot_note}"
+            ),
+            color=discord.Color.green() if killed else discord.Color.orange(),
+        )
+        weapon_text = loadout.primary.name if loadout.primary is not None else "bare hands"
+        embed.add_field(
+            name="Hit",
+            value=f"{attack_verb} for **{damage}** with {weapon_text}",
+            inline=False,
+        )
+        if attack_critical:
+            embed.add_field(name="Crit", value="**YES**", inline=True)
+        embed.set_footer(text="⚔️ Attack boss · 👹 Attack Add again")
+        return BossAttackResult(embed=embed)
 
     @app_commands.command(name="boss", description="Open the boss raid fight panel.")
     @app_commands.guild_only()
@@ -1525,6 +1740,7 @@ class Boss(commands.Cog):
             defense_retention=defense_retention,
             hp_ratio=hp_ratio,
             attr_mitigation_bonus=attr_bonuses.mitigation_bonus,
+            accessory_bonuses=loadout.accessory_bonuses,
         )
         if summoner_victim:
             damage = apply_summoner_counter_damage(damage)

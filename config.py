@@ -152,6 +152,15 @@ BOSS_INFERIOR_DROP_CHANCE = 0.38
 BOSS_EPIC_DROP_CHANCE = 0.03
 BOSS_MYTHIC_DROP_CHANCE = 0.015
 BOSS_ASPECT_DROP_CHANCE = 0.12
+BOSS_ACCESSORY_DROP_CHANCE = 0.06
+BOSS_HARDENER_DROP_CHANCE = 0.08
+BOSS_CELESTIAL_SHARD_DROP_CHANCE = 0.04
+DUNGEON_ACCESSORY_DROP_CHANCE = 0.02
+DUNGEON_VAULT_ACCESSORY_DROP_CHANCE = 0.05
+BOSS_ADD_SPAWN_CHANCE = 0.06
+BOSS_ADD_LIFETIME_SECONDS = 180
+BOSS_ADD_MAX_CONCURRENT = 2
+BOSS_ADD_SPAWN_MIN_HP_RATIO = 0.50
 ASPECT_SHOP_PRICE = 25_000.0
 ASPECT_MAX_EQUIP_SLOTS = 3
 SHOP_MAX_BUY_QUANTITY = 99
@@ -432,6 +441,21 @@ HEALER_SELF_REWARD = 100.0
 HEALER_ALLY_REWARD = 1000.0
 
 CRAFT_UPGRADE_COST_FACTOR = 0.45
+
+# Gear enhancement (BDO-style +1..+15, PRI..PENTA)
+ENHANCE_MAX_LEVEL = 20
+ENHANCE_SCRAP_MAX_LEVEL = 10
+ENHANCE_HARDENER_MAX_LEVEL = 15
+ENHANCE_NUGGET_COST_AT_PLUS_1 = 2_500.0
+ENHANCE_NUGGET_COST_AT_PLUS_10 = 50_000.0
+ENHANCE_NUGGET_COST_AT_PLUS_15 = 60_000.0
+ENHANCE_NUGGET_COST_AT_PRI = 70_000.0
+ENHANCE_NUGGET_COST_AT_PENTA = 150_000.0
+ENHANCE_REPAIR_NUGGET_FACTOR = 0.10
+ENHANCE_FAIL_DOWNGRADE_FROM = 8
+ENHANCE_FAIL_BREAK_FROM = 12
+ENHANCE_POWER_BONUS_PER_LEVEL = 0.02
+ENHANCE_PRI_BONUS_MULT = 1.15
 
 GAMBLING_MIN_BET = 10.0
 GAMBLING_MAX_BET = 50_000.0
@@ -734,6 +758,21 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
     "boss_aspect_drop_chance": LiveSetting(
         BOSS_ASPECT_DROP_CHANCE,
         "Aspect drop chance on boss defeat",
+        maximum=1.0,
+    ),
+    "boss_accessory_drop_chance": LiveSetting(
+        BOSS_ACCESSORY_DROP_CHANCE,
+        "Accessory drop chance on boss defeat",
+        maximum=1.0,
+    ),
+    "boss_hardener_drop_chance": LiveSetting(
+        BOSS_HARDENER_DROP_CHANCE,
+        "Void hardener drop chance on boss defeat",
+        maximum=1.0,
+    ),
+    "boss_add_spawn_chance": LiveSetting(
+        BOSS_ADD_SPAWN_CHANCE,
+        "Raid add spawn chance per attack after 50% boss HP",
         maximum=1.0,
     ),
     "craft_upgrade_cost_factor": LiveSetting(

@@ -13,7 +13,7 @@ from utils.avatars import build_avatar_embed_files, get_avatar
 from utils.bot_players import pvp_target_error
 from utils.duel_combat import (
     DuelFighter,
-    fighter_from_equipment,
+    fighter_from_loadout,
     format_strike_line,
     simulate_duel,
 )
@@ -195,10 +195,8 @@ class Duels(commands.Cog):
         skip_target_cd: bool,
         attacker_util: object,
     ) -> None:
-        attacker_equipment = await self.bot.db.get_equipment(attacker.id, guild_id)
-        defender_equipment = await self.bot.db.get_equipment(opponent.id, guild_id)
-        attacker_unstable = await self.bot.db.list_unstable_slots(attacker.id, guild_id)
-        defender_unstable = await self.bot.db.list_unstable_slots(opponent.id, guild_id)
+        attacker_loadout = await self.bot.db.get_combat_loadout(attacker.id, guild_id)
+        defender_loadout = await self.bot.db.get_combat_loadout(opponent.id, guild_id)
         attacker_progress = await self.bot.db.get_user_progress(attacker.id, guild_id)
         defender_progress = await self.bot.db.get_user_progress(opponent.id, guild_id)
         await self.bot.db.ensure_jester_class(attacker.id, guild_id)
@@ -223,27 +221,25 @@ class Duels(commands.Cog):
         initial_attacker_bombs = attacker_bombs
         initial_defender_bombs = defender_bombs
 
-        attacker_fighter = fighter_from_equipment(
+        attacker_fighter = fighter_from_loadout(
             attacker.id,
             attacker.display_name,
-            attacker_equipment,
+            attacker_loadout,
             prestige_level=int(attacker_progress["prestige_level"]),
             class_id=attacker_class,
             aspect_bonuses=attacker_bonuses,
             attr_bonuses=attacker_attr_bonuses,
             trap_bomb_count=attacker_bombs,
-            unstable_slots=attacker_unstable,
         )
-        defender_fighter = fighter_from_equipment(
+        defender_fighter = fighter_from_loadout(
             opponent.id,
             opponent.display_name,
-            defender_equipment,
+            defender_loadout,
             prestige_level=int(defender_progress["prestige_level"]),
             class_id=defender_class,
             aspect_bonuses=defender_bonuses,
             attr_bonuses=defender_attr_bonuses,
             trap_bomb_count=defender_bombs,
-            unstable_slots=defender_unstable,
         )
         if await self.bot.db.take_pending_consumable(
             attacker.id, guild_id, "duel_scroll",

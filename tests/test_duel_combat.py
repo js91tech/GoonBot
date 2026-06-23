@@ -15,8 +15,8 @@ class DuelCombatTests(unittest.TestCase):
             {"weapon": "iron_sword", "off_hand": "iron_pistol"},
             prestige_level=0,
         )
-        self.assertEqual(fighter.weapon.id, "iron_sword")
-        self.assertEqual(fighter.off_hand.id, "iron_pistol")
+        self.assertEqual(fighter.weapon.base.id, "iron_sword")
+        self.assertEqual(fighter.off_hand.base.id, "iron_pistol")
         self.assertGreater(fighter.max_hp, 0)
         self.assertEqual(fighter.hp, fighter.max_hp)
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import config
 from items import ShopItem, armor_mitigation_percent, is_damage_dealer
 from utils.character_attributes import AttributeCombatBonuses
+from utils.enhancement import AccessoryBonuses, EffectiveGear
 from utils.gear_sets import SetBonus
 from utils.loadout import off_hand_crit_bonus, off_hand_power_bonus
 
@@ -42,17 +43,20 @@ def format_item_stats(item: ShopItem) -> str:
 
 
 def compute_combat_stats(
-    weapon: ShopItem | None,
-    armor: ShopItem | None,
+    weapon: EffectiveGear | ShopItem | None,
+    armor: EffectiveGear | ShopItem | None,
     *,
-    off_hand: ShopItem | None = None,
+    off_hand: EffectiveGear | ShopItem | None = None,
     current_hp: float | None = None,
     prestige_level: int = 0,
     set_bonus: SetBonus | None = None,
     attr_bonuses: AttributeCombatBonuses | None = None,
+    accessory_bonuses: AccessoryBonuses | None = None,
 ) -> CombatStats:
     attr = attr_bonuses or AttributeCombatBonuses()
+    acc = accessory_bonuses or AccessoryBonuses()
     armor_bonus = armor.hp_bonus if armor is not None else 0
+    armor_bonus += acc.flat_hp
     max_hp = config.PLAYER_BASE_HP + armor_bonus + attr.hp_bonus
     damage_mult = set_bonus.damage_mult if set_bonus is not None else 1.0
     damage_mult *= attr.damage_mult
@@ -63,12 +67,13 @@ def compute_combat_stats(
         crit_pct = int(round(config.PLAYER_BASE_CRIT_CHANCE * 100))
     else:
         attack_power = weapon.power + bonus_power
-        damage_min = int((attack_power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult)
-        damage_max = int((attack_power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult)
+        damage_min = int((attack_power + config.BOSS_ATTACK_BONUS_MIN) * damage_mult) + acc.flat_damage
+        damage_max = int((attack_power + config.BOSS_ATTACK_BONUS_MAX) * damage_mult) + acc.flat_damage
         crit_rate = (
             config.PLAYER_BASE_CRIT_CHANCE
             + weapon.crit_chance
             + off_hand_crit_bonus(off_hand)
+            + acc.flat_crit
         )
         crit_rate += prestige_level * config.PRESTIGE_CRIT_BONUS_PER_LEVEL
         crit_rate += attr.extra_crit
@@ -79,6 +84,8 @@ def compute_combat_stats(
         mitigation = min(90, mitigation + int(round(set_bonus.mitigation_bonus * 100)))
     if attr.mitigation_bonus > 0:
         mitigation = min(90, mitigation + int(round(attr.mitigation_bonus * 100)))
+    if acc.flat_mitigation > 0:
+        mitigation = min(90, mitigation + int(round(acc.flat_mitigation * 100)))
     hp_display = int(current_hp) if current_hp is not None else None
     return CombatStats(
         max_hp=max_hp,

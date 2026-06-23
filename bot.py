@@ -45,6 +45,7 @@ COGS = (
     "cogs.dungeon",
     "cogs.season",
     "cogs.alchemy",
+    "cogs.enhancement",
     "cogs.admin",
 )
 
