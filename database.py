@@ -494,6 +494,7 @@ class Database:
         await self._migrate_mega_projects()
         await self._migrate_drug_trade()
 
+    async def _migrate_character_attributes(self) -> None:
         import config
 
         base = config.ATTR_BASE_VALUE
