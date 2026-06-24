@@ -9,7 +9,14 @@ import discord
 
 import config
 from utils.drug_art import render_lab_image
-from utils.drugs import DRUGS, drug_by_id, format_consume_message
+from utils.drugs import (
+    DRUGS,
+    DRUG_CATEGORY_LABELS,
+    drug_by_id,
+    drugs_by_category,
+    drugs_for_category,
+    format_consume_message,
+)
 from utils.helpers import fmt_amount
 from utils.quests import record_quest_event
 
@@ -144,21 +151,59 @@ async def build_lab_embed(
     return embed, file
 
 
+class PlantCategorySelect(discord.ui.Select):
+    def __init__(self, view: "DrugLabView", *, selected: str) -> None:
+        self._view = view
+        options = [
+            discord.SelectOption(
+                label=DRUG_CATEGORY_LABELS.get(category, category.title()),
+                value=category,
+                default=category == selected,
+            )
+            for category in drugs_by_category()
+        ]
+        super().__init__(
+            placeholder="Product category…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        self._view.plant_category = self.values[0]
+        view = await DrugLabView.build(
+            self._view.cog, self._view.guild_id, self._view.user_id,
+            plant_category=self.values[0],
+        )
+        embed, file = await build_lab_embed(self._view.cog, self._view.guild_id, self._view.user_id)
+        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+
+
 class PlantSelect(discord.ui.Select):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int, *, category: str) -> None:
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
         options = [
             discord.SelectOption(
                 label=defn.name,
                 value=defn.drug_id,
-                description=f"{defn.category.title()} · seed {fmt_amount(defn.seed_cost)} · {defn.grow_seconds // 60}m"[:100],
+                description=(
+                    f"{DRUG_CATEGORY_LABELS.get(defn.category, defn.category.title())} · "
+                    f"seed {fmt_amount(defn.seed_cost)} · {defn.grow_seconds // 60}m"
+                )[:100],
                 emoji=defn.emoji,
             )
-            for defn in DRUGS
+            for defn in drugs_for_category(category)
         ]
-        super().__init__(placeholder="Plant a strain…", options=options, row=0)
-        self.cog = cog
-        self.guild_id = guild_id
-        self.user_id = user_id
+        super().__init__(
+            placeholder=f"Plant {DRUG_CATEGORY_LABELS.get(category, category)}…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=1,
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         cost, err = await self.cog.bot.db.plant_drug(self.user_id, self.guild_id, self.values[0])
@@ -277,16 +322,34 @@ class StreetSellModal(discord.ui.Modal, title="Sell on the street"):
 
 
 class DrugLabView(discord.ui.View):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        *,
+        plant_category: str = "cannabis",
+    ) -> None:
         super().__init__(timeout=180.0)
         self.cog = cog
         self.guild_id = guild_id
         self.user_id = user_id
+        self.plant_category = plant_category
 
     @classmethod
-    async def build(cls, cog: commands.Cog, guild_id: int, user_id: int) -> DrugLabView:
-        view = cls(cog, guild_id, user_id)
-        view.add_item(PlantSelect(cog, guild_id, user_id))
+    async def build(
+        cls,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        *,
+        plant_category: str | None = None,
+    ) -> "DrugLabView":
+        categories = list(drugs_by_category())
+        category = plant_category if plant_category in categories else categories[0]
+        view = cls(cog, guild_id, user_id, plant_category=category)
+        view.add_item(PlantCategorySelect(view, selected=category))
+        view.add_item(PlantSelect(cog, guild_id, user_id, category=category))
         inventory = await cog.bot.db.get_drug_inventory(user_id, guild_id)
         options = stash_select_options(inventory)
         view.add_item(SellSelect(cog, guild_id, user_id, options))
@@ -506,7 +569,9 @@ async def build_drug_catalog_embed() -> discord.Embed:
     )
     category_labels = {
         "cannabis": "🌿 Cannabis (THC strains)",
-        "stimulant": "⚡ Stimulants",
+        "stimulant": "⚡ Stimulants (incl. addies)",
+        "codeine": "💊 Codeine",
+        "lean": "🍇 Lean (Hi-Tech, Wockhardt, Tris, etc.)",
         "opioid": "💉 Opioids",
         "psychedelic": "🌈 Psychedelics",
     }

@@ -641,11 +641,25 @@ class EndgameDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
 class DrugMathTests(unittest.TestCase):
     def test_catalog(self) -> None:
-        self.assertEqual(len(DRUGS), 14)
+        self.assertEqual(len(DRUGS), 27)
         self.assertEqual(drug_by_id("blue_dream").name, "Blue Dream")
         self.assertEqual(drug_by_id("greenleaf").name, "Blue Dream")
         self.assertEqual(drug_by_id("cocaine").category, "stimulant")
+        self.assertEqual(drug_by_id("addies").category, "stimulant")
+        self.assertEqual(drug_by_id("wockhardt").category, "lean")
+        self.assertEqual(drug_by_id("prometh_codeine").category, "codeine")
         self.assertIsNone(drug_by_id("nope"))
+
+    def test_category_grouping_includes_new_lines(self) -> None:
+        from utils.drugs import DRUG_CATEGORY_LABELS, drugs_by_category, drugs_for_category
+
+        grouped = drugs_by_category()
+        self.assertIn("codeine", grouped)
+        self.assertIn("lean", grouped)
+        self.assertEqual(len(drugs_for_category("lean")), 6)
+        self.assertEqual(len(drugs_for_category("codeine")), 4)
+        self.assertIn("addies", {d.drug_id for d in drugs_for_category("stimulant")})
+        self.assertIn("lean", DRUG_CATEGORY_LABELS)
 
     def test_yield_bonus(self) -> None:
         defn = DRUGS[0]
