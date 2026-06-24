@@ -1281,7 +1281,7 @@ class Boss(commands.Cog):
         if await self.bot.db.take_pending_consumable(member.id, guild_id, "raid_potion"):
             ctx = replace(ctx, damage_mult=ctx.damage_mult * 1.2)
             spell_note += " · **Raid Potion** +20%"
-        drug_buff = await self.bot.db.take_pending_drug_buff(member.id, guild_id)
+        drug_buff = await self.bot.db.peek_pending_drug_buff(member.id, guild_id)
         if drug_buff is not None and float(drug_buff["boss_mult"]) > 1.0:
             mult = float(drug_buff["boss_mult"])
             ctx = replace(ctx, damage_mult=ctx.damage_mult * mult)
@@ -1296,6 +1296,10 @@ class Boss(commands.Cog):
         )
         if summoner_debuff:
             damage = apply_summoner_attack_debuff(damage)
+
+        risk_damage, risk_note = await self.bot.db.roll_drug_attack_hp_risk(
+            member.id, guild_id, max_hp=player_max_hp,
+        )
 
         raider_rows = await self.bot.db.list_boss_damage(guild_id)
         raider_ids = {int(r["user_id"]) for r in raider_rows}
@@ -1374,7 +1378,7 @@ class Boss(commands.Cog):
         weapon_text = loadout.primary.name if loadout.primary is not None else "bare hands"
         if loadout.off_hand is not None:
             weapon_text = f"{weapon_text} + {loadout.off_hand.name} (off-hand)"
-        hit_value = f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}{fatigue_note}"
+        hit_value = f"{attack_verb} for **{damage}** with {weapon_text}{spell_note}{aspect_note}{fatigue_note}{risk_note}"
         if dot_note:
             hit_value = f"{dot_note}\n{hit_value}"
         embed.add_field(
@@ -1643,20 +1647,31 @@ class Boss(commands.Cog):
         if not proc.note:
             return ""
 
+        cc_immune = await self.bot.db.has_active_drug_cc_immunity(victim_id, guild_id)
+        cc_blocked = cc_immune and (
+            proc.storm_stun_seconds is not None
+            or proc.frost_slow_until is not None
+            or proc.verdant_root_until is not None
+        )
+
         if (
             proc.frost_slow_until is not None
             or proc.verdant_root_until is not None
             or proc.fire_burn is not None
         ):
-            await self.bot.db.apply_boss_element_status(
-                guild_id,
-                victim_id,
-                frost_slow_until=proc.frost_slow_until,
-                verdant_root_until=proc.verdant_root_until,
-                fire_burn=proc.fire_burn,
-                debuff_attack_cooldown=proc.debuff_attack_cooldown,
-            )
-        if proc.storm_stun_seconds is not None:
+            frost = proc.frost_slow_until if not cc_blocked else None
+            root = proc.verdant_root_until if not cc_blocked else None
+            debuff_cd = proc.debuff_attack_cooldown if not cc_blocked else None
+            if frost is not None or root is not None or proc.fire_burn is not None:
+                await self.bot.db.apply_boss_element_status(
+                    guild_id,
+                    victim_id,
+                    frost_slow_until=frost,
+                    verdant_root_until=root,
+                    fire_burn=proc.fire_burn,
+                    debuff_attack_cooldown=debuff_cd,
+                )
+        if proc.storm_stun_seconds is not None and not cc_blocked:
             await self.bot.db.set_downed_until(
                 victim_id,
                 guild_id,
@@ -1664,6 +1679,8 @@ class Boss(commands.Cog):
             )
         if proc.void_mana_drain is not None:
             await self.bot.db.drain_mana(victim_id, guild_id, proc.void_mana_drain)
+        if cc_blocked:
+            return f"{proc.note} 🛡️ **Numb high** — stun/freeze/root ignored."
         return proc.note
 
     async def _maybe_counterattack(self, guild_id: int, boss_row: Any) -> CounterattackResult:

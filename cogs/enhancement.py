@@ -220,14 +220,17 @@ class Enhancement(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        instances = await self.bot.db.list_gear_instances(interaction.user.id, interaction.guild_id)
-        if not instances:
+        await self.bot.db.sync_gear_instances_from_inventory(
+            interaction.user.id, interaction.guild_id,
+        )
+        gear_rows = await self.bot.db.list_gear_instances(interaction.user.id, interaction.guild_id)
+        if not gear_rows:
             await interaction.response.send_message(
                 "You have no enhanceable gear instances yet. Buy or earn weapons, armor, or accessories.",
                 ephemeral=True,
             )
             return
-        view = EnhanceView(self, interaction.guild_id, interaction.user.id, instances)
+        view = EnhanceView(self, interaction.guild_id, interaction.user.id, gear_rows)
         embed = await self.build_enhance_embed(interaction.guild_id, interaction.user.id, None)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 

@@ -11,6 +11,9 @@ from dataclasses import dataclass
 
 import config
 
+DRUG_EFFECT_DURATION_MIN_SECONDS = 30.0
+DRUG_EFFECT_DURATION_MAX_SECONDS = 180.0
+
 # Legacy fictional ids mapped to current catalog entries (player stash migration).
 _LEGACY_DRUG_ALIASES: dict[str, str] = {
     "greenleaf": "blue_dream",
@@ -37,7 +40,9 @@ class DrugDef:
     effect_damage_pct: float = 0.0
     effect_boss_mult: float = 1.0
     effect_duel_mult: float = 1.0
-    effect_duration: float = 300.0
+    effect_cc_immunity: bool = False
+    effect_attack_hp_risk_chance: float = 0.0
+    effect_attack_hp_risk_pct: float = 0.0
     overdose_chance: float = 0.0
     overdose_damage_pct: float = 0.0
 
@@ -109,21 +114,27 @@ DRUGS: tuple[DrugDef, ...] = (
     DrugDef(
         "heroin", "Heroin", "🌺", "opioid",
         15_000.0, 6 * 3600, 2, 4, 7_000.0,
-        "Numbing high — heal 20% HP, -15 energy.",
+        "Numbing high — heal 20% HP, immune to stun/freeze/root for duration; 15% per attack to lose 3% HP.",
         effect_heal_pct=0.20, effect_energy=-15,
+        effect_cc_immunity=True,
+        effect_attack_hp_risk_chance=0.15,
+        effect_attack_hp_risk_pct=0.03,
     ),
     DrugDef(
         "fentanyl", "Fentanyl", "☠️", "opioid",
         25_000.0, 8 * 3600, 1, 3, 12_000.0,
-        "Extreme opioid — heal 25% HP, 15% overdose risk (lose 20% HP).",
-        effect_heal_pct=0.25, overdose_chance=0.15, overdose_damage_pct=0.20,
+        "Extreme opioid — heal 25% HP, immune to stun/freeze/root for duration; 15% per attack to lose 3% HP.",
+        effect_heal_pct=0.25,
+        effect_cc_immunity=True,
+        effect_attack_hp_risk_chance=0.15,
+        effect_attack_hp_risk_pct=0.03,
     ),
     # --- Psychedelics ---
     DrugDef(
         "lsd", "LSD", "🌈", "psychedelic",
         10_000.0, 5 * 3600, 2, 4, 5_500.0,
         "Trip — random combat buff: +20% boss or duel damage.",
-        effect_boss_mult=1.20, effect_duel_mult=1.20, effect_duration=420.0,
+        effect_boss_mult=1.20, effect_duel_mult=1.20,
     ),
     DrugDef(
         "shrooms", "Magic Mushrooms", "🍄", "psychedelic",
@@ -145,6 +156,27 @@ def normalize_drug_id(drug_id: str) -> str:
 
 def drug_by_id(drug_id: str) -> DrugDef | None:
     return DRUGS_BY_ID.get(normalize_drug_id(drug_id))
+
+
+def drug_effect_duration(defn: DrugDef) -> float:
+    """Tier-scaled active effect window: 30s (entry strains) up to 3 minutes (top tier)."""
+    if len(DRUGS) <= 1:
+        return DRUG_EFFECT_DURATION_MIN_SECONDS
+    try:
+        idx = next(i for i, drug in enumerate(DRUGS) if drug.drug_id == defn.drug_id)
+    except StopIteration:
+        return DRUG_EFFECT_DURATION_MIN_SECONDS
+    tier_frac = idx / (len(DRUGS) - 1)
+    span = DRUG_EFFECT_DURATION_MAX_SECONDS - DRUG_EFFECT_DURATION_MIN_SECONDS
+    return DRUG_EFFECT_DURATION_MIN_SECONDS + tier_frac * span
+
+
+def drug_has_timed_effect(defn: DrugDef) -> bool:
+    return (
+        defn.effect_boss_mult > 1.0
+        or defn.effect_duel_mult > 1.0
+        or defn.effect_cc_immunity
+    )
 
 
 def legacy_ids_for_canonical(canonical_id: str) -> tuple[str, ...]:
@@ -208,12 +240,19 @@ def format_consume_message(result: dict[str, object]) -> str:
         parts.append(f"⚡ **{energy_delta}** energy.")
     if result.get("boss_buff"):
         pct = int((float(result["boss_buff"]) - 1.0) * 100)
-        mins = int(float(result.get("buff_duration") or 300) // 60)
-        parts.append(f"Next **/attack** +**{pct}%** boss damage ({mins} min).")
+        secs = int(float(result.get("buff_duration") or DRUG_EFFECT_DURATION_MIN_SECONDS))
+        parts.append(f"**/attack** +**{pct}%** boss damage for **{secs}s**.")
     if result.get("duel_buff"):
         pct = int((float(result["duel_buff"]) - 1.0) * 100)
-        mins = int(float(result.get("buff_duration") or 300) // 60)
-        parts.append(f"Next **/duel** +**{pct}%** strike damage ({mins} min).")
+        secs = int(float(result.get("buff_duration") or DRUG_EFFECT_DURATION_MIN_SECONDS))
+        parts.append(f"**/duel** +**{pct}%** strike damage for **{secs}s**.")
+    if result.get("cc_immunity"):
+        secs = int(float(result.get("buff_duration") or DRUG_EFFECT_DURATION_MIN_SECONDS))
+        parts.append(
+            f"Immune to **stun/freeze/root** for **{secs}s** "
+            f"({int(float(result.get('attack_hp_risk_chance') or 0) * 100)}% per attack: "
+            f"-{int(float(result.get('attack_hp_risk_pct') or 0) * 100)}% HP)."
+        )
     return "💨 " + " ".join(parts)
 
 

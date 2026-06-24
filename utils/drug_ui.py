@@ -59,6 +59,21 @@ async def consume_stash_product(
     return await cog.bot.db.consume_drug(user_id, guild_id, drug_id, max_hp=max_hp)
 
 
+def _active_drug_buff_lines(pending_buff: dict[str, object]) -> list[str]:
+    buff_parts: list[str] = []
+    if float(pending_buff["boss_mult"]) > 1.0:
+        pct = int((float(pending_buff["boss_mult"]) - 1.0) * 100)
+        buff_parts.append(f"**/attack** +{pct}%")
+    if float(pending_buff["duel_mult"]) > 1.0:
+        pct = int((float(pending_buff["duel_mult"]) - 1.0) * 100)
+        buff_parts.append(f"**/duel** +{pct}%")
+    if pending_buff.get("cc_immunity"):
+        risk = int(float(pending_buff.get("attack_hp_risk_chance") or 0) * 100)
+        hp_loss = int(float(pending_buff.get("attack_hp_risk_pct") or 0) * 100)
+        buff_parts.append(f"CC immune · {risk}%/-{hp_loss}% HP per hit")
+    return buff_parts
+
+
 async def build_lab_embed(
     cog: commands.Cog, guild_id: int, user_id: int,
 ) -> tuple[discord.Embed, discord.File]:
@@ -113,13 +128,7 @@ async def build_lab_embed(
         embed.add_field(name="Stash", value="\n".join(inv_lines), inline=False)
 
     if pending_buff:
-        buff_parts = []
-        if float(pending_buff["boss_mult"]) > 1.0:
-            pct = int((float(pending_buff["boss_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/attack** +{pct}%")
-        if float(pending_buff["duel_mult"]) > 1.0:
-            pct = int((float(pending_buff["duel_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/duel** +{pct}%")
+        buff_parts = _active_drug_buff_lines(pending_buff)
         embed.add_field(
             name="Active high",
             value=(
@@ -542,13 +551,7 @@ async def build_stash_embed(
     else:
         embed.add_field(name="Inventory", value="_Empty — harvest from /drugs lab._", inline=False)
     if pending_buff:
-        buff_parts = []
-        if float(pending_buff["boss_mult"]) > 1.0:
-            pct = int((float(pending_buff["boss_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/attack** +{pct}%")
-        if float(pending_buff["duel_mult"]) > 1.0:
-            pct = int((float(pending_buff["duel_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/duel** +{pct}%")
+        buff_parts = _active_drug_buff_lines(pending_buff)
         embed.add_field(
             name="Active high",
             value=(

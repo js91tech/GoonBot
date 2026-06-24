@@ -776,7 +776,8 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(float(pending["boss_mult"]), 1.0)
         taken = await self.db.take_pending_drug_buff(uid, guild_id)
         self.assertIsNotNone(taken)
-        self.assertIsNone(await self.db.peek_pending_drug_buff(uid, guild_id))
+        still_active = await self.db.peek_pending_drug_buff(uid, guild_id)
+        self.assertIsNotNone(still_active)
 
     async def test_market_list_and_buy(self) -> None:
         guild_id, seller, buyer = 1, 100, 200

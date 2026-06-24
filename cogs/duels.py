@@ -245,7 +245,7 @@ class Duels(commands.Cog):
             attacker.id, guild_id, "duel_scroll",
         ):
             attacker_fighter.consumable_boost = 1.15
-        drug_buff = await self.bot.db.take_pending_drug_buff(attacker.id, guild_id)
+        drug_buff = await self.bot.db.peek_pending_drug_buff(attacker.id, guild_id)
         if drug_buff is not None and float(drug_buff["duel_mult"]) > 1.0:
             attacker_fighter.consumable_boost = max(
                 attacker_fighter.consumable_boost,
@@ -266,6 +266,23 @@ class Duels(commands.Cog):
             attacker_fighter.user_id: attacker_fighter,
             defender_fighter.user_id: defender_fighter,
         }
+
+        attacker_strikes = sum(
+            1 for strike in result.strikes if strike.attacker_id == attacker.id
+        )
+        withdrawal_damage = 0.0
+        attacker_max_hp = float(attacker_fighter.max_hp)
+        for _ in range(attacker_strikes):
+            dmg, _ = await self.bot.db.roll_drug_attack_hp_risk(
+                attacker.id, guild_id, max_hp=attacker_max_hp,
+            )
+            withdrawal_damage += dmg
+        withdrawal_note = ""
+        if withdrawal_damage > 0:
+            withdrawal_note = (
+                f"\n💉 **Withdrawal** — **{attacker.display_name}** lost "
+                f"**{int(withdrawal_damage)}** HP during strikes."
+            )
 
         trap_procs = sum(1 for s in result.strikes if s.trap_proc is not None)
         for _ in range(
@@ -348,7 +365,7 @@ class Duels(commands.Cog):
             description=(
                 f"**{winner.display_name}** defeats **{loser.display_name}**!\n"
                 f"**{fmt_amount(loot)}** ({loss_pct}% of {loser.display_name}'s wallet) "
-                f"transferred to the winner.{plunder_note}"
+                f"transferred to the winner.{plunder_note}{withdrawal_note}"
             ),
             color=discord.Color.red() if result.winner_id == attacker.id else discord.Color.blue(),
         )
