@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 async def player_max_hp(cog: commands.Cog, user_id: int, guild_id: int) -> float:
     from utils.combat_engine import max_hp_from_armor
     from utils.classes import get_modifiers
-    from utils.stats import combat_bonuses_from_attributes
+    from utils.character_attributes import combat_bonuses_from_attributes
 
     loadout = await cog.bot.db.get_combat_loadout(user_id, guild_id)
     class_id = await cog.bot.db.get_class_id(user_id, guild_id)
