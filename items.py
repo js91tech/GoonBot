@@ -402,7 +402,7 @@ CHIA_SEEDS = ShopItem(
     "consumable",
     50,
     0,
-    "Wholesome snack seeds. Buy from /shop, then gift with /gift.",
+    "Wholesome snack seeds. Buy from /shop, then gift with /gift-item.",
     shop_listed=True,
 )
 JAIL_KEY = ShopItem(
