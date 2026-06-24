@@ -1,47 +1,22 @@
 from __future__ import annotations
 
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from items import GIFTABLE_ITEM_IDS, get_item
 from utils.bot_players import pvp_target_error
-from utils.consumables_ui import (
-    build_use_embed,
-    execute_use,
-    list_useable_entries,
-    send_use_panel,
-    use_error_message,
-    UsePanelView,
-)
+from utils.consumables_ui import send_use_panel
 from utils.helpers import fmt_amount, guild_only_message
+
+logger = logging.getLogger(__name__)
 
 
 class Consumables(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-
-    async def use_item_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
-        if interaction.guild_id is None:
-            return []
-        entries = await list_useable_entries(
-            self, interaction.user.id, interaction.guild_id,
-        )
-        needle = current.lower()
-        choices: list[app_commands.Choice[str]] = []
-        for entry_id, label, qty in entries:
-            if needle and needle not in entry_id and needle not in label.lower():
-                continue
-            choices.append(
-                app_commands.Choice(name=f"{label} x{qty}"[:100], value=entry_id),
-            )
-            if len(choices) >= 25:
-                break
-        return choices
 
     async def gift_item_autocomplete(
         self,
@@ -76,28 +51,20 @@ class Consumables(commands.Cog):
         name="use",
         description="Open the consumables panel — use shop items or harvested drugs.",
     )
-    @app_commands.describe(item="Optional: use directly without opening the panel")
-    @app_commands.autocomplete(item=use_item_autocomplete)
     @app_commands.guild_only()
-    async def use_item(self, interaction: discord.Interaction, item: str | None = None) -> None:
+    async def use_item(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        if item is None:
+        try:
             await send_use_panel(interaction, self)
-            return
-
-        await interaction.response.defer(ephemeral=True)
-        err, message = await execute_use(
-            self, interaction.user.id, interaction.guild_id, item.strip().lower(),
-        )
-        if err:
-            await interaction.followup.send(use_error_message(err), ephemeral=True)
-            return
-        view = await UsePanelView.build(self, interaction.guild_id, interaction.user.id)
-        embed = await build_use_embed(self, interaction.user.id, interaction.guild_id)
-        embed.description = message
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        except Exception:
+            logger.exception("/use failed for user %s", interaction.user.id)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "Could not open the use panel. Try again.",
+                    ephemeral=True,
+                )
 
     @app_commands.command(
         name="gift",

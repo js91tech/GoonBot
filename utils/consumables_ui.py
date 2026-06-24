@@ -1,6 +1,7 @@
 """Interactive /use panel for shop consumables and drug stash products."""
 from __future__ import annotations
 
+import logging
 import random
 from typing import TYPE_CHECKING
 
@@ -8,12 +9,14 @@ import discord
 
 import config
 from items import CONSUMABLE_USE_IDS, HP_POTION_HEAL, get_item
-from utils.drug_ui import player_max_hp
 from utils.drugs import drug_by_id, format_consume_message
+from utils.player_combat import player_max_hp
 from utils.quests import record_quest_event
 
 if TYPE_CHECKING:
     from discord.ext import commands
+
+logger = logging.getLogger(__name__)
 
 # Crafting mats and gift-only items are not meant for /use.
 _SHOP_USE_SKIP: frozenset[str] = frozenset({
@@ -25,10 +28,6 @@ _SHOP_USE_SKIP: frozenset[str] = frozenset({
 })
 
 SHOP_USE_IDS: frozenset[str] = CONSUMABLE_USE_IDS - _SHOP_USE_SKIP
-
-
-async def player_max_hp_for(cog: commands.Cog, user_id: int, guild_id: int) -> float:
-    return await player_max_hp(cog, user_id, guild_id)
 
 
 async def list_useable_entries(
@@ -68,12 +67,14 @@ async def execute_use(
 ) -> tuple[str | None, str | None]:
     """Use one shop consumable or drug. Returns (error_code, success_message)."""
     item_id = entry_id.strip().lower()
+    if not item_id:
+        return "invalid_item", None
     drug = drug_by_id(item_id)
     if drug is not None:
         stash_qty = (await cog.bot.db.get_drug_inventory(user_id, guild_id)).get(drug.drug_id, 0)
         if stash_qty <= 0:
             return "insufficient_product", None
-        max_hp = await player_max_hp_for(cog, user_id, guild_id)
+        max_hp = await player_max_hp(cog, user_id, guild_id)
         result = await cog.bot.db.consume_drug(user_id, guild_id, drug.drug_id, max_hp=max_hp)
         if result.get("error"):
             return str(result["error"]), None
@@ -96,7 +97,7 @@ async def execute_use(
     if item_id in HP_POTION_HEAL:
         if not await cog.bot.db.consume_inventory_item(user_id, guild_id, item_id):
             return "consume_failed", None
-        max_hp = await player_max_hp_for(cog, user_id, guild_id)
+        max_hp = await player_max_hp(cog, user_id, guild_id)
         heal_amt = float(HP_POTION_HEAL[item_id])
         new_hp, _ = await cog.bot.db.heal_player(user_id, guild_id, heal_amt, max_hp)
         return None, (
@@ -141,7 +142,7 @@ async def build_use_embed(cog: commands.Cog, user_id: int, guild_id: int) -> dis
     entries = await list_useable_entries(cog, user_id, guild_id)
     embed = discord.Embed(
         title="💊 Use consumables",
-        description="Select an item or drug product to use its effect.",
+        description="Select an item or drug product below to use its effect.",
         color=discord.Color.blurple(),
     )
     if entries:
@@ -155,7 +156,11 @@ async def build_use_embed(cog: commands.Cog, user_id: int, guild_id: int) -> dis
             value="_Nothing to use — buy consumables from `/shop` or harvest from `/drugs lab`._",
             inline=False,
         )
-    pending = await cog.bot.db.peek_pending_drug_buff(user_id, guild_id)
+    try:
+        pending = await cog.bot.db.peek_pending_drug_buff(user_id, guild_id)
+    except Exception:
+        logger.exception("Failed to read pending drug buff for /use panel")
+        pending = None
     if pending:
         embed.add_field(
             name="Active drug high",
@@ -213,6 +218,19 @@ class UseItemSelect(discord.ui.Select):
         await interaction.edit_original_response(embed=embed, view=view)
 
 
+class UseRefreshButton(discord.ui.Button):
+    def __init__(self, view: "UsePanelView") -> None:
+        super().__init__(label="Refresh", style=discord.ButtonStyle.secondary, row=1)
+        self._view = view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = await UsePanelView.build(
+            self._view.cog, self._view.guild_id, self._view.user_id,
+        )
+        embed = await build_use_embed(self._view.cog, self._view.user_id, self._view.guild_id)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+
 class UsePanelView(discord.ui.View):
     def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
         super().__init__(timeout=180.0)
@@ -225,6 +243,7 @@ class UsePanelView(discord.ui.View):
         view = cls(cog, guild_id, user_id)
         entries = await list_useable_entries(cog, user_id, guild_id)
         view.add_item(UseItemSelect(view, entries))
+        view.add_item(UseRefreshButton(view))
         return view
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -233,18 +252,26 @@ class UsePanelView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=1)
-    async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        del button
-        view = await UsePanelView.build(self.cog, self.guild_id, self.user_id)
-        embed = await build_use_embed(self.cog, self.user_id, self.guild_id)
-        await interaction.response.edit_message(embed=embed, view=view)
-
 
 async def send_use_panel(interaction: discord.Interaction, cog: commands.Cog) -> None:
     if interaction.guild_id is None:
         await interaction.response.send_message("Guild only.", ephemeral=True)
         return
-    embed = await build_use_embed(cog, interaction.user.id, interaction.guild_id)
-    view = await UsePanelView.build(cog, interaction.guild_id, interaction.user.id)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
+    try:
+        embed = await build_use_embed(cog, interaction.user.id, interaction.guild_id)
+        view = await UsePanelView.build(cog, interaction.guild_id, interaction.user.id)
+        await interaction.edit_original_response(embed=embed, view=view)
+    except Exception:
+        logger.exception("Failed to open /use panel for user %s", interaction.user.id)
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "Could not open the use panel. Try again in a moment.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "Could not open the use panel. Try again in a moment.",
+                ephemeral=True,
+            )

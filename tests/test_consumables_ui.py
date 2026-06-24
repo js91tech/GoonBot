@@ -23,7 +23,7 @@ class UsePanelTests(unittest.IsolatedAsyncioTestCase):
         Path(self.db_path).unlink(missing_ok=True)
 
     async def test_player_max_hp_does_not_crash(self) -> None:
-        from utils.drug_ui import player_max_hp
+        from utils.player_combat import player_max_hp
 
         await self.db.ensure_user(self.user_id, self.guild_id)
         await self.db.grant_item(self.user_id, self.guild_id, "iron_sword", equip_slot="weapon")
@@ -75,6 +75,37 @@ class UsePanelTests(unittest.IsolatedAsyncioTestCase):
         err, message = await execute_use(cog, self.user_id, self.guild_id, "energy_drink")
         self.assertIsNone(err)
         self.assertIn("Energy Drink", message or "")
+
+    async def test_send_use_panel_defers_then_edits(self) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.consumables_ui import send_use_panel
+
+        await self.db.ensure_user(self.user_id, self.guild_id)
+        await self.db.grant_item(self.user_id, self.guild_id, "raid_potion")
+
+        class FakeCog:
+            def __init__(self, bot: object) -> None:
+                self.bot = bot
+
+        cog = FakeCog(self)
+        interaction = MagicMock()
+        interaction.guild_id = self.guild_id
+        interaction.user.id = self.user_id
+        interaction.response = MagicMock()
+        interaction.response.is_done = MagicMock(return_value=False)
+        interaction.response.defer = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.edit_original_response = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+
+        await send_use_panel(interaction, cog)
+        interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+        interaction.edit_original_response.assert_awaited_once()
+        kwargs = interaction.edit_original_response.await_args.kwargs
+        self.assertIsNotNone(kwargs.get("embed"))
+        self.assertIsNotNone(kwargs.get("view"))
 
 
 if __name__ == "__main__":
