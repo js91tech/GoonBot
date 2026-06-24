@@ -641,11 +641,25 @@ class EndgameDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
 class DrugMathTests(unittest.TestCase):
     def test_catalog(self) -> None:
-        self.assertEqual(len(DRUGS), 14)
+        self.assertEqual(len(DRUGS), 27)
         self.assertEqual(drug_by_id("blue_dream").name, "Blue Dream")
         self.assertEqual(drug_by_id("greenleaf").name, "Blue Dream")
         self.assertEqual(drug_by_id("cocaine").category, "stimulant")
+        self.assertEqual(drug_by_id("addies").category, "stimulant")
+        self.assertEqual(drug_by_id("wockhardt").category, "lean")
+        self.assertEqual(drug_by_id("prometh_codeine").category, "codeine")
         self.assertIsNone(drug_by_id("nope"))
+
+    def test_category_grouping_includes_new_lines(self) -> None:
+        from utils.drugs import DRUG_CATEGORY_LABELS, drugs_by_category, drugs_for_category
+
+        grouped = drugs_by_category()
+        self.assertIn("codeine", grouped)
+        self.assertIn("lean", grouped)
+        self.assertEqual(len(drugs_for_category("lean")), 6)
+        self.assertEqual(len(drugs_for_category("codeine")), 4)
+        self.assertIn("addies", {d.drug_id for d in drugs_for_category("stimulant")})
+        self.assertIn("lean", DRUG_CATEGORY_LABELS)
 
     def test_yield_bonus(self) -> None:
         defn = DRUGS[0]
@@ -776,7 +790,8 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(float(pending["boss_mult"]), 1.0)
         taken = await self.db.take_pending_drug_buff(uid, guild_id)
         self.assertIsNotNone(taken)
-        self.assertIsNone(await self.db.peek_pending_drug_buff(uid, guild_id))
+        still_active = await self.db.peek_pending_drug_buff(uid, guild_id)
+        self.assertIsNotNone(still_active)
 
     async def test_market_list_and_buy(self) -> None:
         guild_id, seller, buyer = 1, 100, 200
@@ -812,6 +827,19 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(err)
         inv = await self.db.get_drug_inventory(seller, guild_id)
         self.assertEqual(inv.get("blue_dream"), 10)
+
+    async def test_list_user_drug_listings(self) -> None:
+        guild_id, seller, other = 1, 100, 200
+        await self.db.ensure_user(seller, guild_id)
+        await self.db.ensure_user(other, guild_id)
+        await self._stock_product(seller, guild_id, "wockhardt", 8)
+        await self._stock_product(other, guild_id, "blue_dream", 5)
+        await self.db.create_drug_listing(seller, guild_id, "wockhardt", 3, 500.0)
+        await self.db.create_drug_listing(other, guild_id, "blue_dream", 2, 150.0)
+        mine = await self.db.list_user_drug_listings(seller, guild_id)
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(str(mine[0]["drug_id"]), "wockhardt")
+        self.assertEqual(int(mine[0]["quantity"]), 3)
 
 
 if __name__ == "__main__":

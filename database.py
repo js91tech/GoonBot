@@ -3014,6 +3014,23 @@ class Database:
                     """,
                     (guild_id, user_id, item_id, qty),
                 )
+                from items import get_item, is_gear_instance_item
+
+                item = get_item(item_id)
+                if item is not None and is_gear_instance_item(item):
+                    import time
+
+                    now = time.time()
+                    for _ in range(qty):
+                        await self.conn.execute(
+                            """
+                            INSERT INTO gear_instances (
+                                guild_id, user_id, item_id, enhancement_level, is_broken, created_at
+                            )
+                            VALUES (?, ?, ?, 0, 0, ?)
+                            """,
+                            (guild_id, user_id, item_id, now),
+                        )
             except Exception:
                 await self.conn.rollback()
                 raise
@@ -3322,6 +3339,58 @@ class Database:
             )
             await self.conn.commit()
             return int(cursor.lastrowid)
+
+    async def sync_gear_instances_from_inventory(self, user_id: int, guild_id: int) -> int:
+        """Create gear_instances rows for owned gear that lacks enhanceable copies."""
+        from items import get_item, is_gear_instance_item
+
+        created = 0
+        async with self._write_lock:
+            await self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                await self._ensure_user_no_lock(user_id, guild_id)
+                cursor = await self.conn.execute(
+                    """
+                    SELECT item_id, quantity
+                    FROM inventory
+                    WHERE guild_id = ? AND user_id = ? AND quantity > 0
+                    """,
+                    (guild_id, user_id),
+                )
+                import time
+
+                now = time.time()
+                for row in await cursor.fetchall():
+                    item = get_item(str(row["item_id"]))
+                    if not is_gear_instance_item(item):
+                        continue
+                    owned = int(row["quantity"])
+                    count_cursor = await self.conn.execute(
+                        """
+                        SELECT COUNT(*) AS cnt
+                        FROM gear_instances
+                        WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                        """,
+                        (guild_id, user_id, str(row["item_id"])),
+                    )
+                    have = int((await count_cursor.fetchone())["cnt"])
+                    missing = max(0, owned - have)
+                    for _ in range(missing):
+                        await self.conn.execute(
+                            """
+                            INSERT INTO gear_instances (
+                                guild_id, user_id, item_id, enhancement_level, is_broken, created_at
+                            )
+                            VALUES (?, ?, ?, 0, 0, ?)
+                            """,
+                            (guild_id, user_id, str(row["item_id"]), now),
+                        )
+                        created += 1
+            except Exception:
+                await self.conn.rollback()
+                raise
+            await self.conn.commit()
+        return created
 
     async def get_gear_instance(self, instance_id: int, guild_id: int) -> aiosqlite.Row | None:
         cursor = await self.conn.execute(
@@ -6284,6 +6353,48 @@ class Database:
                 """,
                 (guild_id, receiver_id, item_id, qty),
             )
+            from items import get_item, is_gear_instance_item
+
+            item = get_item(item_id)
+            if item is not None and is_gear_instance_item(item):
+                import time
+
+                now = time.time()
+                for _ in range(qty):
+                    await self.conn.execute(
+                        """
+                        INSERT INTO gear_instances (
+                            guild_id, user_id, item_id, enhancement_level, is_broken, created_at
+                        )
+                        VALUES (?, ?, ?, 0, 0, ?)
+                        """,
+                        (guild_id, receiver_id, item_id, now),
+                    )
+                records = await self.get_equipment_records(sender_id, guild_id)
+                equipped_ids = {
+                    int(rec["gear_instance_id"])
+                    for rec in records.values()
+                    if rec.get("gear_instance_id") is not None
+                }
+                inst_cursor = await self.conn.execute(
+                    """
+                    SELECT instance_id
+                    FROM gear_instances
+                    WHERE guild_id = ? AND user_id = ? AND item_id = ?
+                    ORDER BY enhancement_level ASC, instance_id ASC
+                    """,
+                    (guild_id, sender_id, item_id),
+                )
+                removable = [
+                    int(r["instance_id"])
+                    for r in await inst_cursor.fetchall()
+                    if int(r["instance_id"]) not in equipped_ids
+                ][:qty]
+                for instance_id in removable:
+                    await self.conn.execute(
+                        "DELETE FROM gear_instances WHERE instance_id = ? AND guild_id = ?",
+                        (instance_id, guild_id),
+                    )
             await self.conn.commit()
         return None
 
@@ -8391,6 +8502,21 @@ class Database:
         )
         return [dict(r) for r in await cursor.fetchall()]
 
+    async def list_user_drug_listings(
+        self, user_id: int, guild_id: int, *, limit: int = 25,
+    ) -> list[dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT listing_id, drug_id, quantity, price_per_unit
+            FROM drug_market_listings
+            WHERE guild_id = ? AND seller_id = ?
+            ORDER BY listing_id DESC
+            LIMIT ?
+            """,
+            (guild_id, user_id, limit),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
     async def cancel_drug_listing(self, user_id: int, guild_id: int, listing_id: int) -> str | None:
         async with self._write_lock:
             cursor = await self.conn.execute(
@@ -8490,7 +8616,7 @@ class Database:
         """Consume one unit from the stash and apply immediate effects."""
         import random
 
-        from utils.drugs import drug_buff_key, drug_by_id
+        from utils.drugs import drug_buff_key, drug_by_id, drug_effect_duration, drug_has_timed_effect
 
         defn = drug_by_id(drug_id)
         if defn is None:
@@ -8536,8 +8662,9 @@ class Database:
                     "UPDATE user_character SET energy = ? WHERE user_id = ? AND guild_id = ?",
                     (new_energy, user_id, guild_id),
                 )
-            if boss_mult > 1.0 or duel_mult > 1.0:
-                expires = time.time() + defn.effect_duration
+            if boss_mult > 1.0 or duel_mult > 1.0 or defn.effect_cc_immunity:
+                duration = drug_effect_duration(defn)
+                expires = time.time() + duration
                 await self._ensure_character_no_lock(user_id, guild_id)
                 await self.conn.execute(
                     """
@@ -8548,6 +8675,7 @@ class Database:
                     (drug_buff_key(canonical_id, buff_variant), expires, user_id, guild_id),
                 )
             await self.conn.commit()
+        buff_duration = drug_effect_duration(defn) if drug_has_timed_effect(defn) else None
         new_hp: float | None = None
         if heal_amount > 0:
             new_hp, _ = await self.heal_player(user_id, guild_id, heal_amount, max_hp)
@@ -8567,75 +8695,25 @@ class Database:
             "overdosed": overdosed,
             "boss_buff": boss_mult if boss_mult > 1.0 else None,
             "duel_buff": duel_mult if duel_mult > 1.0 else None,
-            "buff_duration": defn.effect_duration if boss_mult > 1.0 or duel_mult > 1.0 else None,
+            "buff_duration": buff_duration,
+            "cc_immunity": defn.effect_cc_immunity,
+            "attack_hp_risk_chance": defn.effect_attack_hp_risk_chance,
+            "attack_hp_risk_pct": defn.effect_attack_hp_risk_pct,
         }
 
-    async def take_pending_drug_buff(self, user_id: int, guild_id: int) -> dict[str, object] | None:
-        """Consume an active drug combat buff if present and not expired."""
-        from utils.drugs import DRUG_BUFF_PREFIX, drug_by_id, parse_drug_buff_key
-
-        async with self._write_lock:
-            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
-            try:
-                pending = row["pending_consumable"]
-                expires = float(row["pending_consumable_expires"] or 0)
-            except (KeyError, TypeError):
-                return None
-            drug_id = parse_drug_buff_key(str(pending) if pending else None)
-            if drug_id is None:
-                return None
-            if expires < time.time():
-                await self.conn.execute(
-                    """
-                    UPDATE user_character
-                    SET pending_consumable = NULL, pending_consumable_expires = NULL
-                    WHERE user_id = ? AND guild_id = ?
-                    """,
-                    (user_id, guild_id),
-                )
-                await self.conn.commit()
-                return None
-            defn = drug_by_id(drug_id)
-            if defn is None:
-                return None
-            pending_str = str(pending)
-            variant = pending_str.split(":", 2)[2] if pending_str.count(":") >= 2 else None
-            boss_mult = defn.effect_boss_mult
-            duel_mult = defn.effect_duel_mult
-            if defn.drug_id == "lsd" and variant == "boss":
-                duel_mult = 1.0
-            elif defn.drug_id == "lsd" and variant == "duel":
-                boss_mult = 1.0
-            await self.conn.execute(
-                """
-                UPDATE user_character
-                SET pending_consumable = NULL, pending_consumable_expires = NULL
-                WHERE user_id = ? AND guild_id = ?
-                """,
-                (user_id, guild_id),
-            )
-            await self.conn.commit()
-            return {
-                "drug_id": defn.drug_id,
-                "name": defn.name,
-                "boss_mult": boss_mult,
-                "duel_mult": duel_mult,
-            }
-
-    async def peek_pending_drug_buff(self, user_id: int, guild_id: int) -> dict[str, object] | None:
-        """Return active drug combat buff without consuming it."""
+    def _pending_drug_buff_payload(
+        self,
+        pending: str,
+        expires: float,
+        *,
+        now: float,
+    ) -> dict[str, object] | None:
         from utils.drugs import drug_by_id, parse_drug_buff_key
 
-        row = await self._refresh_character_energy_unlocked(user_id, guild_id)
-        try:
-            pending = row["pending_consumable"]
-            expires = float(row["pending_consumable_expires"] or 0)
-        except (KeyError, TypeError):
-            return None
-        drug_id = parse_drug_buff_key(str(pending) if pending else None)
+        drug_id = parse_drug_buff_key(pending)
         if drug_id is None:
             return None
-        if expires < time.time():
+        if expires < now:
             return None
         defn = drug_by_id(drug_id)
         if defn is None:
@@ -8653,8 +8731,109 @@ class Database:
             "name": defn.name,
             "boss_mult": boss_mult,
             "duel_mult": duel_mult,
+            "cc_immunity": defn.effect_cc_immunity,
+            "attack_hp_risk_chance": defn.effect_attack_hp_risk_chance,
+            "attack_hp_risk_pct": defn.effect_attack_hp_risk_pct,
             "expires": expires,
         }
+
+    async def _clear_expired_pending_drug_buff(
+        self, user_id: int, guild_id: int, *, now: float | None = None,
+    ) -> None:
+        at = time.time() if now is None else now
+        row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+        try:
+            pending = row["pending_consumable"]
+            expires = float(row["pending_consumable_expires"] or 0)
+        except (KeyError, TypeError):
+            return
+        from utils.drugs import parse_drug_buff_key
+
+        if parse_drug_buff_key(str(pending) if pending else None) is None:
+            return
+        if expires >= at:
+            return
+        await self.conn.execute(
+            """
+            UPDATE user_character
+            SET pending_consumable = NULL, pending_consumable_expires = NULL
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (user_id, guild_id),
+        )
+        await self.conn.commit()
+
+    async def take_pending_drug_buff(self, user_id: int, guild_id: int) -> dict[str, object] | None:
+        """Return the active drug combat buff without consuming it."""
+        return await self.peek_pending_drug_buff(user_id, guild_id)
+
+    async def peek_pending_drug_buff(self, user_id: int, guild_id: int) -> dict[str, object] | None:
+        """Return active drug combat buff without consuming it."""
+        async with self._write_lock:
+            now = time.time()
+            await self._clear_expired_pending_drug_buff(user_id, guild_id, now=now)
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            try:
+                pending = row["pending_consumable"]
+                expires = float(row["pending_consumable_expires"] or 0)
+            except (KeyError, TypeError):
+                return None
+            return self._pending_drug_buff_payload(str(pending) if pending else "", expires, now=now)
+
+    async def has_active_drug_cc_immunity(self, user_id: int, guild_id: int) -> bool:
+        buff = await self.peek_pending_drug_buff(user_id, guild_id)
+        return bool(buff and buff.get("cc_immunity"))
+
+    async def roll_drug_attack_hp_risk(
+        self,
+        user_id: int,
+        guild_id: int,
+        *,
+        max_hp: float,
+    ) -> tuple[float, str]:
+        """During opioid highs, each attack may self-damage."""
+        import random
+
+        async with self._write_lock:
+            now = time.time()
+            await self._clear_expired_pending_drug_buff(user_id, guild_id, now=now)
+            row = await self._refresh_character_energy_unlocked(user_id, guild_id)
+            try:
+                pending = row["pending_consumable"]
+                expires = float(row["pending_consumable_expires"] or 0)
+            except (KeyError, TypeError):
+                return 0.0, ""
+            buff = self._pending_drug_buff_payload(str(pending) if pending else "", expires, now=now)
+            if buff is None:
+                return 0.0, ""
+            chance = float(buff.get("attack_hp_risk_chance") or 0.0)
+            pct = float(buff.get("attack_hp_risk_pct") or 0.0)
+            if chance <= 0.0 or pct <= 0.0 or random.random() >= chance:
+                return 0.0, ""
+            damage = max(1.0, max_hp * pct)
+            cursor = await self.conn.execute(
+                """
+                SELECT hp, max_hp
+                FROM combat_state
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (guild_id, user_id),
+            )
+            hp_row = await cursor.fetchone()
+            hp = max_hp if hp_row is None else min(max_hp, float(hp_row["hp"]))
+            new_hp = max(0.0, hp - damage)
+            await self.conn.execute(
+                """
+                INSERT INTO combat_state (guild_id, user_id, hp, max_hp)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    hp = excluded.hp,
+                    max_hp = excluded.max_hp
+                """,
+                (guild_id, user_id, new_hp, max_hp),
+            )
+            await self.conn.commit()
+        return damage, f" 💉 **Withdrawal hit!** Lost **{int(damage)}** HP."
 
     async def _active_buff_multiplier_no_lock(
         self, user_id: int, guild_id: int, now: float,

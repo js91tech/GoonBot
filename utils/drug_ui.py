@@ -9,7 +9,14 @@ import discord
 
 import config
 from utils.drug_art import render_lab_image
-from utils.drugs import DRUGS, drug_by_id, format_consume_message
+from utils.drugs import (
+    DRUGS,
+    DRUG_CATEGORY_LABELS,
+    drug_by_id,
+    drugs_by_category,
+    drugs_for_category,
+    format_consume_message,
+)
 from utils.helpers import fmt_amount
 from utils.quests import record_quest_event
 
@@ -57,6 +64,21 @@ async def consume_stash_product(
 ) -> dict[str, object]:
     max_hp = await player_max_hp(cog, user_id, guild_id)
     return await cog.bot.db.consume_drug(user_id, guild_id, drug_id, max_hp=max_hp)
+
+
+def _active_drug_buff_lines(pending_buff: dict[str, object]) -> list[str]:
+    buff_parts: list[str] = []
+    if float(pending_buff["boss_mult"]) > 1.0:
+        pct = int((float(pending_buff["boss_mult"]) - 1.0) * 100)
+        buff_parts.append(f"**/attack** +{pct}%")
+    if float(pending_buff["duel_mult"]) > 1.0:
+        pct = int((float(pending_buff["duel_mult"]) - 1.0) * 100)
+        buff_parts.append(f"**/duel** +{pct}%")
+    if pending_buff.get("cc_immunity"):
+        risk = int(float(pending_buff.get("attack_hp_risk_chance") or 0) * 100)
+        hp_loss = int(float(pending_buff.get("attack_hp_risk_pct") or 0) * 100)
+        buff_parts.append(f"CC immune · {risk}%/-{hp_loss}% HP per hit")
+    return buff_parts
 
 
 async def build_lab_embed(
@@ -113,13 +135,7 @@ async def build_lab_embed(
         embed.add_field(name="Stash", value="\n".join(inv_lines), inline=False)
 
     if pending_buff:
-        buff_parts = []
-        if float(pending_buff["boss_mult"]) > 1.0:
-            pct = int((float(pending_buff["boss_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/attack** +{pct}%")
-        if float(pending_buff["duel_mult"]) > 1.0:
-            pct = int((float(pending_buff["duel_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/duel** +{pct}%")
+        buff_parts = _active_drug_buff_lines(pending_buff)
         embed.add_field(
             name="Active high",
             value=(
@@ -135,21 +151,59 @@ async def build_lab_embed(
     return embed, file
 
 
+class PlantCategorySelect(discord.ui.Select):
+    def __init__(self, view: "DrugLabView", *, selected: str) -> None:
+        self._view = view
+        options = [
+            discord.SelectOption(
+                label=DRUG_CATEGORY_LABELS.get(category, category.title()),
+                value=category,
+                default=category == selected,
+            )
+            for category in drugs_by_category()
+        ]
+        super().__init__(
+            placeholder="Product category…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        self._view.plant_category = self.values[0]
+        view = await DrugLabView.build(
+            self._view.cog, self._view.guild_id, self._view.user_id,
+            plant_category=self.values[0],
+        )
+        embed, file = await build_lab_embed(self._view.cog, self._view.guild_id, self._view.user_id)
+        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+
+
 class PlantSelect(discord.ui.Select):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int, *, category: str) -> None:
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
         options = [
             discord.SelectOption(
                 label=defn.name,
                 value=defn.drug_id,
-                description=f"{defn.category.title()} · seed {fmt_amount(defn.seed_cost)} · {defn.grow_seconds // 60}m"[:100],
+                description=(
+                    f"{DRUG_CATEGORY_LABELS.get(defn.category, defn.category.title())} · "
+                    f"seed {fmt_amount(defn.seed_cost)} · {defn.grow_seconds // 60}m"
+                )[:100],
                 emoji=defn.emoji,
             )
-            for defn in DRUGS
+            for defn in drugs_for_category(category)
         ]
-        super().__init__(placeholder="Plant a strain…", options=options, row=0)
-        self.cog = cog
-        self.guild_id = guild_id
-        self.user_id = user_id
+        super().__init__(
+            placeholder=f"Plant {DRUG_CATEGORY_LABELS.get(category, category)}…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=1,
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         cost, err = await self.cog.bot.db.plant_drug(self.user_id, self.guild_id, self.values[0])
@@ -268,16 +322,34 @@ class StreetSellModal(discord.ui.Modal, title="Sell on the street"):
 
 
 class DrugLabView(discord.ui.View):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        *,
+        plant_category: str = "cannabis",
+    ) -> None:
         super().__init__(timeout=180.0)
         self.cog = cog
         self.guild_id = guild_id
         self.user_id = user_id
+        self.plant_category = plant_category
 
     @classmethod
-    async def build(cls, cog: commands.Cog, guild_id: int, user_id: int) -> DrugLabView:
-        view = cls(cog, guild_id, user_id)
-        view.add_item(PlantSelect(cog, guild_id, user_id))
+    async def build(
+        cls,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        *,
+        plant_category: str | None = None,
+    ) -> "DrugLabView":
+        categories = list(drugs_by_category())
+        category = plant_category if plant_category in categories else categories[0]
+        view = cls(cog, guild_id, user_id, plant_category=category)
+        view.add_item(PlantCategorySelect(view, selected=category))
+        view.add_item(PlantSelect(cog, guild_id, user_id, category=category))
         inventory = await cog.bot.db.get_drug_inventory(user_id, guild_id)
         options = stash_select_options(inventory)
         view.add_item(SellSelect(cog, guild_id, user_id, options))
@@ -346,7 +418,23 @@ async def build_drug_market_embed(
         embed.add_field(name="Listings", value="\n".join(lines[:15]), inline=False)
     else:
         embed.add_field(name="Listings", value="_No listings yet._", inline=False)
-    embed.set_footer(text=f"Market tax {int(config.DRUG_MARKET_TAX * 100)}% on sales")
+    my_listings = await cog.bot.db.list_user_drug_listings(user_id, guild.id)
+    if my_listings:
+        mine = []
+        for listing in my_listings:
+            defn = drug_by_id(str(listing["drug_id"]))
+            name = defn.name if defn else str(listing["drug_id"])
+            emoji = defn.emoji if defn else "📦"
+            mine.append(
+                f"`#{int(listing['listing_id'])}` {emoji} **{name}** ×{int(listing['quantity'])} "
+                f"@ {fmt_amount(float(listing['price_per_unit']))}/unit",
+            )
+        embed.add_field(
+            name="Your listings",
+            value="\n".join(mine[:10]) + ("\n_Use the dropdown below to unlist._" if mine else ""),
+            inline=False,
+        )
+    embed.set_footer(text=f"Market tax {int(config.DRUG_MARKET_TAX * 100)}% on sales · unlist returns product to stash")
     return embed
 
 
@@ -454,6 +542,63 @@ class BuyListingModal(discord.ui.Modal, title="Buy from listing"):
         await interaction.response.edit_message(embed=embed, view=view)
 
 
+class UnlistListingSelect(discord.ui.Select):
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        listings: list[dict[str, object]],
+    ) -> None:
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
+        if listings:
+            options = []
+            for listing in listings[:25]:
+                defn = drug_by_id(str(listing["drug_id"]))
+                name = defn.name if defn else str(listing["drug_id"])
+                emoji = defn.emoji if defn else "📦"
+                listing_id = int(listing["listing_id"])
+                qty = int(listing["quantity"])
+                price = fmt_amount(float(listing["price_per_unit"]))
+                options.append(
+                    discord.SelectOption(
+                        label=f"#{listing_id} {name} ×{qty}"[:100],
+                        value=str(listing_id),
+                        description=f"{emoji} @ {price}/unit — returns to stash"[:100],
+                    ),
+                )
+            disabled = False
+        else:
+            options = [discord.SelectOption(label="No active listings", value="_none")]
+            disabled = True
+        super().__init__(
+            placeholder="Unlist your product…",
+            options=options,
+            disabled=disabled,
+            row=2,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.values[0] == "_none":
+            await interaction.response.send_message("You have no listings to remove.", ephemeral=True)
+            return
+        listing_id = int(self.values[0])
+        err = await self.cog.bot.db.cancel_drug_listing(self.user_id, self.guild_id, listing_id)
+        messages = {
+            "not_found": "That listing no longer exists.",
+            "not_owner": "You can only unlist your own product.",
+        }
+        if err:
+            await interaction.response.send_message(messages.get(err, "Could not unlist."), ephemeral=True)
+            return
+        embed = await build_drug_market_embed(self.cog, interaction.guild, self.user_id)
+        view = await DrugMarketView.build(self.cog, self.guild_id, self.user_id)
+        embed.description = f"📤 Unlisted listing **#{listing_id}** — product returned to your stash."
+        await interaction.response.edit_message(embed=embed, view=view)
+
+
 class DrugMarketView(discord.ui.View):
     def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
         super().__init__(timeout=180.0)
@@ -466,6 +611,8 @@ class DrugMarketView(discord.ui.View):
         view = cls(cog, guild_id, user_id)
         inventory = await cog.bot.db.get_drug_inventory(user_id, guild_id)
         view.add_item(ListProductSelect(cog, guild_id, user_id, stash_select_options(inventory)))
+        my_listings = await cog.bot.db.list_user_drug_listings(user_id, guild_id)
+        view.add_item(UnlistListingSelect(cog, guild_id, user_id, my_listings))
         return view
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -497,7 +644,9 @@ async def build_drug_catalog_embed() -> discord.Embed:
     )
     category_labels = {
         "cannabis": "🌿 Cannabis (THC strains)",
-        "stimulant": "⚡ Stimulants",
+        "stimulant": "⚡ Stimulants (incl. addies)",
+        "codeine": "💊 Codeine",
+        "lean": "🍇 Lean (Hi-Tech, Wockhardt, Tris, etc.)",
         "opioid": "💉 Opioids",
         "psychedelic": "🌈 Psychedelics",
     }
@@ -542,13 +691,7 @@ async def build_stash_embed(
     else:
         embed.add_field(name="Inventory", value="_Empty — harvest from /drugs lab._", inline=False)
     if pending_buff:
-        buff_parts = []
-        if float(pending_buff["boss_mult"]) > 1.0:
-            pct = int((float(pending_buff["boss_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/attack** +{pct}%")
-        if float(pending_buff["duel_mult"]) > 1.0:
-            pct = int((float(pending_buff["duel_mult"]) - 1.0) * 100)
-            buff_parts.append(f"**/duel** +{pct}%")
+        buff_parts = _active_drug_buff_lines(pending_buff)
         embed.add_field(
             name="Active high",
             value=(

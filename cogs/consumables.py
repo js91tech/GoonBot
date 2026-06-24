@@ -9,7 +9,10 @@ from discord.ext import commands
 import config
 from items import GIFTABLE_ITEM_IDS, get_item
 from utils.bot_players import pvp_target_error
+from utils.drug_ui import player_max_hp
+from utils.drugs import drug_by_id, format_consume_message
 from utils.helpers import guild_only_message
+from utils.quests import record_quest_event
 
 
 class Consumables(commands.Cog):
@@ -45,6 +48,24 @@ class Consumables(commands.Cog):
             )
             if len(choices) >= 25:
                 break
+        if len(choices) < 25:
+            drug_inv = await self.bot.db.get_drug_inventory(
+                interaction.user.id, interaction.guild_id,
+            )
+            for drug_id, qty in drug_inv.items():
+                if qty <= 0:
+                    continue
+                defn = drug_by_id(drug_id)
+                if defn is None:
+                    continue
+                label = f"{defn.emoji} {defn.name} x{qty}"
+                if needle and needle not in drug_id and needle not in defn.name.lower():
+                    continue
+                choices.append(
+                    app_commands.Choice(name=label[:100], value=drug_id),
+                )
+                if len(choices) >= 25:
+                    break
         return choices
 
     async def gift_item_autocomplete(
@@ -76,25 +97,55 @@ class Consumables(commands.Cog):
                 break
         return choices
 
-    @app_commands.command(name="use", description="Use a consumable from your inventory.")
-    @app_commands.describe(item="Consumable to use")
+    @app_commands.command(
+        name="use",
+        description="Use a consumable from your inventory or harvested product from your stash.",
+    )
+    @app_commands.describe(item="Consumable or drug product to use")
     @app_commands.autocomplete(item=use_item_autocomplete)
     @app_commands.guild_only()
     async def use_item(self, interaction: discord.Interaction, item: str) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
+        guild_id = interaction.guild_id
+        uid = interaction.user.id
+        item_id = item.strip().lower()
+
+        drug = drug_by_id(item_id)
+        if drug is not None:
+            stash_qty = (await self.bot.db.get_drug_inventory(uid, guild_id)).get(drug.drug_id, 0)
+            if stash_qty <= 0:
+                await interaction.response.send_message(
+                    "You don't have that product in your stash.", ephemeral=True,
+                )
+                return
+            max_hp = await player_max_hp(self, uid, guild_id)
+            result = await self.bot.db.consume_drug(uid, guild_id, drug.drug_id, max_hp=max_hp)
+            if result.get("error"):
+                messages = {
+                    "invalid_drug": "Unknown product.",
+                    "insufficient_product": "You don't have any of that left.",
+                }
+                await interaction.response.send_message(
+                    messages.get(str(result["error"]), "Could not use that product."),
+                    ephemeral=True,
+                )
+                return
+            await record_quest_event(self.bot.db, guild_id, uid, "drug_use")
+            await interaction.response.send_message(
+                format_consume_message(result), ephemeral=True,
+            )
+            return
+
         from items import CONSUMABLE_USE_IDS
 
-        item_id = item.strip()
         shop_item = get_item(item_id)
         if shop_item is None or item_id not in CONSUMABLE_USE_IDS:
             await interaction.response.send_message(
                 "That item cannot be used with /use.", ephemeral=True,
             )
             return
-        guild_id = interaction.guild_id
-        uid = interaction.user.id
         qty = await self.bot.db.get_inventory_quantity(uid, guild_id, item_id)
         if qty <= 0:
             await interaction.response.send_message(
