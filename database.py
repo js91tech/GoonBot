@@ -8502,6 +8502,21 @@ class Database:
         )
         return [dict(r) for r in await cursor.fetchall()]
 
+    async def list_user_drug_listings(
+        self, user_id: int, guild_id: int, *, limit: int = 25,
+    ) -> list[dict[str, object]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT listing_id, drug_id, quantity, price_per_unit
+            FROM drug_market_listings
+            WHERE guild_id = ? AND seller_id = ?
+            ORDER BY listing_id DESC
+            LIMIT ?
+            """,
+            (guild_id, user_id, limit),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
     async def cancel_drug_listing(self, user_id: int, guild_id: int, listing_id: int) -> str | None:
         async with self._write_lock:
             cursor = await self.conn.execute(

@@ -828,6 +828,19 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         inv = await self.db.get_drug_inventory(seller, guild_id)
         self.assertEqual(inv.get("blue_dream"), 10)
 
+    async def test_list_user_drug_listings(self) -> None:
+        guild_id, seller, other = 1, 100, 200
+        await self.db.ensure_user(seller, guild_id)
+        await self.db.ensure_user(other, guild_id)
+        await self._stock_product(seller, guild_id, "wockhardt", 8)
+        await self._stock_product(other, guild_id, "blue_dream", 5)
+        await self.db.create_drug_listing(seller, guild_id, "wockhardt", 3, 500.0)
+        await self.db.create_drug_listing(other, guild_id, "blue_dream", 2, 150.0)
+        mine = await self.db.list_user_drug_listings(seller, guild_id)
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(str(mine[0]["drug_id"]), "wockhardt")
+        self.assertEqual(int(mine[0]["quantity"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

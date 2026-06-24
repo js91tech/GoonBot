@@ -418,7 +418,23 @@ async def build_drug_market_embed(
         embed.add_field(name="Listings", value="\n".join(lines[:15]), inline=False)
     else:
         embed.add_field(name="Listings", value="_No listings yet._", inline=False)
-    embed.set_footer(text=f"Market tax {int(config.DRUG_MARKET_TAX * 100)}% on sales")
+    my_listings = await cog.bot.db.list_user_drug_listings(user_id, guild.id)
+    if my_listings:
+        mine = []
+        for listing in my_listings:
+            defn = drug_by_id(str(listing["drug_id"]))
+            name = defn.name if defn else str(listing["drug_id"])
+            emoji = defn.emoji if defn else "📦"
+            mine.append(
+                f"`#{int(listing['listing_id'])}` {emoji} **{name}** ×{int(listing['quantity'])} "
+                f"@ {fmt_amount(float(listing['price_per_unit']))}/unit",
+            )
+        embed.add_field(
+            name="Your listings",
+            value="\n".join(mine[:10]) + ("\n_Use the dropdown below to unlist._" if mine else ""),
+            inline=False,
+        )
+    embed.set_footer(text=f"Market tax {int(config.DRUG_MARKET_TAX * 100)}% on sales · unlist returns product to stash")
     return embed
 
 
@@ -526,6 +542,63 @@ class BuyListingModal(discord.ui.Modal, title="Buy from listing"):
         await interaction.response.edit_message(embed=embed, view=view)
 
 
+class UnlistListingSelect(discord.ui.Select):
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        listings: list[dict[str, object]],
+    ) -> None:
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
+        if listings:
+            options = []
+            for listing in listings[:25]:
+                defn = drug_by_id(str(listing["drug_id"]))
+                name = defn.name if defn else str(listing["drug_id"])
+                emoji = defn.emoji if defn else "📦"
+                listing_id = int(listing["listing_id"])
+                qty = int(listing["quantity"])
+                price = fmt_amount(float(listing["price_per_unit"]))
+                options.append(
+                    discord.SelectOption(
+                        label=f"#{listing_id} {name} ×{qty}"[:100],
+                        value=str(listing_id),
+                        description=f"{emoji} @ {price}/unit — returns to stash"[:100],
+                    ),
+                )
+            disabled = False
+        else:
+            options = [discord.SelectOption(label="No active listings", value="_none")]
+            disabled = True
+        super().__init__(
+            placeholder="Unlist your product…",
+            options=options,
+            disabled=disabled,
+            row=2,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.values[0] == "_none":
+            await interaction.response.send_message("You have no listings to remove.", ephemeral=True)
+            return
+        listing_id = int(self.values[0])
+        err = await self.cog.bot.db.cancel_drug_listing(self.user_id, self.guild_id, listing_id)
+        messages = {
+            "not_found": "That listing no longer exists.",
+            "not_owner": "You can only unlist your own product.",
+        }
+        if err:
+            await interaction.response.send_message(messages.get(err, "Could not unlist."), ephemeral=True)
+            return
+        embed = await build_drug_market_embed(self.cog, interaction.guild, self.user_id)
+        view = await DrugMarketView.build(self.cog, self.guild_id, self.user_id)
+        embed.description = f"📤 Unlisted listing **#{listing_id}** — product returned to your stash."
+        await interaction.response.edit_message(embed=embed, view=view)
+
+
 class DrugMarketView(discord.ui.View):
     def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
         super().__init__(timeout=180.0)
@@ -538,6 +611,8 @@ class DrugMarketView(discord.ui.View):
         view = cls(cog, guild_id, user_id)
         inventory = await cog.bot.db.get_drug_inventory(user_id, guild_id)
         view.add_item(ListProductSelect(cog, guild_id, user_id, stash_select_options(inventory)))
+        my_listings = await cog.bot.db.list_user_drug_listings(user_id, guild_id)
+        view.add_item(UnlistListingSelect(cog, guild_id, user_id, my_listings))
         return view
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:

@@ -16,6 +16,7 @@ from utils.drug_ui import (
     send_drug_market_panel,
 )
 from utils.drugs import drug_by_id
+from utils.helpers import guild_only_message
 from utils.quests import record_quest_event
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,34 @@ class Drugs(commands.Cog):
                 app_commands.Choice(
                     name=f"{defn.name} x{qty}",
                     value=drug_id,
+                ),
+            )
+            if len(choices) >= 25:
+                break
+        return choices
+
+    async def listing_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        if interaction.guild_id is None:
+            return []
+        listings = await self.bot.db.list_user_drug_listings(
+            interaction.user.id, interaction.guild_id,
+        )
+        needle = current.lower().lstrip("#")
+        choices: list[app_commands.Choice[str]] = []
+        for listing in listings:
+            listing_id = int(listing["listing_id"])
+            defn = drug_by_id(str(listing["drug_id"]))
+            name = defn.name if defn is not None else str(listing["drug_id"])
+            if needle and needle not in str(listing_id) and needle not in name.lower():
+                continue
+            choices.append(
+                app_commands.Choice(
+                    name=f"#{listing_id} {name} ×{int(listing['quantity'])}"[:100],
+                    value=str(listing_id),
                 ),
             )
             if len(choices) >= 25:
@@ -108,6 +137,36 @@ class Drugs(commands.Cog):
             return
         await record_quest_event(self.bot.db, interaction.guild_id, interaction.user.id, "drug_use")
         await interaction.response.send_message(format_consume_message(result), ephemeral=True)
+
+    @drugs_group.command(
+        name="unlist",
+        description="Remove one of your black-market listings and return product to stash.",
+    )
+    @app_commands.describe(listing="Your listing # to remove")
+    @app_commands.autocomplete(listing=listing_autocomplete)
+    async def unlist(self, interaction: discord.Interaction, listing: str) -> None:
+        if interaction.guild_id is None:
+            await interaction.response.send_message(guild_only_message(), ephemeral=True)
+            return
+        try:
+            listing_id = int(listing.strip().lstrip("#"))
+        except ValueError:
+            await interaction.response.send_message("Enter a valid listing #.", ephemeral=True)
+            return
+        err = await self.bot.db.cancel_drug_listing(
+            interaction.user.id, interaction.guild_id, listing_id,
+        )
+        messages = {
+            "not_found": "That listing no longer exists.",
+            "not_owner": "You can only unlist your own product.",
+        }
+        if err:
+            await interaction.response.send_message(messages.get(err, "Could not unlist."), ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"📤 Unlisted **#{listing_id}** — product returned to your stash.",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot) -> None:
