@@ -67,7 +67,7 @@ class Consumables(commands.Cog):
                 )
 
     @app_commands.command(
-        name="gift",
+        name="gift-item",
         description="Gift chia seeds (or other giftable items) from your inventory.",
     )
     @app_commands.describe(

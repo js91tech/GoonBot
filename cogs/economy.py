@@ -31,6 +31,7 @@ class CoinDropView(discord.ui.View):
         self.amount = amount
         self._claimed = False
         self._claim_lock = asyncio.Lock()
+        self.message: discord.Message | None = None
 
     async def on_timeout(self) -> None:
         for item in self.children:
