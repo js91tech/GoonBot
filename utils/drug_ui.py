@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import time
 from typing import TYPE_CHECKING
 
@@ -24,11 +25,35 @@ from utils.quests import record_quest_event
 if TYPE_CHECKING:
     from discord.ext import commands
 
+logger = logging.getLogger(__name__)
+
 
 async def player_max_hp(cog: commands.Cog, user_id: int, guild_id: int) -> float:
     from utils.player_combat import player_max_hp as _player_max_hp
 
     return await _player_max_hp(cog, user_id, guild_id)
+
+
+async def _apply_lab_panel(
+    interaction: discord.Interaction,
+    cog: commands.Cog,
+    guild_id: int,
+    user_id: int,
+    *,
+    description: str | None = None,
+    plant_category: str | None = None,
+) -> None:
+    """Refresh the lab embed and controls without re-uploading the banner image."""
+    view = await DrugLabView.build(
+        cog, guild_id, user_id, plant_category=plant_category,
+    )
+    embed, _file = await build_lab_embed(cog, guild_id, user_id)
+    if description is not None:
+        embed.description = description
+    if interaction.response.is_done():
+        await interaction.edit_original_response(embed=embed, view=view)
+    else:
+        await interaction.response.edit_message(embed=embed, view=view)
 
 
 def stash_select_options(inventory: dict[str, int]) -> list[discord.SelectOption]:
@@ -207,12 +232,24 @@ class PlantCategorySelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         self._view.plant_category = self.values[0]
-        view = await DrugLabView.build(
-            self._view.cog, self._view.guild_id, self._view.user_id,
-            plant_category=self.values[0],
-        )
-        embed, file = await build_lab_embed(self._view.cog, self._view.guild_id, self._view.user_id)
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+        await interaction.response.defer()
+        try:
+            await _apply_lab_panel(
+                interaction,
+                self._view.cog,
+                self._view.guild_id,
+                self._view.user_id,
+                plant_category=self.values[0],
+            )
+        except Exception:
+            logger.exception(
+                "lab category switch failed user=%s guild=%s",
+                self._view.user_id,
+                self._view.guild_id,
+            )
+            await interaction.followup.send(
+                "Could not refresh the lab — try again.", ephemeral=True,
+            )
 
 
 class PlantSelect(discord.ui.Select):
@@ -250,12 +287,24 @@ class PlantSelect(discord.ui.Select):
         if err:
             await interaction.response.send_message(messages.get(err, err), ephemeral=True)
             return
-        await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_plant")
-        defn = drug_by_id(self.values[0])
-        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
-        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
-        embed.description = f"🌱 Planted **{defn.name if defn else 'a strain'}** for **{fmt_amount(cost)}**."
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+        await interaction.response.defer()
+        try:
+            await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_plant")
+            defn = drug_by_id(self.values[0])
+            desc = f"🌱 Planted **{defn.name if defn else 'a strain'}** for **{fmt_amount(cost)}**."
+            await _apply_lab_panel(
+                interaction, self.cog, self.guild_id, self.user_id, description=desc,
+            )
+        except Exception:
+            logger.exception(
+                "lab plant UI refresh failed user=%s guild=%s",
+                self.user_id,
+                self.guild_id,
+            )
+            await interaction.followup.send(
+                "Planted, but the panel could not refresh — reopen `/drugs lab`.",
+                ephemeral=True,
+            )
 
 
 class FertilizeSelect(discord.ui.Select):
@@ -321,12 +370,26 @@ class FertilizeSelect(discord.ui.Select):
         if err:
             await interaction.response.send_message(messages.get(err, err), ephemeral=True)
             return
-        fert = fertilizer_by_id(fert_id)
-        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
-        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
-        name = fert.name if fert else "Fertilizer"
-        embed.description = f"{fert.emoji if fert else '🧪'} Applied **{name}** — faster grow and bigger harvest!"
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+        await interaction.response.defer()
+        try:
+            fert = fertilizer_by_id(fert_id)
+            name = fert.name if fert else "Fertilizer"
+            desc = (
+                f"{fert.emoji if fert else '🧪'} Applied **{name}** — "
+                "faster grow and bigger harvest!"
+            )
+            await _apply_lab_panel(
+                interaction, self.cog, self.guild_id, self.user_id, description=desc,
+            )
+        except Exception:
+            logger.exception(
+                "lab fertilize UI refresh failed user=%s guild=%s",
+                self.user_id,
+                self.guild_id,
+            )
+            await interaction.followup.send(
+                "Fertilizer applied, but the panel could not refresh.", ephemeral=True,
+            )
 
 
 class StashActionSelect(discord.ui.Select):
@@ -361,21 +424,35 @@ class StashActionSelect(discord.ui.Select):
         if action != "use":
             await interaction.response.send_message("Unknown stash action.", ephemeral=True)
             return
+        await interaction.response.defer()
         result = await consume_stash_product(self.cog, self.guild_id, self.user_id, drug_id)
         if result.get("error"):
             messages = {
                 "invalid_drug": "Unknown product.",
                 "insufficient_product": "You don't have any of that left.",
             }
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 messages.get(str(result["error"]), "Could not use."), ephemeral=True,
             )
             return
-        await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_use")
-        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
-        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
-        embed.description = format_consume_message(result)
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+        try:
+            await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_use")
+            await _apply_lab_panel(
+                interaction,
+                self.cog,
+                self.guild_id,
+                self.user_id,
+                description=format_consume_message(result),
+            )
+        except Exception:
+            logger.exception(
+                "lab stash use UI refresh failed user=%s guild=%s",
+                self.user_id,
+                self.guild_id,
+            )
+            await interaction.followup.send(
+                "Product used, but the panel could not refresh.", ephemeral=True,
+            )
 
 
 class StreetSellModal(discord.ui.Modal, title="Sell on the street"):
@@ -408,21 +485,32 @@ class StreetSellModal(discord.ui.Modal, title="Sell on the street"):
                 messages.get(str(result["error"]), "Could not sell."), ephemeral=True,
             )
             return
-        await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_sell")
-        defn = drug_by_id(self.drug_id)
-        name = defn.name if defn else self.drug_id
-        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
-        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
-        if result.get("raided"):
-            embed.description = (
-                f"🚨 **Raided!** Lost **{int(result['lost'])} {name}** in a bust. No payout."
+        await interaction.response.defer()
+        try:
+            await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_sell")
+            defn = drug_by_id(self.drug_id)
+            name = defn.name if defn else self.drug_id
+            if result.get("raided"):
+                desc = (
+                    f"🚨 **Raided!** Lost **{int(result['lost'])} {name}** in a bust. No payout."
+                )
+            else:
+                desc = (
+                    f"💵 Sold **{int(result['quantity'])} {name}** on the street for "
+                    f"**{fmt_amount(float(result['total']))}**."
+                )
+            await _apply_lab_panel(
+                interaction, self.cog, self.guild_id, self.user_id, description=desc,
             )
-        else:
-            embed.description = (
-                f"💵 Sold **{int(result['quantity'])} {name}** on the street for "
-                f"**{fmt_amount(float(result['total']))}**."
+        except Exception:
+            logger.exception(
+                "lab street sell UI refresh failed user=%s guild=%s",
+                self.user_id,
+                self.guild_id,
             )
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+            await interaction.followup.send(
+                "Sale processed, but the panel could not refresh.", ephemeral=True,
+            )
 
 
 class DrugLabView(discord.ui.View):
@@ -474,28 +562,41 @@ class DrugLabView(discord.ui.View):
     @discord.ui.button(label="🌾 Harvest", style=discord.ButtonStyle.success, row=4)
     async def harvest_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        harvested = await self.cog.bot.db.harvest_drugs(self.user_id, self.guild_id)
-        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
-        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
-        ach_msg = ""
-        if harvested:
-            await record_quest_event(self.cog.bot.db, self.guild_id, self.user_id, "drug_harvest")
-            from utils.achievements import ACHIEVEMENTS, format_unlock_message
+        await interaction.response.defer()
+        try:
+            harvested = await self.cog.bot.db.harvest_drugs(self.user_id, self.guild_id)
+            if harvested:
+                await record_quest_event(
+                    self.cog.bot.db, self.guild_id, self.user_id, "drug_harvest",
+                )
+                from utils.achievements import ACHIEVEMENTS, format_unlock_message
 
-            if await self.cog.bot.db.unlock_achievement(
-                self.user_id, self.guild_id, "first_harvest",
-            ):
-                ach_msg = format_unlock_message([ACHIEVEMENTS["first_harvest"]])
-            else:
                 ach_msg = ""
-            parts = []
-            for drug_id, qty in harvested.items():
-                defn = drug_by_id(drug_id)
-                parts.append(f"{defn.emoji if defn else ''} {qty} {defn.name if defn else drug_id}")
-            embed.description = "🌾 Harvested " + ", ".join(parts) + "!" + (f"\n\n{ach_msg}" if ach_msg else "")
-        else:
-            embed.description = "Nothing ready to harvest yet."
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+                if await self.cog.bot.db.unlock_achievement(
+                    self.user_id, self.guild_id, "first_harvest",
+                ):
+                    ach_msg = format_unlock_message([ACHIEVEMENTS["first_harvest"]])
+                parts = []
+                for drug_id, qty in harvested.items():
+                    defn = drug_by_id(drug_id)
+                    parts.append(
+                        f"{defn.emoji if defn else ''} {qty} {defn.name if defn else drug_id}",
+                    )
+                desc = "🌾 Harvested " + ", ".join(parts) + "!"
+                if ach_msg:
+                    desc += f"\n\n{ach_msg}"
+            else:
+                desc = "Nothing ready to harvest yet."
+            await _apply_lab_panel(
+                interaction, self.cog, self.guild_id, self.user_id, description=desc,
+            )
+        except Exception:
+            logger.exception(
+                "lab harvest failed user=%s guild=%s", self.user_id, self.guild_id,
+            )
+            await interaction.followup.send(
+                "Harvest failed — try again in a moment.", ephemeral=True,
+            )
 
     @discord.ui.button(label="🏪 Market", style=discord.ButtonStyle.primary, row=4)
     async def market_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -507,9 +608,16 @@ class DrugLabView(discord.ui.View):
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=4)
     async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        view = await DrugLabView.build(self.cog, self.guild_id, self.user_id)
-        embed, file = await build_lab_embed(self.cog, self.guild_id, self.user_id)
-        await interaction.response.edit_message(embed=embed, attachments=[file], view=view)
+        await interaction.response.defer()
+        try:
+            await _apply_lab_panel(interaction, self.cog, self.guild_id, self.user_id)
+        except Exception:
+            logger.exception(
+                "lab refresh failed user=%s guild=%s", self.user_id, self.guild_id,
+            )
+            await interaction.followup.send(
+                "Could not refresh the lab — try again.", ephemeral=True,
+            )
 
 
 async def build_drug_market_embed(

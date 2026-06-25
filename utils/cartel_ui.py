@@ -1,6 +1,7 @@
 """Crew cartel drug lab UI."""
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import discord
@@ -11,6 +12,8 @@ from utils.helpers import fmt_amount
 
 if TYPE_CHECKING:
     from discord.ext import commands
+
+logger = logging.getLogger(__name__)
 
 
 def build_cartel_embed(
@@ -84,20 +87,29 @@ class CartelView(discord.ui.View):
     @discord.ui.button(label="🌾 Harvest cartel", style=discord.ButtonStyle.success, row=1)
     async def harvest_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        harvested = await self.cog.bot.db.harvest_cartel(self.guild_id, self.crew_name)
-        embed, view = await build_cartel_panel(
-            self.cog, self.guild_id, self.user_id, self.crew_name,
-        )
-        if not harvested:
-            embed.description = "Nothing ready to harvest yet."
-            await interaction.response.edit_message(embed=embed, view=view)
-            return
-        parts = [
-            f"{drug_by_id(d).emoji if drug_by_id(d) else '📦'} **{drug_by_id(d).name if drug_by_id(d) else d}** +{q}"
-            for d, q in harvested.items()
-        ]
-        embed.description = f"🌾 Harvested: {', '.join(parts)}"
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.response.defer()
+        try:
+            harvested = await self.cog.bot.db.harvest_cartel(self.guild_id, self.crew_name)
+            embed, view = await build_cartel_panel(
+                self.cog, self.guild_id, self.user_id, self.crew_name,
+            )
+            if not harvested:
+                embed.description = "Nothing ready to harvest yet."
+            else:
+                parts = [
+                    f"{drug_by_id(d).emoji if drug_by_id(d) else '📦'} "
+                    f"**{drug_by_id(d).name if drug_by_id(d) else d}** +{q}"
+                    for d, q in harvested.items()
+                ]
+                embed.description = f"🌾 Harvested: {', '.join(parts)}"
+            await interaction.edit_original_response(embed=embed, view=view)
+        except Exception:
+            logger.exception(
+                "cartel harvest failed guild=%s crew=%s", self.guild_id, self.crew_name,
+            )
+            await interaction.followup.send(
+                "Harvest failed — try again in a moment.", ephemeral=True,
+            )
 
 
 class CartelPlantSelect(discord.ui.Select):
