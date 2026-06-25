@@ -118,10 +118,47 @@ class Tier1RetentionTests(unittest.IsolatedAsyncioTestCase):
         await self.db.ensure_user(self.user_a, self.guild_id)
         flags = await self.db.get_notify_flags(self.user_a, self.guild_id)
         self.assertEqual(flags, config.NOTIFY_DEFAULT_FLAGS)
-        await self.db.set_notify_flags(self.user_a, self.guild_id, config.NOTIFY_CROPS)
+        await self.db.set_notify_flags(
+            self.user_a, self.guild_id, config.NOTIFY_CROPS | config.NOTIFY_USER_CONFIGURED,
+        )
         self.assertEqual(
             await self.db.get_notify_flags(self.user_a, self.guild_id),
-            config.NOTIFY_CROPS,
+            config.NOTIFY_CROPS | config.NOTIFY_USER_CONFIGURED,
+        )
+
+    async def test_notify_eligibility_and_effective_flags(self) -> None:
+        from utils.notify_prefs import effective_notify_flags, is_notify_eligible
+
+        await self.db.ensure_user(self.user_a, self.guild_id)
+        await self.db.ensure_user(self.user_b, self.guild_id)
+
+        self.assertFalse(await is_notify_eligible(self.db, self.user_b, self.guild_id))
+        self.assertEqual(
+            await effective_notify_flags(self.db, self.user_b, self.guild_id),
+            0,
+        )
+
+        await self.db.add_activity_xp(self.user_a, self.guild_id, config.NOTIFY_ACTIVE_MIN_XP)
+        self.assertTrue(await is_notify_eligible(self.db, self.user_a, self.guild_id))
+        self.assertEqual(
+            await effective_notify_flags(self.db, self.user_a, self.guild_id),
+            config.NOTIFY_ELIGIBLE_DEFAULT_FLAGS,
+        )
+
+        await self.db.set_notify_flags(
+            self.user_a, self.guild_id, config.NOTIFY_USER_CONFIGURED,
+        )
+        self.assertEqual(
+            await effective_notify_flags(self.db, self.user_a, self.guild_id),
+            0,
+        )
+
+        await self.db.set_notify_flags(
+            self.user_b, self.guild_id, config.NOTIFY_BOSS | config.NOTIFY_USER_CONFIGURED,
+        )
+        self.assertEqual(
+            await effective_notify_flags(self.db, self.user_b, self.guild_id),
+            config.NOTIFY_BOSS,
         )
 
     async def test_trade_with_drugs(self) -> None:
