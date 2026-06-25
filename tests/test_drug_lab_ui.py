@@ -49,6 +49,24 @@ class DrugLabUIViewTests(unittest.IsolatedAsyncioTestCase):
         fert = next(c for c in view.children if type(c).__name__ == "FertilizeSelect")
         self.assertGreaterEqual(len(fert.options), 1)
 
+    async def test_harvest_moves_crop_to_stash(self) -> None:
+        cog = MagicMock()
+        cog.bot.db = self.db
+        await self.db.credit_wallet(self.user_id, self.guild_id, 10_000.0, apply_bonuses=False)
+        await self.db.plant_drug(self.user_id, self.guild_id, "blue_dream")
+        async with self.db._write_lock:
+            await self.db.conn.execute(
+                "UPDATE drug_grows SET ready_at = 0 WHERE user_id = ? AND guild_id = ?",
+                (self.user_id, self.guild_id),
+            )
+            await self.db.conn.commit()
+        harvested = await self.db.harvest_drugs(self.user_id, self.guild_id)
+        self.assertIn("blue_dream", harvested)
+        inv = await self.db.get_drug_inventory(self.user_id, self.guild_id)
+        self.assertGreater(inv.get("blue_dream", 0), 0)
+        grows = await self.db.list_drug_grows(self.user_id, self.guild_id)
+        self.assertEqual(grows, [])
+
 
 if __name__ == "__main__":
     unittest.main()
