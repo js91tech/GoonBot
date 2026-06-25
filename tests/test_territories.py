@@ -9,6 +9,7 @@ from pathlib import Path
 import config
 from database import Database
 from utils.territories import TERRITORY_IDS, guard_cost_per_unit, territory_by_id
+from utils.territory_ui import TerritoryMapView, zone_select_options_from_rows
 
 
 class TerritoryTests(unittest.IsolatedAsyncioTestCase):
@@ -97,6 +98,20 @@ class TerritoryTests(unittest.IsolatedAsyncioTestCase):
         assert docks is not None and citadel is not None
         self.assertLess(guard_cost_per_unit(docks), guard_cost_per_unit(citadel))
 
+    async def test_map_view_always_includes_zone_select(self) -> None:
+        from unittest.mock import MagicMock
+
+        guild_id = 5
+        rows = await self.db.list_territory_rows(guild_id)
+        options = zone_select_options_from_rows(rows)
+        self.assertEqual(len(options), len(TERRITORY_IDS))
+
+        cog = MagicMock()
+        view = TerritoryMapView(
+            cog, guild_id, 500, territory_rows=rows, in_crew=True,
+        )
+        select_items = [c for c in view.children if c.__class__.__name__ == "TerritoryZoneSelect"]
+        self.assertEqual(len(select_items), 1)
 
 if __name__ == "__main__":
     unittest.main()
