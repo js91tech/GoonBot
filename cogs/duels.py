@@ -112,15 +112,17 @@ class Duels(commands.Cog):
             await interaction.response.send_message(target_err, ephemeral=True)
             return
 
+        await interaction.response.defer()
+
         guild_id = interaction.guild_id
         if await self.bot.db.is_restricted(attacker.id, guild_id):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "You cannot duel while arrested or downed.",
                 ephemeral=True,
             )
             return
         if await self.bot.db.is_restricted(opponent.id, guild_id):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "That player cannot be dueled right now.",
                 ephemeral=True,
             )
@@ -146,7 +148,7 @@ class Duels(commands.Cog):
         if remaining_target is not None:
             mins = int(remaining_target // 60)
             secs = int(remaining_target % 60)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"You already dueled {opponent.display_name} recently. "
                 f"Try again in **{mins}m {secs}s**.",
                 ephemeral=True,
@@ -155,13 +157,11 @@ class Duels(commands.Cog):
 
         attacks_last_hour = await self.bot.db.duel_attacks_in_last_hour(guild_id, attacker.id)
         if attacks_last_hour >= max_per_hour:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"You can only start **{max_per_hour}** duels per hour. Try again later.",
                 ephemeral=True,
             )
             return
-
-        await interaction.response.defer()
 
         try:
             await self._resolve_duel(

@@ -207,6 +207,10 @@ class BlackjackView(discord.ui.View):
         self.stop()
 
     async def on_timeout(self) -> None:
+        async with self._lock:
+            if not self._finished:
+                self._finished = True
+                await self.cog.bot.db.credit_wallet(self.user_id, self.guild_id, self.bet)
         for item in self.children:
             item.disabled = True
 
@@ -439,6 +443,8 @@ class Gambling(commands.Cog):
             await interaction.response.send_message("Insufficient nuggets.", ephemeral=True)
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         symbols = ["🍘", "💰", "⚔️", "💎", "7️⃣"]
         reels = [random.choice(symbols) for _ in range(3)]
         tax = await self.bot.db.get_config_value(interaction.guild_id, "gambling_house_tax")
@@ -483,7 +489,7 @@ class Gambling(commands.Cog):
         await record_quest_event(
             self.bot.db, interaction.guild_id, interaction.user.id, "gamble_play",
         )
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await interaction.followup.send("\n".join(lines), ephemeral=True)
 
     @app_commands.command(name="jackpot", description="View the server gambling jackpot pool.")
     @app_commands.guild_only()

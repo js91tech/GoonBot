@@ -92,7 +92,8 @@ class Heist(commands.Cog):
             await interaction.response.send_message("That user has no nuggets to steal.", ephemeral=True)
             return
 
-        await self.bot.db.set_last_heist(interaction.user.id, interaction.guild_id, current)
+        await interaction.response.defer()
+
         base_success = await self.bot.db.get_config_value(interaction.guild_id, "heist_base_success")
         loadout = await self.bot.db.get_combat_loadout(interaction.user.id, interaction.guild_id)
         intimidation = heist_intimidation_bonus(loadout.primary, off_hand=loadout.off_hand)
@@ -134,11 +135,12 @@ class Heist(commands.Cog):
         )
 
         if random.random() > success_chance:
+            await self.bot.db.set_last_heist(interaction.user.id, interaction.guild_id, current)
             self.pending_arrests[(interaction.guild_id, interaction.user.id)] = (
                 target.id,
                 current + config.HEIST_ARREST_WINDOW_SECONDS,
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"The heist failed. {target.mention} can use `/arrest` for the next 5 minutes.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
@@ -160,9 +162,10 @@ class Heist(commands.Cog):
             interaction.guild_id,
             heists_won=1,
         )
+        await self.bot.db.set_last_heist(interaction.user.id, interaction.guild_id, current)
 
         crew_names = ", ".join(member.mention for member in participants)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Heist success! {crew_names} stole {fmt_amount(stolen)} from {target.mention}.",
             allowed_mentions=discord.AllowedMentions.none(),
         )

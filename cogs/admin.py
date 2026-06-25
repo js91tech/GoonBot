@@ -27,6 +27,13 @@ class Admin(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    admin_group = app_commands.Group(
+        name="admin",
+        description="Server administration tools.",
+        guild_only=True,
+        default_permissions=discord.Permissions(administrator=True),
+    )
+
     async def _setting_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -67,10 +74,12 @@ class Admin(commands.Cog):
             description="\n".join(lines),
             color=discord.Color.gold(),
         )
-        embed.set_footer(text="Use /config setting value to change one, or /config-reset setting.")
+        embed.set_footer(
+            text="Use /admin config setting value to change one, or /admin config-reset setting.",
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="gift", description="Admin only: give nuggets to a user.")
+    @admin_group.command(name="gift", description="Give nuggets to a user.")
     @app_commands.describe(user="User to receive nuggets", amount="Amount to create")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -96,7 +105,7 @@ class Admin(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(name="gift-all", description="Admin only: give nuggets to every human.")
+    @admin_group.command(name="gift-all", description="Give nuggets to every human.")
     @app_commands.describe(amount="Amount each human receives")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -115,7 +124,7 @@ class Admin(commands.Cog):
             f"Gifted {fmt_amount(amount)} to {count} human member(s)."
         )
 
-    @app_commands.command(name="set-currency", description="Admin only: set a user's wallet exactly.")
+    @admin_group.command(name="set-currency", description="Set a user's wallet exactly.")
     @app_commands.describe(user="User to edit", amount="Exact new wallet amount")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -141,7 +150,7 @@ class Admin(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(name="reset-user", description="Admin only: wipe a user's wallet and stats.")
+    @admin_group.command(name="reset-user", description="Wipe a user's wallet and stats.")
     @app_commands.describe(user="User to reset")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -159,7 +168,7 @@ class Admin(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(name="config", description="Admin only: view or change live settings.")
+    @admin_group.command(name="config", description="View or change live settings.")
     @app_commands.describe(setting="Setting to change", value="New numeric value")
     @app_commands.autocomplete(setting=_setting_autocomplete)
     @app_commands.guild_only()
@@ -178,7 +187,7 @@ class Admin(commands.Cog):
             return
         if setting is None or value is None:
             await interaction.response.send_message(
-                "Use `/config` to view settings or `/config setting value` to change one.",
+                "Use `/admin config` to view settings or `/admin config setting value` to change one.",
                 ephemeral=True,
             )
             return
@@ -200,7 +209,7 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="config-reset", description="Admin only: reset one live setting.")
+    @admin_group.command(name="config-reset", description="Reset one live setting.")
     @app_commands.describe(setting="Setting to reset")
     @app_commands.autocomplete(setting=_setting_autocomplete)
     @app_commands.guild_only()
@@ -220,13 +229,15 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="bot-status", description="Admin only: show economy and game status.")
+    @admin_group.command(name="bot-status", description="Show economy and game status.")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     async def status_dashboard(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
+
+        await interaction.response.defer(ephemeral=True)
 
         stats = await self.bot.db.economy_stats(interaction.guild.id)
         bounty_count = await self.bot.db.count_bounties(interaction.guild.id)
@@ -292,11 +303,11 @@ class Admin(commands.Cog):
             ),
             inline=False,
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @app_commands.command(
+    @admin_group.command(
         name="set-main-channel",
-        description="Admin only: set the channel for random coin drops and gifts.",
+        description="Set the channel for random coin drops and gifts.",
     )
     @app_commands.describe(channel="Text channel for server-wide announcements")
     @app_commands.guild_only()
@@ -320,13 +331,13 @@ class Admin(commands.Cog):
         await interaction.response.send_message(
             f"Main channel set to {channel.mention}. "
             "Random coin drops will post there. "
-            "Use `/set-designated-channel` and `/toggle-split-channels` to route boss posts elsewhere.",
+            "Use `/admin set-designated-channel` and `/admin toggle-split-channels` to route boss posts elsewhere.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(
+    @admin_group.command(
         name="clear-main-channel",
-        description="Admin only: clear the main channel (coin drops use fallback).",
+        description="Clear the main channel (coin drops use fallback).",
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -341,9 +352,9 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(
+    @admin_group.command(
         name="set-designated-channel",
-        description="Admin only: set the channel for boss spawns and bot announcements.",
+        description="Set the channel for boss spawns and bot announcements.",
     )
     @app_commands.describe(channel="Text channel where the bot posts boss and system messages")
     @app_commands.guild_only()
@@ -366,13 +377,13 @@ class Admin(commands.Cog):
         await self.bot.db.set_designated_channel_id(interaction.guild_id, channel.id)
         await interaction.response.send_message(
             f"Designated bot channel set to {channel.mention}. "
-            "Enable `/toggle-split-channels` so boss posts go here while coin drops stay in main.",
+            "Enable `/admin toggle-split-channels` so boss posts go here while coin drops stay in main.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(
+    @admin_group.command(
         name="clear-designated-channel",
-        description="Admin only: clear the designated bot channel.",
+        description="Clear the designated bot channel.",
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -387,10 +398,10 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(
+    @admin_group.command(
         name="toggle-split-channels",
         description=(
-            "Admin only: when on, boss posts use designated channel; coin drops stay in main."
+            "When on, boss posts use designated channel; coin drops stay in main."
         ),
     )
     @app_commands.describe(
@@ -420,7 +431,7 @@ class Admin(commands.Cog):
             )
         await interaction.response.send_message(message, ephemeral=True)
 
-    @app_commands.command(name="despawn-boss", description="Admin only: despawn this server's active boss.")
+    @admin_group.command(name="despawn-boss", description="Despawn this server's active boss.")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     async def despawn_boss(self, interaction: discord.Interaction) -> None:
@@ -439,7 +450,7 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="despawn-all-bosses", description="Admin only: emergency clear all active bosses.")
+    @admin_group.command(name="despawn-all-bosses", description="Emergency clear all active bosses.")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     async def despawn_all_bosses(self, interaction: discord.Interaction) -> None:
