@@ -67,6 +67,28 @@ class DrugLabUIViewTests(unittest.IsolatedAsyncioTestCase):
         grows = await self.db.list_drug_grows(self.user_id, self.guild_id)
         self.assertEqual(grows, [])
 
+    async def test_apply_lab_panel_reattaches_banner(self) -> None:
+        from unittest.mock import AsyncMock
+
+        from utils.drug_ui import _apply_lab_panel, build_lab_embed
+
+        cog = MagicMock()
+        cog.bot.db = self.db
+        embed, banner = await build_lab_embed(cog, self.guild_id, self.user_id)
+        self.assertEqual(embed.image.url, "attachment://lab.png")
+        self.assertEqual(banner.filename, "lab.png")
+
+        interaction = MagicMock()
+        interaction.response.is_done = MagicMock(return_value=True)
+        interaction.edit_original_response = AsyncMock()
+        await _apply_lab_panel(
+            interaction, cog, self.guild_id, self.user_id, description="refreshed",
+        )
+        interaction.edit_original_response.assert_awaited_once()
+        call_kwargs = interaction.edit_original_response.await_args.kwargs
+        self.assertIn("attachments", call_kwargs)
+        self.assertEqual(call_kwargs["attachments"][0].filename, "lab.png")
+        self.assertEqual(call_kwargs["embed"].description, "refreshed")
 
 if __name__ == "__main__":
     unittest.main()

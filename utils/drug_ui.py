@@ -43,17 +43,18 @@ async def _apply_lab_panel(
     description: str | None = None,
     plant_category: str | None = None,
 ) -> None:
-    """Refresh the lab embed and controls without re-uploading the banner image."""
+    """Refresh the lab embed and controls (re-attach banner so attachment:// URL stays valid)."""
     view = await DrugLabView.build(
         cog, guild_id, user_id, plant_category=plant_category,
     )
-    embed, _file = await build_lab_embed(cog, guild_id, user_id)
+    embed, banner = await build_lab_embed(cog, guild_id, user_id)
     if description is not None:
         embed.description = description
+    edit_kwargs: dict[str, object] = {"embed": embed, "view": view, "attachments": [banner]}
     if interaction.response.is_done():
-        await interaction.edit_original_response(embed=embed, view=view)
+        await interaction.edit_original_response(**edit_kwargs)  # type: ignore[arg-type]
     else:
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.response.edit_message(**edit_kwargs)  # type: ignore[arg-type]
 
 
 def stash_select_options(inventory: dict[str, int]) -> list[discord.SelectOption]:
@@ -933,9 +934,20 @@ async def send_drug_lab_panel(interaction: discord.Interaction, cog: commands.Co
     if interaction.guild_id is None:
         await interaction.response.send_message("Guild only.", ephemeral=True)
         return
-    embed, file = await build_lab_embed(cog, interaction.guild_id, interaction.user.id)
-    view = await DrugLabView.build(cog, interaction.guild_id, interaction.user.id)
-    await interaction.response.send_message(embed=embed, file=file, view=view)
+    await interaction.response.defer(ephemeral=True)
+    try:
+        embed, file = await build_lab_embed(cog, interaction.guild_id, interaction.user.id)
+        view = await DrugLabView.build(cog, interaction.guild_id, interaction.user.id)
+        await interaction.followup.send(embed=embed, file=file, view=view, ephemeral=True)
+    except Exception:
+        logger.exception(
+            "drug lab panel open failed user=%s guild=%s",
+            interaction.user.id,
+            interaction.guild_id,
+        )
+        await interaction.followup.send(
+            "Could not open the lab — try again in a moment.", ephemeral=True,
+        )
 
 
 async def send_drug_market_panel(interaction: discord.Interaction, cog: commands.Cog) -> None:
