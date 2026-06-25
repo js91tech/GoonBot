@@ -12,6 +12,7 @@ import config
 from utils.activity_levels import level_from_total_xp, progress_bar
 from utils.drugs import drug_by_id
 from utils.helpers import fmt_amount, guild_only_message
+from utils.notify_prefs import effective_notify_flags, notify_opt_out_footer
 from utils.notify_ui import send_notify_panel
 
 
@@ -84,7 +85,7 @@ class Retention(commands.Cog):
         body: str,
         cooldown_seconds: float = 6 * 3600,
     ) -> None:
-        flags = await self.bot.db.get_notify_flags(user_id, guild_id)
+        flags = await effective_notify_flags(self.bot.db, user_id, guild_id)
         if not (flags & flag):
             return
         remaining = await self.bot.db.notify_cooldown_remaining(
@@ -98,8 +99,9 @@ class Retention(commands.Cog):
         member = guild.get_member(user_id)
         if member is None or member.bot:
             return
+        message = body + notify_opt_out_footer(guild.name)
         try:
-            await member.send(body)
+            await member.send(message)
             await self.bot.db.record_notify_sent(user_id, guild_id, notify_key)
         except discord.HTTPException:
             pass
@@ -127,7 +129,7 @@ class Retention(commands.Cog):
         boss = await self.bot.db.get_active_boss(guild.id)
         if boss is not None and float(boss["hp"]) > 0:
             spawned_at = int(float(boss["spawned_at"]))
-            for user_id in await self.bot.db.list_notify_users(guild.id, config.NOTIFY_BOSS):
+            for user_id in await self.bot.db.list_guild_user_ids(guild.id):
                 await self._maybe_dm(
                     user_id,
                     guild.id,
@@ -135,7 +137,7 @@ class Retention(commands.Cog):
                     notify_key=f"boss:{guild.id}:{spawned_at}",
                     body=(
                         f"👹 **{guild.name}** — **{boss['name']}** is raiding! "
-                        "Join the fight with `/boss-attack`."
+                        "Join the fight with `/boss`."
                     ),
                     cooldown_seconds=24 * 3600,
                 )
@@ -173,7 +175,10 @@ class Retention(commands.Cog):
                 cooldown_seconds=3600,
             )
 
-    @app_commands.command(name="notify", description="Manage DM reminders (crops, boss, business, defense).")
+    @app_commands.command(
+        name="notify",
+        description="Manage DM reminders (active/raid players get defaults; others opt in).",
+    )
     @app_commands.guild_only()
     async def notify(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None:

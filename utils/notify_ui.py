@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import discord
 
 import config
+from utils.notify_prefs import NOTIFY_CATEGORY_MASK, panel_notify_flags
 
 if TYPE_CHECKING:
     from discord.ext import commands
@@ -18,16 +19,27 @@ NOTIFY_OPTIONS: tuple[tuple[str, int, str], ...] = (
 )
 
 
-def build_notify_embed(flags: int) -> discord.Embed:
+def build_notify_embed(flags: int, *, configured: bool, eligible: bool) -> discord.Embed:
+    if configured:
+        intro = "Your saved reminder preferences. Uncheck everything to opt out of all DMs."
+    elif eligible:
+        intro = (
+            "You receive reminders automatically as an **active player** or **raid veteran**. "
+            "Toggle categories below to customize, or clear all to opt out."
+        )
+    else:
+        intro = (
+            "Reminders are **off** until you opt in. Select categories below to enable DMs."
+        )
     embed = discord.Embed(
         title="🔔 Notification preferences",
-        description="Toggle DM reminders (opt-in per category).",
+        description=intro,
         color=discord.Color.blurple(),
     )
     for _key, flag, label in NOTIFY_OPTIONS:
         on = "✅ On" if flags & flag else "❌ Off"
         embed.add_field(name=label, value=on, inline=False)
-    embed.set_footer(text="Changes save instantly")
+    embed.set_footer(text="Changes save instantly · Every DM includes how to opt out")
     return embed
 
 
@@ -53,27 +65,46 @@ class NotifyToggleSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         selected = {int(v) for v in self.values}
-        flags = 0
+        flags = config.NOTIFY_USER_CONFIGURED
         for _key, flag, _label in NOTIFY_OPTIONS:
             if flag in selected:
                 flags |= flag
         await self._view.cog.bot.db.set_notify_flags(
             self._view.user_id, self._view.guild_id, flags,
         )
-        self._view.flags = flags
-        new_view = NotifyView(self._view.cog, self._view.user_id, self._view.guild_id, flags)
-        await interaction.response.edit_message(embed=build_notify_embed(flags), view=new_view)
+        display = flags & NOTIFY_CATEGORY_MASK
+        new_view = NotifyView(
+            self._view.cog,
+            self._view.user_id,
+            self._view.guild_id,
+            display,
+            configured=True,
+            eligible=self._view.eligible,
+        )
+        await interaction.response.edit_message(
+            embed=build_notify_embed(display, configured=True, eligible=self._view.eligible),
+            view=new_view,
+        )
 
 
 class NotifyView(discord.ui.View):
     def __init__(
-        self, cog: commands.Cog, user_id: int, guild_id: int, flags: int,
+        self,
+        cog: commands.Cog,
+        user_id: int,
+        guild_id: int,
+        flags: int,
+        *,
+        configured: bool,
+        eligible: bool,
     ) -> None:
         super().__init__(timeout=180)
         self.cog = cog
         self.user_id = user_id
         self.guild_id = guild_id
         self.flags = flags
+        self.configured = configured
+        self.eligible = eligible
         self.add_item(NotifyToggleSelect(self, flags))
 
 
@@ -82,10 +113,15 @@ async def send_notify_panel(
 ) -> None:
     if interaction.guild_id is None:
         return
-    flags = await cog.bot.db.get_notify_flags(interaction.user.id, interaction.guild_id)
-    view = NotifyView(cog, interaction.user.id, interaction.guild_id, flags)
+    flags, configured, eligible = await panel_notify_flags(
+        cog.bot.db, interaction.user.id, interaction.guild_id,
+    )
+    view = NotifyView(
+        cog, interaction.user.id, interaction.guild_id, flags,
+        configured=configured, eligible=eligible,
+    )
     await interaction.response.send_message(
-        embed=build_notify_embed(flags),
+        embed=build_notify_embed(flags, configured=configured, eligible=eligible),
         view=view,
         ephemeral=True,
     )

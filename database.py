@@ -12516,6 +12516,13 @@ class Database:
                 alerts.append(row)
         return alerts
 
+    async def list_guild_user_ids(self, guild_id: int) -> list[int]:
+        cursor = await self.conn.execute(
+            "SELECT user_id FROM users WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return [int(row["user_id"]) for row in await cursor.fetchall()]
+
     async def list_notify_users(self, guild_id: int, flag: int) -> list[int]:
         cursor = await self.conn.execute(
             """
