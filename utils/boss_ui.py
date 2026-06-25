@@ -441,9 +441,11 @@ async def send_boss_fight_panel(
         await interaction.response.send_message("Guild only.", ephemeral=True)
         return
 
+    await interaction.response.defer(ephemeral=True)
+
     boss_row = await cog.bot.db.apply_boss_passive_decay(interaction.guild_id)
     if boss_row is None:
-        await interaction.response.send_message("No boss is active right now.", ephemeral=True)
+        await interaction.followup.send("No boss is active right now.", ephemeral=True)
         return
 
     if float(boss_row["hp"]) <= 0 and interaction.guild is not None:
@@ -456,7 +458,7 @@ async def send_boss_fight_panel(
 
     if cog.bot.db.boss_has_expired(boss_row) and interaction.guild is not None:
         await cog._despawn_boss_timeout(interaction.guild)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "The boss despawned before you could fight.", ephemeral=True
         )
         return
@@ -467,8 +469,8 @@ async def send_boss_fight_panel(
         member=interaction.user if isinstance(interaction.user, discord.Member) else None,
     )
     if err or embed is None:
-        await interaction.response.send_message(err or "No boss active.", ephemeral=True)
+        await interaction.followup.send(err or "No boss active.", ephemeral=True)
         return
 
     view = BossFightView(cog, interaction.guild_id, interaction.user.id)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    await interaction.followup.send(embed=embed, view=view, ephemeral=True)

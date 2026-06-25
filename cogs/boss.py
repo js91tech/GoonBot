@@ -609,13 +609,22 @@ class Boss(commands.Cog):
         guild_id = guild.id
         boss = await self.bot.db.get_active_boss(guild_id)
         if boss is None:
-            if interaction is not None and not interaction.response.is_done():
-                await interaction.response.send_message(
+            if interaction is not None:
+                await safe_interaction_send(
+                    interaction,
                     "The boss was already defeated.",
                     ephemeral=True,
+                    gate=getattr(self.bot, "outbound_gate", None),
                 )
             return
         if float(boss["hp"]) > 0:
+            if interaction is not None:
+                await safe_interaction_send(
+                    interaction,
+                    "The boss is still fighting — strike again!",
+                    ephemeral=True,
+                    gate=getattr(self.bot, "outbound_gate", None),
+                )
             return
 
         variant = str(boss["variant"])
@@ -638,10 +647,12 @@ class Boss(commands.Cog):
                 summary=summary,
                 killer_user_id=killer_user_id,
             )
-            if interaction is not None and not interaction.response.is_done():
-                await interaction.response.send_message(
+            if interaction is not None:
+                await safe_interaction_send(
+                    interaction,
                     "The boss melted from passive fatigue before anyone attacked—no payouts.",
                     ephemeral=True,
+                    gate=getattr(self.bot, "outbound_gate", None),
                 )
             return
 
@@ -708,7 +719,7 @@ class Boss(commands.Cog):
             stash_lines=stash_lines or None,
         )
 
-        if interaction is not None and not interaction.response.is_done():
+        if interaction is not None:
             channel = await resolve_bot_announcement_channel(guild, self.bot.db)
             place = channel.mention if channel is not None else "the bot channel"
             if killer_user_id is not None:
@@ -1002,15 +1013,16 @@ class Boss(commands.Cog):
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
+        await interaction.response.defer()
+
         if not await self.bot.db.debit_wallet(
             interaction.user.id,
             interaction.guild_id,
             config.SUMMON_COST,
         ):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Summoning costs **{fmt_amount(config.SUMMON_COST)}**. "
                 "You do not have enough nuggets.",
-                ephemeral=True,
             )
             return
 
@@ -1040,7 +1052,7 @@ class Boss(commands.Cog):
                 summoner_id=interaction.user.id,
             )
             label = BOSS_NAME
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Summoned **{spawn_variant}** {label} with {fmt_amount(hp)} HP "
             f"(-{fmt_amount(config.SUMMON_COST)}). Penalties: {summoner_penalty_summary()}"
         )
@@ -1629,9 +1641,11 @@ class Boss(commands.Cog):
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
+        await interaction.response.defer()
+
         boss_row = await self.bot.db.apply_boss_passive_decay(interaction.guild_id)
         if boss_row is None:
-            await interaction.response.send_message("No boss is active right now.")
+            await interaction.followup.send("No boss is active right now.")
             return
 
         if float(boss_row["hp"]) <= 0:
@@ -1647,9 +1661,9 @@ class Boss(commands.Cog):
             boss_row=boss_row,
         )
         if err or embed is None:
-            await interaction.response.send_message(err or "No boss active.")
+            await interaction.followup.send(err or "No boss active.")
             return
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     async def _apply_element_counter_effect(
         self,
@@ -1761,7 +1775,7 @@ class Boss(commands.Cog):
             if raiders:
                 unlucky = random.choice(raiders)
                 steal = await self.bot.db.jester_steal_wallet(unlucky, victim_id, guild_id)
-                downed_seconds = await self._downed_duration_seconds(member.id, guild_id)
+                downed_seconds = await self._downed_duration_seconds(unlucky, guild_id)
                 await self.bot.db.set_downed_until(
                     unlucky,
                     guild_id,

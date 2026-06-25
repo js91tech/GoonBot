@@ -97,6 +97,34 @@ class Shop(commands.Cog):
             app_commands.Choice(name=f"{item.name} ({item.id})", value=item.id) for item in matches
         ]
 
+    async def equip_item_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        if interaction.guild_id is None:
+            return []
+        current_lower = current.lower()
+        rows = await self.bot.db.get_inventory(interaction.user.id, interaction.guild_id)
+        choices: list[app_commands.Choice[str]] = []
+        for row in rows:
+            item_id = str(row["item_id"])
+            item = get_item(item_id)
+            if item is None:
+                continue
+            if current_lower not in item.id.lower() and current_lower not in item.name.lower():
+                continue
+            qty = int(row["quantity"])
+            choices.append(
+                app_commands.Choice(
+                    name=f"{item.name} x{qty}",
+                    value=item.id,
+                ),
+            )
+            if len(choices) >= 25:
+                break
+        return choices
+
     async def sell_item_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -307,6 +335,8 @@ class Shop(commands.Cog):
             return
         target = user or interaction.user
         guild_id = interaction.guild_id
+        await interaction.response.defer(ephemeral=not (public and target.id == interaction.user.id))
+
         loadout = await self.bot.db.get_combat_loadout(target.id, guild_id)
         unstable = await self.bot.db.list_unstable_slots(target.id, guild_id)
         raw_equipment = await self.bot.db.get_equipment(target.id, guild_id)
@@ -442,7 +472,7 @@ class Shop(commands.Cog):
         )
         embed.set_footer(text="Use /inventory to see all owned items with per-item stats.")
         ephemeral = not (public and target.id == interaction.user.id)
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+        await interaction.followup.send(embed=embed, ephemeral=ephemeral)
 
     @app_commands.command(name="inventory", description="View your owned and equipped gear.")
     @app_commands.describe(user="User to inspect. Defaults to you.")
@@ -523,7 +553,7 @@ class Shop(commands.Cog):
         description="Equip gear. Swords go main hand; guns fill off-hand when you have a blade.",
     )
     @app_commands.describe(item="Owned item to equip")
-    @app_commands.autocomplete(item=item_autocomplete)
+    @app_commands.autocomplete(item=equip_item_autocomplete)
     @app_commands.guild_only()
     async def equip(self, interaction: discord.Interaction, item: str) -> None:
         if interaction.guild_id is None:
