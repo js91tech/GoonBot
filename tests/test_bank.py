@@ -133,6 +133,19 @@ class BankTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.get_bank(uid, gid), 0.0)
         self.assertEqual(await self.db.get_bank_expansions(uid, gid), {})
 
+    async def test_wallet_panel_data_matches_individual_reads(self) -> None:
+        uid, gid = 12, 100
+        await self.db.credit_wallet(uid, gid, 1_000.0)
+        await self.db.deposit_to_bank(uid, gid, 400.0)
+        panel = await self.db.get_wallet_panel_data(uid, gid)
+        self.assertEqual(panel.wallet, await self.db.get_balance(uid, gid))
+        self.assertEqual(panel.bank, await self.db.get_bank(uid, gid))
+        self.assertEqual(panel.bank_capacity, await self.db.get_bank_capacity(uid, gid))
+        self.assertEqual(panel.bank_expansions, await self.db.get_bank_expansions(uid, gid))
+
+    async def test_is_restricted_without_user_row(self) -> None:
+        self.assertFalse(await self.db.is_restricted(99_999, 100))
+
 
 if __name__ == "__main__":
     unittest.main()

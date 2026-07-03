@@ -23,6 +23,13 @@ class DailyClaimResult(NamedTuple):
     streak_bonus_mult: float
 
 
+class WalletPanelData(NamedTuple):
+    wallet: float
+    bank: float
+    bank_capacity: float
+    bank_expansions: dict[int, int]
+
+
 def _spendable_cents(value: object) -> int:
     """Floor wallet/price to cents for comparisons (avoids float vs shop integer prices)."""
     if isinstance(value, Decimal):
@@ -3180,7 +3187,16 @@ class Database:
             await self.conn.commit()
 
     async def get_user(self, user_id: int, guild_id: int) -> aiosqlite.Row:
-        await self.ensure_user(user_id, guild_id)
+        cursor = await self.conn.execute(
+            "SELECT * FROM users WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        if row is not None:
+            return row
+        async with self._write_lock:
+            await self._ensure_user_no_lock(user_id, guild_id)
+            await self.conn.commit()
         cursor = await self.conn.execute(
             "SELECT * FROM users WHERE user_id = ? AND guild_id = ?",
             (user_id, guild_id),
@@ -3198,6 +3214,18 @@ class Database:
     async def get_bank(self, user_id: int, guild_id: int) -> float:
         row = await self.get_user(user_id, guild_id)
         return float(row["bank"])
+
+    async def get_wallet_panel_data(self, user_id: int, guild_id: int) -> WalletPanelData:
+        row = await self.get_user(user_id, guild_id)
+        expansions = await self.get_bank_expansions(user_id, guild_id)
+        from utils.bank_capacity import bank_capacity
+
+        return WalletPanelData(
+            wallet=float(row["wallet"]),
+            bank=float(row["bank"]),
+            bank_capacity=bank_capacity(expansions),
+            bank_expansions=expansions,
+        )
 
     async def get_bank_expansions(self, user_id: int, guild_id: int) -> dict[int, int]:
         cursor = await self.conn.execute(
@@ -4657,6 +4685,12 @@ class Database:
             )
             await self.conn.commit()
 
+    async def record_passive_chat_reward(
+        self, user_id: int, guild_id: int, base_reward: float,
+    ) -> None:
+        aspect = await self.get_equipped_aspect_bonuses(user_id, guild_id)
+        await self.record_message_reward(user_id, guild_id, base_reward * aspect.passive_income_mult)
+
     async def claim_daily(
         self,
         user_id: int,
@@ -4816,7 +4850,16 @@ class Database:
 
     async def is_restricted(self, user_id: int, guild_id: int, at: float | None = None) -> bool:
         now = time.time() if at is None else at
-        row = await self.get_user(user_id, guild_id)
+        cursor = await self.conn.execute(
+            """
+            SELECT arrested_until, downed_until FROM users
+            WHERE user_id = ? AND guild_id = ?
+            """,
+            (user_id, guild_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return False
         return float(row["arrested_until"]) > now or float(row["downed_until"]) > now
 
     async def get_bodyguards(self, user_id: int, guild_id: int) -> dict[int, int]:

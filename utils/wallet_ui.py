@@ -54,16 +54,13 @@ async def build_wallet_embed_for_user(
     guild_id: int,
     user_id: int,
 ) -> discord.Embed:
-    wallet = await cog.bot.db.get_balance(user_id, guild_id)
-    bank = await cog.bot.db.get_bank(user_id, guild_id)
-    capacity = await cog.bot.db.get_bank_capacity(user_id, guild_id)
-    expansions = await cog.bot.db.get_bank_expansions(user_id, guild_id)
+    panel = await cog.bot.db.get_wallet_panel_data(user_id, guild_id)
     return build_wallet_embed(
         member,
-        wallet=wallet,
-        bank=bank,
-        bank_capacity=capacity,
-        bank_expansions=expansions,
+        wallet=panel.wallet,
+        bank=panel.bank,
+        bank_capacity=panel.bank_capacity,
+        bank_expansions=panel.bank_expansions,
     )
 
 
@@ -106,9 +103,10 @@ class DepositModal(discord.ui.Modal, title="Deposit to bank"):
                 ephemeral=True,
             )
             return
+        await interaction.response.defer()
         ok = await self.cog.bot.db.deposit_to_bank(self.user_id, self.guild_id, value)
         if not ok:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Could not deposit — check pocket balance and bank capacity.",
                 ephemeral=True,
             )
@@ -120,11 +118,11 @@ class DepositModal(discord.ui.Modal, title="Deposit to bank"):
         if not isinstance(member, discord.Member):
             member = interaction.guild.get_member(self.user_id) if interaction.guild else None
         if member is None:
-            await interaction.response.send_message("Deposit complete.", ephemeral=True)
+            await interaction.followup.send("Deposit complete.", ephemeral=True)
             return
         view = WalletView(self.cog, self.guild_id, self.user_id)
         embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.edit_original_response(embed=embed, view=view)
 
 
 class WithdrawModal(discord.ui.Modal, title="Withdraw from bank"):
@@ -152,19 +150,20 @@ class WithdrawModal(discord.ui.Modal, title="Withdraw from bank"):
         if not valid_amount(value):
             await interaction.response.send_message("Enter a positive amount.", ephemeral=True)
             return
+        await interaction.response.defer()
         ok = await self.cog.bot.db.withdraw_from_bank(self.user_id, self.guild_id, value)
         if not ok:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "You do not have enough nuggets in your bank.", ephemeral=True
             )
             return
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("Withdrawal complete.", ephemeral=True)
+            await interaction.followup.send("Withdrawal complete.", ephemeral=True)
             return
         view = WalletView(self.cog, self.guild_id, self.user_id)
         embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.edit_original_response(embed=embed, view=view)
 
 
 class WalletView(discord.ui.View):
@@ -199,15 +198,16 @@ class WalletView(discord.ui.View):
     @discord.ui.button(label="Dep all", style=discord.ButtonStyle.secondary)
     async def deposit_all(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
+        await interaction.response.defer()
         wallet_before = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
         moved = await self.cog.bot.db.deposit_all_to_bank(self.user_id, self.guild_id)
         if moved <= 0:
             if wallet_before <= 0:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "Nothing in your pocket to deposit.", ephemeral=True
                 )
             else:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "Bank is full. Use **/expand-bank** or the **Vault expansions** button.",
                     ephemeral=True,
                 )
@@ -221,19 +221,20 @@ class WalletView(discord.ui.View):
                 f"Deposited **{fmt_amount(moved)}** — "
                 f"**{fmt_amount(wallet_after)}** left in pocket (bank full)."
             )
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.edit_original_response(embed=embed, view=self)
 
     @discord.ui.button(label="With all", style=discord.ButtonStyle.secondary)
     async def withdraw_all(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
+        await interaction.response.defer()
         moved = await self.cog.bot.db.withdraw_all_from_bank(self.user_id, self.guild_id)
         if moved <= 0:
-            await interaction.response.send_message("Your bank is empty.", ephemeral=True)
+            await interaction.followup.send("Your bank is empty.", ephemeral=True)
             return
         member = interaction.user
         assert isinstance(member, discord.Member)
         embed = await build_wallet_embed_for_user(self.cog, member, self.guild_id, self.user_id)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.edit_original_response(embed=embed, view=self)
 
     @discord.ui.button(label="Vault expansions", style=discord.ButtonStyle.success, row=1)
     async def expand_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:

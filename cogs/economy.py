@@ -113,12 +113,7 @@ class Economy(commands.Cog):
             return
 
         reward = await self.bot.db.get_config_value(message.guild.id, "passive_chat_reward")
-        aspect = await self.bot.db.get_equipped_aspect_bonuses(
-            message.author.id,
-            message.guild.id,
-        )
-        reward *= aspect.passive_income_mult
-        await self.bot.db.record_message_reward(
+        await self.bot.db.record_passive_chat_reward(
             message.author.id,
             message.guild.id,
             reward,
@@ -265,25 +260,20 @@ class Economy(commands.Cog):
             return
 
         target = user or interaction.user
-        wallet = await self.bot.db.get_balance(target.id, interaction.guild_id)
-        bank = await self.bot.db.get_bank(target.id, interaction.guild_id)
+        own_panel = target.id == interaction.user.id
+        await interaction.response.defer(ephemeral=own_panel)
 
-        if target.id == interaction.user.id:
-            from utils.wallet_ui import WalletView, build_wallet_embed_for_user
-
-            view = WalletView(self, interaction.guild_id, target.id)
-            embed = await build_wallet_embed_for_user(
-                self, target, interaction.guild_id, target.id,
-            )
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            return
-
-        from utils.wallet_ui import build_wallet_embed_for_user
+        from utils.wallet_ui import WalletView, build_wallet_embed_for_user
 
         embed = await build_wallet_embed_for_user(
             self, target, interaction.guild_id, target.id,
         )
-        await interaction.response.send_message(
+        if own_panel:
+            view = WalletView(self, interaction.guild_id, target.id)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            return
+
+        await interaction.followup.send(
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
         )
