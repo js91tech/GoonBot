@@ -38,7 +38,7 @@ class CrewBankRaidLogicTests(unittest.TestCase):
         strong = fighter_from_equipment(1, "Strong", {"weapon": "mythic_annihilator"}, prestige_level=5)
         weak = fighter_from_equipment(2, "Weak", {"weapon": "twig_sword"}, prestige_level=0)
         defenders = [weak, weak, weak]
-        with patch("utils.duel_combat.simulate_duel") as mock_duel:
+        with patch("utils.crew_bank_raid.simulate_duel") as mock_duel:
             from utils.duel_combat import DuelResult
 
             mock_duel.side_effect = [
@@ -55,7 +55,7 @@ class CrewBankRaidLogicTests(unittest.TestCase):
         primary = fighter_from_equipment(1, "Primary", {"weapon": "twig_sword"}, prestige_level=0)
         backup = fighter_from_equipment(2, "Backup", {"weapon": "iron_sword"}, prestige_level=0)
         defender = fighter_from_equipment(3, "Defender", {"weapon": "iron_sword"}, prestige_level=0)
-        with patch("utils.duel_combat.simulate_duel") as mock_duel:
+        with patch("utils.crew_bank_raid.simulate_duel") as mock_duel:
             from utils.duel_combat import DuelResult
 
             mock_duel.side_effect = [
@@ -70,7 +70,7 @@ class CrewBankRaidLogicTests(unittest.TestCase):
     def test_defense_holds_when_attackers_exhausted(self) -> None:
         weak = fighter_from_equipment(1, "Weak", {"weapon": "twig_sword"}, prestige_level=0)
         strong = fighter_from_equipment(2, "Strong", {"weapon": "mythic_annihilator"}, prestige_level=5)
-        with patch("utils.duel_combat.simulate_duel") as mock_duel:
+        with patch("utils.crew_bank_raid.simulate_duel") as mock_duel:
             from utils.duel_combat import DuelResult
 
             mock_duel.return_value = DuelResult(winner_id=2, loser_id=1, strikes=[])
