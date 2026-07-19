@@ -15,6 +15,7 @@ from utils.relics import RELIC_DEFINITIONS
 
 
 class DatabaseExpansionMixin:
+    """Gameplay expansion tables and helpers."""
     async def _migrate_gameplay_expansion(self) -> None:
         pk = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
         tables = [

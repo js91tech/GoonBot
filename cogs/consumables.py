@@ -10,6 +10,7 @@ from items import GIFTABLE_ITEM_IDS, get_item
 from utils.bot_players import pvp_target_error
 from utils.consumables_ui import send_use_panel
 from utils.helpers import fmt_amount, guild_only_message
+from utils.quests import record_quest_event
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,11 @@ class Consumables(commands.Cog):
         if gift_err:
             await interaction.response.send_message(gift_err, ephemeral=True)
             return
+        if await self.bot.db.is_restricted(interaction.user.id, interaction.guild_id):
+            await interaction.response.send_message(
+                "You cannot gift items right now.", ephemeral=True,
+            )
+            return
         item_id = item.strip()
         shop_item = get_item(item_id)
         if shop_item is None or item_id not in GIFTABLE_ITEM_IDS:
@@ -122,6 +128,9 @@ class Consumables(commands.Cog):
                 "Could not complete the gift.", ephemeral=True,
             )
             return
+        await record_quest_event(
+            self.bot.db, guild_id, sender_id, "item_gift",
+        )
         await interaction.response.send_message(
             f"{interaction.user.mention} gifted **{qty}×** **{shop_item.name}** "
             f"to {user.mention}! 🌱",
