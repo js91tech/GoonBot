@@ -9382,14 +9382,21 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
             if cd_err is not None:
                 await self.conn.commit()
                 return cd_err
-            current = await self._user_base_influence_no_lock(user_id, guild_id, district_id)
-            if current < cost:
-                await self.conn.commit()
-                return {"error": "insufficient_influence", "have": current, "need": cost}
-            new_inf = current - cost
-            await self._set_user_base_influence_no_lock(
-                user_id, guild_id, district_id, new_inf, now,
+            effective = await self._user_effective_influence_no_lock(
+                user_id, guild_id, district_id, now,
             )
+            if effective < cost:
+                await self.conn.commit()
+                return {
+                    "error": "insufficient_influence",
+                    "have": effective,
+                    "need": cost,
+                }
+            spent = await self._spend_user_influence_no_lock(
+                user_id, guild_id, district_id, cost, now,
+            )
+            assert spent is not None
+            new_inf, _fortify_left = spent
             ends_at = now + float(config.DISTRICT_WAR_CONTEST_DURATION_SECONDS)
             await self.conn.execute(
                 """
@@ -9408,7 +9415,7 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         return {
             "error": None,
             "influence_spent": cost,
-            "influence_left": new_inf,
+            "influence_left": new_inf + _fortify_left,
             "crew_name": crew,
             "ends_at": ends_at,
             "district_id": district_id,
@@ -11818,6 +11825,47 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         fortify = await self._user_fortify_points_no_lock(user_id, guild_id, district_id, now)
         return base + fortify
 
+    async def _spend_user_influence_no_lock(
+        self,
+        user_id: int,
+        guild_id: int,
+        district_id: str,
+        cost: float,
+        now: float,
+    ) -> tuple[float, float] | None:
+        """Spend influence (base first, then fortify). Returns (base_left, fortify_left)."""
+        effective = await self._user_effective_influence_no_lock(
+            user_id, guild_id, district_id, now,
+        )
+        if effective < cost:
+            return None
+        base = await self._user_base_influence_no_lock(user_id, guild_id, district_id)
+        fortify = await self._user_fortify_points_no_lock(user_id, guild_id, district_id, now)
+        remaining = float(cost)
+        from_base = min(base, remaining)
+        base -= from_base
+        remaining -= from_base
+        fortify = max(0.0, fortify - remaining)
+        await self._set_user_base_influence_no_lock(user_id, guild_id, district_id, base, now)
+        if fortify <= 0:
+            await self.conn.execute(
+                """
+                DELETE FROM district_influence_fortify
+                WHERE guild_id = ? AND district_id = ? AND user_id = ?
+                """,
+                (guild_id, district_id, user_id),
+            )
+        else:
+            await self.conn.execute(
+                """
+                UPDATE district_influence_fortify
+                SET points = ?
+                WHERE guild_id = ? AND district_id = ? AND user_id = ?
+                """,
+                (fortify, guild_id, district_id, user_id),
+            )
+        return base, fortify
+
     async def _set_user_base_influence_no_lock(
         self, user_id: int, guild_id: int, district_id: str, value: float, now: float,
     ) -> None:
@@ -12147,14 +12195,21 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
             if cd_err is not None:
                 await self.conn.commit()
                 return cd_err
-            current = await self._user_base_influence_no_lock(user_id, guild_id, district_id)
-            if current < cost:
-                await self.conn.commit()
-                return {"error": "insufficient_influence", "have": current, "need": cost}
-            until = now + float(config.DISTRICT_OWNER_SUPPRESS_DURATION_SECONDS)
-            await self._set_user_base_influence_no_lock(
-                user_id, guild_id, district_id, current - cost, now,
+            effective = await self._user_effective_influence_no_lock(
+                user_id, guild_id, district_id, now,
             )
+            if effective < cost:
+                await self.conn.commit()
+                return {
+                    "error": "insufficient_influence",
+                    "have": effective,
+                    "need": cost,
+                }
+            spent = await self._spend_user_influence_no_lock(
+                user_id, guild_id, district_id, cost, now,
+            )
+            assert spent is not None
+            until = now + float(config.DISTRICT_OWNER_SUPPRESS_DURATION_SECONDS)
             await self.conn.execute(
                 """
                 INSERT INTO district_war_suppress (

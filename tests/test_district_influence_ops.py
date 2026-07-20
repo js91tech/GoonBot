@@ -117,6 +117,20 @@ class DistrictInfluenceOpsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         score = await self.db.get_user_district_influence(self.a, self.guild_id, "downtown")
         self.assertAlmostEqual(score, 0)
 
+    async def test_contest_spends_fortify_influence(self) -> None:
+        await self.db.join_crew(self.a, self.guild_id, "Alpha")
+        fortify = await self.db.fortify_district_influence(
+            self.a, self.guild_id, "downtown", points=20,
+        )
+        self.assertIsNone(fortify.get("error"))
+        result = await self.db.contest_district_war(self.a, self.guild_id, "downtown")
+        self.assertIsNone(result.get("error"))
+        left = await self.db.get_user_district_influence(self.a, self.guild_id, "downtown")
+        self.assertAlmostEqual(
+            left,
+            20 - config.DISTRICT_WAR_CONTEST_COST,
+        )
+
     async def test_suppress_requires_deed_and_blocks_war_bonus(self) -> None:
         cost, err = await self.db.claim_district_deed(self.a, self.guild_id, "downtown")
         self.assertIsNone(err)
