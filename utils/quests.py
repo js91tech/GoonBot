@@ -28,6 +28,14 @@ ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
     QuestDef("raid_once", "Join the Raid", "Deal damage to a boss with `/attack`.", 1, 1000.0, "boss_attack"),
     QuestDef("heal_once", "Field Medic", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
     QuestDef("pay_friend", "Spread the Wealth", "Send nuggets with `/pay`.", 1, 500.0, "wallet_pay"),
+    QuestDef(
+        "gift_once",
+        "Share the Goods",
+        "Gift an item with `/gift-item` or product with `/drugs gift`.",
+        1,
+        500.0,
+        "item_gift",
+    ),
 )
 
 DAILY_QUEST_POOL: tuple[QuestDef, ...] = (

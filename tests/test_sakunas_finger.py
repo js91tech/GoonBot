@@ -77,7 +77,7 @@ class SakunasFingerDatabaseTests(unittest.IsolatedAsyncioTestCase):
         assert active is not None
         self.assertAlmostEqual(float(active["expires"]), expires)
 
-        with patch("database.time.time", return_value=expires + 1.0):
+        with patch("database.core.time.time", return_value=expires + 1.0):
             expired = await self.db.peek_active_sakuna_buff(user_id, guild_id)
         self.assertIsNone(expired)
 

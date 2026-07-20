@@ -167,6 +167,11 @@ class Drugs(commands.Cog):
         if gift_err:
             await interaction.response.send_message(gift_err, ephemeral=True)
             return
+        if await self.bot.db.is_restricted(interaction.user.id, interaction.guild_id):
+            await interaction.response.send_message(
+                "You cannot gift product right now.", ephemeral=True,
+            )
+            return
         drug_id = product.strip().lower()
         defn = drug_by_id(drug_id)
         if defn is None:
@@ -192,6 +197,9 @@ class Drugs(commands.Cog):
                 "Could not complete the gift.", ephemeral=True,
             )
             return
+        await record_quest_event(
+            self.bot.db, interaction.guild_id, interaction.user.id, "item_gift",
+        )
         await interaction.response.send_message(
             f"{interaction.user.mention} gifted **{qty}×** {defn.emoji} **{defn.name}** "
             f"to {user.mention}!",
