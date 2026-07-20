@@ -90,8 +90,9 @@ async def build_district_embed(
         title="🗺️ Business Districts",
         description=(
             "Relocate for a placement bonus. **One player owns each district deed** "
-            "(full bonus + **20% rent** from tenants). Fight for **crew war control** "
-            "with influence: Contest, Undermine, Fortify, or (deed owners) Suppress.\n"
+            "(full bonus + **20% rent** from tenants paid to your wallet on accrual). "
+            "Fight for **crew war control** with influence: Contest, Undermine, Fortify, "
+            "or (deed owners) Suppress.\n"
             f"Buyout burn is **{int(config.DISTRICT_BUYOUT_INFLUENCE_DISCOUNT * 100)}%** "
             f"cheaper at **{int(config.DISTRICT_BUYOUT_INFLUENCE_DISCOUNT_THRESHOLD)}+** "
             "influence in that district."
@@ -180,13 +181,14 @@ async def build_district_embed(
             else 0.0
         )
         loc = district_by_id(current)
-        loc_label = f"{loc.emoji} {loc.name}" if loc else "_unassigned (no bonus)_"
-        embed.set_footer(
-            text=(
-                f"Your business: {loc_label} · your influence here {int(your_inf)} · "
-                f"Relocate fee {fmt_amount(relocate_cost(int(row['tier'])))}"
-            ),
+        loc_label = f"{loc.emoji} {loc.name}" if loc else "_unassigned — use Relocate below_"
+        footer = (
+            f"Your business: {loc_label} · your influence here {int(your_inf)} · "
+            f"Relocate fee {fmt_amount(relocate_cost(int(row['tier'])))}"
         )
+        if not current:
+            footer += " · **Relocate first** to earn district bonuses and pay rent as a tenant"
+        embed.set_footer(text=footer)
     else:
         embed.set_footer(text="Create a business with /business create to relocate it.")
     return embed
@@ -228,7 +230,8 @@ async def _refresh_map(
     if guild is None:
         await interaction.followup.send("Guild only.", ephemeral=True)
         return
-    view = DistrictMapView(cog, guild.id, user_id)
+    deeds = await cog.bot.db.list_district_deeds(guild.id)
+    view = DistrictMapView(cog, guild.id, user_id, deeds)
     embed, files = await build_district_payload(cog, guild, user_id)
     if description:
         embed.description = description
@@ -288,7 +291,13 @@ class RelocateSelect(discord.ui.Select):
 
 
 class ClaimDeedSelect(discord.ui.Select):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        deeds: dict[str, int],
+    ) -> None:
         options = [
             discord.SelectOption(
                 label=f"Claim {defn.name}",
@@ -297,7 +306,16 @@ class ClaimDeedSelect(discord.ui.Select):
                 emoji=defn.emoji,
             )
             for defn in DISTRICT_MAP.values()
+            if defn.district_id not in deeds
         ]
+        if not options:
+            options = [
+                discord.SelectOption(
+                    label="All districts claimed",
+                    value="_none",
+                    description="Use Buyout on an owned district instead",
+                ),
+            ]
         super().__init__(
             placeholder="Claim unowned district deed…",
             options=options,
@@ -309,6 +327,12 @@ class ClaimDeedSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await _ensure_deferred(interaction)
+        if self.values[0] == "_none":
+            await interaction.followup.send(
+                "Every district already has a deed owner — use **Buyout** to take one.",
+                ephemeral=True,
+            )
+            return
         district_id = self.values[0]
         cost, err = await self.cog.bot.db.claim_district_deed(
             self.user_id, self.guild_id, district_id,
@@ -335,7 +359,13 @@ class ClaimDeedSelect(discord.ui.Select):
 
 
 class BuyoutDeedSelect(discord.ui.Select):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        deeds: dict[str, int],
+    ) -> None:
         options = [
             discord.SelectOption(
                 label=f"Buyout {defn.name}",
@@ -344,7 +374,16 @@ class BuyoutDeedSelect(discord.ui.Select):
                 emoji=defn.emoji,
             )
             for defn in DISTRICT_MAP.values()
+            if defn.district_id in deeds and deeds[defn.district_id] != user_id
         ]
+        if not options:
+            options = [
+                discord.SelectOption(
+                    label="No hostile buyouts",
+                    value="_none",
+                    description="Claim unowned districts or you already own yours",
+                ),
+            ]
         super().__init__(
             placeholder="Hostile buyout district deed…",
             options=options,
@@ -356,6 +395,12 @@ class BuyoutDeedSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await _ensure_deferred(interaction)
+        if self.values[0] == "_none":
+            await interaction.followup.send(
+                "No districts available for hostile buyout right now.",
+                ephemeral=True,
+            )
+            return
         district_id = self.values[0]
         paid, received, burned, err = await self.cog.bot.db.buyout_district_deed(
             self.user_id, self.guild_id, district_id,
@@ -522,7 +567,7 @@ class DistrictInfluenceOpsView(discord.ui.View):
         if err == "insufficient_influence":
             have = float(result.get("have") or 0)
             need = float(result.get("need") or 0)
-            return f"Need **{int(need)}** influence (you have **{int(have)}**)."
+            return f"Need **{int(need)}** influence (you have **{int(have)}** including fortify)."
         messages = {
             "no_crew": "Join a crew first to contest war control.",
             "no_target": "No rival influence to undermine here.",
@@ -684,14 +729,20 @@ class DistrictInfluenceOpsView(discord.ui.View):
 
 
 class DistrictMapView(discord.ui.View):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        deeds: dict[str, int],
+    ) -> None:
         super().__init__(timeout=180.0)
         self.cog = cog
         self.guild_id = guild_id
         self.user_id = user_id
         self.add_item(RelocateSelect(cog, guild_id, user_id))
-        self.add_item(ClaimDeedSelect(cog, guild_id, user_id))
-        self.add_item(BuyoutDeedSelect(cog, guild_id, user_id))
+        self.add_item(ClaimDeedSelect(cog, guild_id, user_id, deeds))
+        self.add_item(BuyoutDeedSelect(cog, guild_id, user_id, deeds))
         self.add_item(InfluenceOpsSelect(cog, guild_id, user_id))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -715,5 +766,22 @@ async def send_district_panel(interaction: discord.Interaction, cog: commands.Co
         return
     await interaction.response.defer()
     embed, files = await build_district_payload(cog, guild, interaction.user.id)
-    view = DistrictMapView(cog, guild.id, interaction.user.id)
+    deeds = await cog.bot.db.list_district_deeds(guild.id)
+    view = DistrictMapView(cog, guild.id, interaction.user.id, deeds)
     await interaction.followup.send(embed=embed, view=view, files=files)
+
+
+async def send_district_panel_ephemeral(
+    interaction: discord.Interaction,
+    cog: commands.Cog,
+    user_id: int,
+) -> None:
+    """Open the district map from a nested business panel (must defer first)."""
+    guild = interaction.guild
+    if guild is None:
+        await interaction.followup.send("Guild only.", ephemeral=True)
+        return
+    embed, files = await build_district_payload(cog, guild, user_id)
+    deeds = await cog.bot.db.list_district_deeds(guild.id)
+    view = DistrictMapView(cog, guild.id, user_id, deeds)
+    await interaction.followup.send(embed=embed, view=view, files=files, ephemeral=True)

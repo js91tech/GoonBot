@@ -384,11 +384,10 @@ class BusinessPanelView(discord.ui.View):
     @discord.ui.button(label="Districts", style=discord.ButtonStyle.secondary)
     async def districts_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        from utils.district_ui import DistrictMapView, build_district_payload
+        from utils.district_ui import send_district_panel_ephemeral
 
-        embed, files = await build_district_payload(self.cog, interaction.guild, self.user_id)
-        view = DistrictMapView(self.cog, self.guild_id, self.user_id)
-        await interaction.response.send_message(embed=embed, view=view, files=files, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        await send_district_panel_ephemeral(interaction, self.cog, self.user_id)
 
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=1)
     async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
