@@ -14,10 +14,11 @@ from utils.bot_players import pvp_target_error, skip_passive_bot
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel, valid_amount
 from utils.quests import record_quest_event
 
-COIN_DROP_INTERVAL_MINUTES = 30
+COIN_DROP_INTERVAL_MIN_MINUTES = 30
+COIN_DROP_INTERVAL_MAX_MINUTES = 60
 COIN_DROP_MIN_TYPERS = 3
-COIN_DROP_MIN_AMOUNT = 15
-COIN_DROP_MAX_AMOUNT = 250
+COIN_DROP_MIN_AMOUNT = 25_000
+COIN_DROP_MAX_AMOUNT = 55_000
 COIN_DROP_CLAIM_SECONDS = 120
 
 
@@ -134,34 +135,42 @@ class Economy(commands.Cog):
         bucket = self.coin_drop_typers.setdefault(message.guild.id, set())
         bucket.add(message.author.id)
 
-    @tasks.loop(minutes=COIN_DROP_INTERVAL_MINUTES)
+    def _roll_coin_drop_interval(self) -> None:
+        minutes = random.randint(COIN_DROP_INTERVAL_MIN_MINUTES, COIN_DROP_INTERVAL_MAX_MINUTES)
+        self.coin_drop_tick.change_interval(minutes=minutes)
+
+    @tasks.loop(minutes=COIN_DROP_INTERVAL_MIN_MINUTES)
     async def coin_drop_tick(self) -> None:
-        for guild in self.bot.guilds:
-            typers = self.coin_drop_typers.pop(guild.id, set())
-            if len(typers) < COIN_DROP_MIN_TYPERS:
-                continue
-            desired = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
-            amount = await self.bot.db.debit_house_pot(guild.id, desired)
-            if amount <= 0:
-                continue
-            channel = await resolve_main_channel(guild, self.bot.db)
-            if channel is None:
-                logging.warning("Coin drop: no channel to announce in guild %s", guild.id)
-                await self.bot.db.credit_house_pot(guild.id, amount)
-                continue
-            body = (
-                f"**Random coin drop!** **{fmt_amount(amount)}** from the house are up for grabs—"
-                f"**first to claim** wins. Anyone can press **Claim** for **{COIN_DROP_CLAIM_SECONDS}** seconds!"
-            )
-            view = CoinDropView(self.bot, guild.id, amount)
-            try:
-                await channel.send(body, view=view)
-            except discord.HTTPException:
-                logging.exception("Coin drop: failed to send in guild %s", guild.id)
+        try:
+            for guild in self.bot.guilds:
+                typers = self.coin_drop_typers.pop(guild.id, set())
+                if len(typers) < COIN_DROP_MIN_TYPERS:
+                    continue
+                desired = float(random.randint(COIN_DROP_MIN_AMOUNT, COIN_DROP_MAX_AMOUNT))
+                amount = await self.bot.db.debit_house_pot(guild.id, desired)
+                if amount <= 0:
+                    continue
+                channel = await resolve_main_channel(guild, self.bot.db)
+                if channel is None:
+                    logging.warning("Coin drop: no channel to announce in guild %s", guild.id)
+                    await self.bot.db.credit_house_pot(guild.id, amount)
+                    continue
+                body = (
+                    f"**Random coin drop!** **{fmt_amount(amount)}** from the house are up for grabs—"
+                    f"**first to claim** wins. Anyone can press **Claim** for **{COIN_DROP_CLAIM_SECONDS}** seconds!"
+                )
+                view = CoinDropView(self.bot, guild.id, amount)
+                try:
+                    await channel.send(body, view=view)
+                except discord.HTTPException:
+                    logging.exception("Coin drop: failed to send in guild %s", guild.id)
+        finally:
+            self._roll_coin_drop_interval()
 
     @coin_drop_tick.before_loop
     async def before_coin_drop_tick(self) -> None:
         await self.bot.wait_until_ready()
+        self._roll_coin_drop_interval()
 
     @tasks.loop(hours=1)
     async def passive_active_tick(self) -> None:
