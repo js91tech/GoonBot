@@ -56,7 +56,7 @@ CURRENCY_EMOJI = "🍘"
 PASSIVE_CHAT_REWARD = 0.5
 PASSIVE_ACTIVE_BONUS = 15.0
 VOICE_CHAT_REWARD = 3.0
-DAILY_REWARD = 75.0
+DAILY_REWARD = 125_000.0
 DAILY_COOLDOWN_SECONDS = 24 * 60 * 60
 DAILY_STREAK_MAX_DAYS = 14
 DAILY_STREAK_BONUS_PER_DAY = 0.05  # +5% daily reward per streak day (max +65%)
@@ -470,7 +470,8 @@ AVATAR_IMAGE_MODEL = os.getenv("AVATAR_IMAGE_MODEL", "dall-e-3")
 AVATAR_IMAGE_SIZE = os.getenv("AVATAR_IMAGE_SIZE", "1024x1024")
 AVATAR_AI_TIMEOUT_SECONDS = int(os.getenv("AVATAR_AI_TIMEOUT_SECONDS", "45"))
 
-TRIVIA_REWARD = 25.0
+TRIVIA_REWARD = 20_000.0
+TRIVIA_HOUSE_POOL_SHARE = 0.07
 TRIVIA_SECONDS = 30
 TRIVIA_MAX_CHANNELS = 10
 TRIVIA_HISTORY_DAYS = 45
@@ -974,7 +975,7 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
         integer=True,
     ),
     "imposter_chance": LiveSetting(IMPOSTER_CHANCE, "Per-message sabotage chance", maximum=1.0),
-    "trivia_reward": LiveSetting(TRIVIA_REWARD, "Trivia answer reward"),
+    "trivia_reward": LiveSetting(TRIVIA_REWARD, "Trivia base reward (+ house pool share)"),
     "boss_inferior_drop_chance": LiveSetting(
         BOSS_INFERIOR_DROP_CHANCE,
         "Battle-worn boss drop chance",

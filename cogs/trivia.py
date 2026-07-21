@@ -112,7 +112,9 @@ class Trivia(commands.Cog):
             return
 
         self.active_rounds.pop(message.channel.id, None)
-        reward = await self.bot.db.get_config_value(message.guild.id, "trivia_reward")
+        base_reward = await self.bot.db.get_config_value(message.guild.id, "trivia_reward")
+        house_pot = await self.bot.db.get_house_pot(message.guild.id)
+        reward = base_reward + house_pot * config.TRIVIA_HOUSE_POOL_SHARE
         mult = await self.bot.db.get_income_multiplier(message.author.id, message.guild.id)
         paid = reward * mult
         await self.bot.db.credit_wallet(
