@@ -11,13 +11,49 @@ from discord.ext import commands, tasks
 
 import config
 from utils.bot_players import skip_gameplay_bot
+from utils.drugs import DRUGS, drug_by_id
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel
+
+
+def trivia_speed_fraction(remaining_seconds: float, total_seconds: float = config.TRIVIA_SECONDS) -> float:
+    """1.0 = answered instantly, 0.0 = answered at the deadline."""
+    if total_seconds <= 0:
+        return 0.0
+    return max(0.0, min(1.0, remaining_seconds / total_seconds))
+
+
+def trivia_speed_multiplier(remaining_seconds: float) -> float:
+    frac = trivia_speed_fraction(remaining_seconds)
+    return config.TRIVIA_SPEED_MIN_MULT + (
+        config.TRIVIA_SPEED_MAX_MULT - config.TRIVIA_SPEED_MIN_MULT
+    ) * frac
+
+
+def trivia_drug_chance(remaining_seconds: float) -> float:
+    frac = trivia_speed_fraction(remaining_seconds)
+    return min(1.0, config.TRIVIA_DRUG_CHANCE + config.TRIVIA_DRUG_FAST_BONUS * frac)
+
+
+def roll_trivia_drug() -> str | None:
+    """Pick a random drug, weighted toward cheaper catalog entries."""
+    if not DRUGS:
+        return None
+    weights = [1.0 / max(defn.seed_cost, 1.0) for defn in DRUGS]
+    return random.choices(DRUGS, weights=weights, k=1)[0].drug_id
+
+
+def format_trivia_window(seconds: int = config.TRIVIA_SECONDS) -> str:
+    if seconds % 60 == 0 and seconds >= 60:
+        minutes = seconds // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{seconds} seconds"
 
 
 class Trivia(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.active_rounds: dict[int, tuple[str, float]] = {}
+        # channel_id -> (answer, expires_at, started_at)
+        self.active_rounds: dict[int, tuple[str, float, float]] = {}
         self.trivia_event_tick.start()
 
     def cog_unload(self) -> None:
@@ -78,13 +114,16 @@ class Trivia(commands.Cog):
             return False
 
         prompt, answer = puzzle
+        started_at = time.time()
         self.active_rounds[channel.id] = (
             answer.lower(),
-            time.time() + config.TRIVIA_SECONDS,
+            started_at + config.TRIVIA_SECONDS,
+            started_at,
         )
         header = "**Random Lore Roulette!** " if announce_prefix else ""
         await channel.send(
-            f"{header}Guess the missing word within {config.TRIVIA_SECONDS} seconds:\n\n> {prompt}"
+            f"{header}Guess the missing word within {format_trivia_window()} — "
+            f"**faster answers pay more**, and winners can snag a **free drug**:\n\n> {prompt}"
         )
         return True
 
@@ -146,8 +185,9 @@ class Trivia(commands.Cog):
         if active is None:
             return
 
-        answer, expires_at = active
-        if expires_at <= time.time():
+        answer, expires_at, started_at = active
+        now = time.time()
+        if expires_at <= now:
             self.active_rounds.pop(message.channel.id, None)
             return
 
@@ -155,9 +195,12 @@ class Trivia(commands.Cog):
             return
 
         self.active_rounds.pop(message.channel.id, None)
+        remaining = max(0.0, expires_at - now)
+        speed_mult = trivia_speed_multiplier(remaining)
+
         base_reward = await self.bot.db.get_config_value(message.guild.id, "trivia_reward")
         house_pot = await self.bot.db.get_house_pot(message.guild.id)
-        reward = base_reward + house_pot * config.TRIVIA_HOUSE_POOL_SHARE
+        reward = (base_reward + house_pot * config.TRIVIA_HOUSE_POOL_SHARE) * speed_mult
         mult = await self.bot.db.get_income_multiplier(message.author.id, message.guild.id)
         paid = reward * mult
         await self.bot.db.credit_wallet(
@@ -166,9 +209,22 @@ class Trivia(commands.Cog):
             reward,
             apply_bonuses=True,
         )
+
+        drug_note = ""
+        if random.random() < trivia_drug_chance(remaining):
+            drug_id = roll_trivia_drug()
+            defn = drug_by_id(drug_id) if drug_id else None
+            if defn is not None:
+                await self.bot.db.grant_drug_units(
+                    message.author.id, message.guild.id, defn.drug_id, 1,
+                )
+                drug_note = f" Bonus stash drop: {defn.emoji} **1× {defn.name}**!"
+
+        elapsed = max(0.0, now - started_at)
         await message.channel.send(
-            f"{message.author.mention} got it! The answer was `{answer}`. "
-            f"Prize: {fmt_amount(paid)}.",
+            f"{message.author.mention} got it in **{elapsed:.1f}s**! "
+            f"The answer was `{answer}`. "
+            f"Prize: {fmt_amount(paid)} ({speed_mult:.2f}× speed bonus).{drug_note}",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 

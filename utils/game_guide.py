@@ -439,7 +439,8 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "scaling wallet penalties",
                     "**Scourge Virus** — world event every **8** hours; warning GIF, then **7** min outbreak; "
                     "`/scourge-pass` to pass infection; hits top wallets' banks",
-                    "**Trivia** — hourly Lore Roulette in the main channel (`/trivia` to start one early)\n"
+                    "**Trivia** — hourly Lore Roulette (**3 min**, faster answers pay more + free drug chance; "
+                    "`/trivia` to start early)\n"
                     "**Imposter** — random AI word sabotage in messages (server config)",
                     "**House pot** — gambling taxes and unclaimed drops fund random **Claim** coin drops",
                 ],
