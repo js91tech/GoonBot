@@ -1024,6 +1024,12 @@ class LiveSetting:
 
 
 LIVE_SETTINGS: dict[str, LiveSetting] = {
+    "nsfw_channel_only": LiveSetting(
+        1.0,
+        "Require Discord NSFW channels for commands (1=on, 0=off)",
+        maximum=1.0,
+        integer=True,
+    ),
     "passive_chat_reward": LiveSetting(PASSIVE_CHAT_REWARD, "Per-message earning"),
     "passive_active_bonus": LiveSetting(PASSIVE_ACTIVE_BONUS, "Per active hour earning"),
     "voice_chat_reward": LiveSetting(VOICE_CHAT_REWARD, "Per minute in VC"),
