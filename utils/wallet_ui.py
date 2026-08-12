@@ -6,6 +6,7 @@ import discord
 
 import config
 from utils.bank_expansion_ui import format_bank_expansion_roster
+from utils.goon_theme import brand_color
 from utils.helpers import fmt_amount
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ def build_wallet_embed(
     net = wallet + bank
     embed = discord.Embed(
         title=f"{member.display_name}'s Vault",
-        color=discord.Color.gold(),
+        color=brand_color(),
     )
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.add_field(name="Pocket", value=fmt_amount(wallet), inline=True)
