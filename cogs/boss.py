@@ -522,7 +522,7 @@ class Boss(commands.Cog):
             return
         embed = discord.Embed(
             title=f"{name} retreated!",
-            description="Time ran out—no nuggets or gear were awarded.",
+            description="Time ran out—no goonbux or gear were awarded.",
             color=discord.Color.dark_grey(),
         )
         art = attach_boss_art(embed, variant)
@@ -693,7 +693,7 @@ class Boss(commands.Cog):
             self._clear_raid_state(guild_id)
             summary = (
                 f"{BOSS_NAME} collapsed from exhaustion with **no recorded strikes**. "
-                "No nuggets or gear were awarded."
+                "No goonbux or gear were awarded."
             )
             await self._send_boss_defeat_embed(
                 guild,
@@ -1180,7 +1180,7 @@ class Boss(commands.Cog):
         ):
             await interaction.followup.send(
                 f"Summoning costs **{fmt_amount(config.SUMMON_COST)}**. "
-                "You do not have enough nuggets.",
+                "You do not have enough goonbux.",
             )
             return
 

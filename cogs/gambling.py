@@ -116,7 +116,7 @@ class CoinflipAcceptView(discord.ui.View):
 
             if not await self.cog.bot.db.debit_wallet(challenger, guild_id, amount):
                 await interaction.response.edit_message(
-                    content="Duel cancelled — challenger no longer has enough nuggets.",
+                    content="Duel cancelled — challenger no longer has enough goonbux.",
                     view=self,
                 )
                 self.stop()
@@ -124,7 +124,7 @@ class CoinflipAcceptView(discord.ui.View):
             if not await self.cog.bot.db.debit_wallet(opponent, guild_id, amount):
                 await self.cog.bot.db.credit_wallet(challenger, guild_id, amount)
                 await interaction.response.edit_message(
-                    content="Duel cancelled — you no longer have enough nuggets.",
+                    content="Duel cancelled — you no longer have enough goonbux.",
                     view=self,
                 )
                 self.stop()
@@ -297,7 +297,7 @@ class Gambling(commands.Cog):
 
     @app_commands.command(
         name="coinflip",
-        description="50/50 coinflip vs the house for nuggets. Try /casino for the full hub.",
+        description="50/50 coinflip vs the house for goonbux. Try /casino for the full hub.",
     )
     @app_commands.describe(amount="Nuggets to wager")
     @app_commands.guild_only()
@@ -311,7 +311,7 @@ class Gambling(commands.Cog):
             return
 
         if not await self.bot.db.debit_wallet(interaction.user.id, interaction.guild_id, bet):
-            await interaction.response.send_message("Insufficient nuggets.", ephemeral=True)
+            await interaction.response.send_message("Insufficient goonbux.", ephemeral=True)
             return
 
         tax = await self.bot.db.get_config_value(interaction.guild_id, "gambling_house_tax")
@@ -339,7 +339,7 @@ class Gambling(commands.Cog):
 
     @app_commands.command(
         name="coinflip-duel",
-        description="Challenge another player to a coinflip for nuggets.",
+        description="Challenge another player to a coinflip for goonbux.",
     )
     @app_commands.describe(opponent="Player to challenge", amount="Nuggets each player stakes")
     @app_commands.guild_only()
@@ -392,7 +392,7 @@ class Gambling(commands.Cog):
             return
 
         if not await self.bot.db.debit_wallet(interaction.user.id, interaction.guild_id, bet):
-            await interaction.response.send_message("Insufficient nuggets.", ephemeral=True)
+            await interaction.response.send_message("Insufficient goonbux.", ephemeral=True)
             return
 
         tax = await self.bot.db.get_config_value(interaction.guild_id, "gambling_house_tax")
@@ -435,7 +435,7 @@ class Gambling(commands.Cog):
 
     @app_commands.command(
         name="slots",
-        description="Spin the nugget slots (3-reel). Try /casino for the full hub.",
+        description="Spin the goonbux slots (3-reel). Try /casino for the full hub.",
     )
     @app_commands.describe(amount="Nuggets to wager")
     @app_commands.guild_only()
@@ -454,7 +454,7 @@ class Gambling(commands.Cog):
             )
             return
         if not await self.bot.db.debit_wallet(interaction.user.id, interaction.guild_id, bet):
-            await interaction.response.send_message("Insufficient nuggets.", ephemeral=True)
+            await interaction.response.send_message("Insufficient goonbux.", ephemeral=True)
             return
 
         await interaction.response.defer(ephemeral=True)

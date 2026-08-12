@@ -120,6 +120,13 @@ class Trivia(commands.Cog):
         if not started:
             await interaction.followup.send("I could not find a suitable recent message for trivia.")
 
+    @app_commands.command(name="chaos", description="Open the chaos hub (trivia, scourge, virus).")
+    @app_commands.guild_only()
+    async def chaos(self, interaction: discord.Interaction) -> None:
+        from utils.meta_hub_ui import send_chaos_hub
+
+        await send_chaos_hub(interaction, self)
+
     @tasks.loop(hours=config.TRIVIA_EVENT_INTERVAL_HOURS)
     async def trivia_event_tick(self) -> None:
         for guild in self.bot.guilds:

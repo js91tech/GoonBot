@@ -259,7 +259,7 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         msg = (
             "Could not resolve any configured Postgres host. If DATABASE_URL uses an internal Railway "
             "hostname that is unavailable to this service, add DATABASE_PUBLIC_URL from the Postgres "
-            "service variables to the NuggetBot service."
+            "service variables to the GoonBot service."
         )
         raise RuntimeError(msg) from last_error
 

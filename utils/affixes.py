@@ -108,7 +108,7 @@ def current_delve_week_id() -> str:
 def delve_week_label(week_id: str) -> str:
     labels = {
         "cursed_depths": "Cursed Depths — harder enemies, 2× void hardener drops",
-        "merchants_run": "Merchant's Run — bonus nuggets, blueprint shard chance",
+        "merchants_run": "Merchant's Run — bonus goonbux, blueprint shard chance",
         "blood_pact": "Blood Pact — shared risk, accessory drop boost",
     }
     return labels.get(week_id, week_id.replace("_", " ").title())

@@ -23,7 +23,7 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "mythic_slayer": Achievement("mythic_slayer", "Mythic Slayer", "Help defeat a mythic Velvet Vixen.", "🌌"),
     "heist_king": Achievement("heist_king", "Heist King", "Succeed at 10 heists.", "🎭"),
     "field_medic": Achievement("field_medic", "Field Medic", "Revive 25 downed raiders.", "💊"),
-    "wealthy": Achievement("wealthy", "Nugget Baron", "Hold 200,000 nuggets at once.", "💰"),
+    "wealthy": Achievement("wealthy", "Goon Baron", "Hold 200,000 goonbux at once.", "💰"),
     "excalibur_owner": Achievement(
         "excalibur_owner",
         "Excalibur Bearer",

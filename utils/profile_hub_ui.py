@@ -233,6 +233,15 @@ class ProfileHubView(discord.ui.View):
         embed = build_profile_hub_embed(member, summary)
         await interaction.response.edit_message(content=None, embed=embed, view=self)
 
+    @discord.ui.button(label="Chaos", style=discord.ButtonStyle.danger, row=2)
+    async def chaos_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        from utils.meta_hub_ui import send_chaos_hub
+
+        await send_chaos_hub(interaction, self.cog)
+
 
 async def send_profile_hub(
     cog: commands.Cog,

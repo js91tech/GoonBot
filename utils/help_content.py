@@ -42,12 +42,13 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Chaos modules",
-        "**/bounty** · **/bounty-board** · **/heist** · **/bank-heist** · **/bodyguards** · **/hack** · **/transfer** · **/scourge-pass** · **/trivia**\n"
+        "**/bounty** · **/bounty-board** · **/heist** · **/bank-heist** · **/bodyguards** · **/hack** · **/transfer** · **/scourge-pass** · **/trivia** · **/chaos**\n"
         "**Jail Key** (100k, guaranteed escape) · **Pick Key** (20k, 15% escape) while arrested.\n"
         "**/bodyguards** — hire up to 5 guards (3 tiers) to defend your bank from heists.\n"
         "House pot — gambling losses, scourge hits, and unclaimed drops fund random coin drops.\n"
         "Scourge Virus — every **8** hours; warning GIF, then 7 min of infections on the top 5.\n"
         "Boss auto-spawn — every **90** minutes when none is active.\n"
-        "**/hall-of-fame** · **/event** (admins)",
+        "**/hall-of-fame** · **/event** (admins)\n"
+        "**18+ only** — age gate on first use; prefer Discord NSFW channels (`nsfw_channel_only`).",
     ),
 )

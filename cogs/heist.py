@@ -101,7 +101,9 @@ class Heist(commands.Cog):
 
         target_balance = await self.bot.db.get_balance(target.id, interaction.guild_id)
         if target_balance <= 0:
-            await interaction.response.send_message("That user has no nuggets to steal.", ephemeral=True)
+            await interaction.response.send_message(
+                f"That user has no {config.CURRENCY_NAME} to steal.", ephemeral=True,
+            )
             return
 
         await interaction.response.defer()
