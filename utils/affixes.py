@@ -22,7 +22,7 @@ AFFIX_DEFINITIONS: dict[str, AffixDefinition] = {
         "affix_unstable", "Unstable", "Higher crit but riskier.", "unstable",
     ),
     "affix_hannah_touched": AffixDefinition(
-        "affix_hannah_touched", "Hannah-Touched", "Bonus boss damage.", "boss",
+        "affix_hannah_touched", "Velvet-Touched", "Bonus boss damage.", "boss",
     ),
     "affix_corp_sponsored": AffixDefinition(
         "affix_corp_sponsored", "Corp-Sponsored", "Bonus work income.", "work",

@@ -20,7 +20,7 @@ class Achievement:
 ACHIEVEMENTS: dict[str, Achievement] = {
     "first_blood": Achievement("first_blood", "First Blood", "Help defeat your first boss.", "🩸"),
     "raid_veteran": Achievement("raid_veteran", "Raid Veteran", "Help defeat 25 bosses.", "⚔️"),
-    "mythic_slayer": Achievement("mythic_slayer", "Mythic Slayer", "Help defeat a mythic Hannah.", "🌌"),
+    "mythic_slayer": Achievement("mythic_slayer", "Mythic Slayer", "Help defeat a mythic Velvet Vixen.", "🌌"),
     "heist_king": Achievement("heist_king", "Heist King", "Succeed at 10 heists.", "🎭"),
     "field_medic": Achievement("field_medic", "Field Medic", "Revive 25 downed raiders.", "💊"),
     "wealthy": Achievement("wealthy", "Nugget Baron", "Hold 200,000 nuggets at once.", "💰"),

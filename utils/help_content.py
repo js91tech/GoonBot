@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+NSFW_NOTICE = (
+    "🔞 **GoonBot is 18+ only.** Play in a Discord **NSFW channel** when your server requires it "
+    "(admins: `/admin config nsfw_channel_only`)."
+)
+
 HELP_PAGES: tuple[tuple[str, str], ...] = (
     (
         "Economy",
@@ -14,7 +19,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**/attack** · **/heal** · **/cast** · **/use** · **/boss-status** · **/raid-leaderboard**\n"
         "**/boss-hunt** · **/boss-crew-lb**\n"
         "**/enhance** · **/repair-gear** · **/equip-instance** — BDO-style gear enhancement (+1→PENTA)\n"
-        "Raid adds (**Hannah's Henchmen**, **Court of Kitty's Jesters**) drop scrap/hardener — never celestial shards.\n"
+        "Raid adds (**Velvet's Henchmen**, **Court of Kitty's Jesters**) drop scrap/hardener — never celestial shards.\n"
         "**/shop** · **/buy** · **/equip** · **/craft** · **/prestige**\n"
         "**/dungeon** — solo standard (**25** energy) · unlock **Gilded Vault** (**50k**, party raid) · **/alchemy** · **/season**",
     ),

@@ -101,7 +101,7 @@ from utils.summoner_penalty import (
     summoner_penalty_summary,
 )
 
-BOSS_NAME = "Hannah"
+BOSS_NAME = config.BOSS_DISPLAY_NAME
 BOSS_NAME_TOMASS = config.BOSS_NAME_TOMASS
 BOSS_NAME_ZZ = config.BOSS_NAME_ZZ_WRATH
 BOSS_NAME_FREAKY_NIKKI = config.BOSS_NAME_FREAKY_NIKKI
@@ -1155,7 +1155,7 @@ class Boss(commands.Cog):
     @app_commands.describe(boss="Boss to summon")
     @app_commands.choices(
         boss=[
-            app_commands.Choice(name="Hannah (enraged)", value="hannah_enraged"),
+            app_commands.Choice(name="Velvet Vixen (enraged)", value="hannah_enraged"),
             app_commands.Choice(name="TomAss (enraged mirror ×1.75)", value="tomass"),
             app_commands.Choice(name="Freaky Nikki", value="freaky_nikki"),
         ],
