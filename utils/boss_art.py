@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import discord
@@ -8,6 +9,10 @@ import config
 
 ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "bosses"
 FREAKY_NIKKI_ASSETS = ASSETS_ROOT / "freaky_nikki"
+GLAM_ROOT = ASSETS_ROOT / "glam"
+ARMORED_ROOT = ASSETS_ROOT / "armored"
+
+VELVET_VARIANTS = frozenset({"normal", "enraged", "shadow", "celestial", "mythic"})
 
 # Velvet Vixen tiers share art keyed by variant; TomAss and ZZ's Wrath have dedicated portraits.
 VARIANT_ART_FILES: dict[str, str] = {
@@ -49,9 +54,39 @@ def moment_for_move(move: str) -> str:
     return "spawn"
 
 
+def _velvet_style_roots() -> list[tuple[str, Path]]:
+    style = getattr(config, "VELVET_VIXEN_ART_STYLE", "both").strip().lower()
+    glam = ("glam", GLAM_ROOT)
+    armored = ("armored", ARMORED_ROOT)
+    if style == "glam":
+        return [glam]
+    if style == "armored":
+        return [armored]
+    # "both" (default) and anything unrecognized → prefer both packs
+    return [glam, armored]
+
+
+def _resolve_velvet_art(variant: str) -> Path | None:
+    filename = VARIANT_ART_FILES.get(variant)
+    if filename is None:
+        return None
+    candidates: list[Path] = []
+    for _label, root in _velvet_style_roots():
+        path = root / filename
+        if path.is_file():
+            candidates.append(path)
+    if candidates:
+        return random.choice(candidates)
+    # Legacy flat path under assets/bosses/
+    legacy = ASSETS_ROOT / filename
+    return legacy if legacy.is_file() else None
+
+
 def boss_art_path(variant: str) -> Path | None:
     if variant == "freaky_nikki":
         return boss_moment_art_path(variant, "spawn")
+    if variant in VELVET_VARIANTS:
+        return _resolve_velvet_art(variant)
     filename = VARIANT_ART_FILES.get(variant)
     if filename is None:
         return None
@@ -82,6 +117,14 @@ def boss_moment_art_path(variant: str, moment: str) -> Path | None:
     return None
 
 
+def _attachment_filename(path: Path) -> str:
+    """Unique Discord attachment name so glam/armored don't collide."""
+    parent = path.parent.name
+    if parent in {"glam", "armored"}:
+        return f"{parent}_{path.name}"
+    return path.name
+
+
 def attach_boss_art(embed: discord.Embed, variant: str) -> discord.File | None:
     url = config.FREAKY_NIKKI_ART_URLS.get("spawn") if variant == "freaky_nikki" else None
     path = boss_art_path(variant)
@@ -90,7 +133,7 @@ def attach_boss_art(embed: discord.Embed, variant: str) -> discord.File | None:
         return None
     if path is None:
         return None
-    filename = path.name
+    filename = _attachment_filename(path)
     embed.set_image(url=f"attachment://{filename}")
     return discord.File(str(path), filename=filename)
 
