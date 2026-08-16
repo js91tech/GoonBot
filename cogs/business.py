@@ -42,7 +42,7 @@ class Business(commands.Cog):
             return
         await send_business_panel(interaction, self)
 
-    @business_group.command(name="create", description="Open your first business (a Lemon Stand).")
+    @business_group.command(name="create", description="Open your first business (Tip Jar Cam).")
     async def create(self, interaction: discord.Interaction) -> None:
         guild_id = interaction.guild_id
         member = interaction.user
@@ -61,7 +61,7 @@ class Business(commands.Cog):
         if err == "insufficient_funds":
             await interaction.followup.send(
                 f"You need **{fmt_amount(defn.purchase_cost)}** in your pocket to "
-                "open a Lemon Stand.",
+                "open a Tip Jar Cam.",
                 ephemeral=True,
             )
             return
@@ -269,7 +269,7 @@ class Business(commands.Cog):
         embed = discord.Embed(
             title="🍋 Business Empire Starter Guide",
             description=(
-                "1. **Create** — `/business create` opens a Lemon Stand.\n"
+                "1. **Create** — `/business create` opens a Tip Jar Cam.\n"
                 "2. **Collect** — passive revenue builds every 5 min; collect to your wallet.\n"
                 "3. **Upgrade** — reinvest in efficiency, reputation, and branches.\n"
                 "4. **Tier up** — climb 7 tiers to Corporation.\n"
@@ -279,7 +279,7 @@ class Business(commands.Cog):
             ),
             color=discord.Color.green(),
         )
-        embed.set_footer(text=f"Lemon Stand costs {fmt_amount(defn.purchase_cost if defn else 500)}")
+        embed.set_footer(text=f"{(defn.name if defn else 'Tip Jar Cam')} costs {fmt_amount(defn.purchase_cost if defn else 500)}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @tasks.loop(seconds=config.DISTRICT_WAR_TICK_SECONDS)

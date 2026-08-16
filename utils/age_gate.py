@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from utils.goon_theme import brand_color, danger_color, branded_embed
+from utils.goon_theme import brand_color, danger_color
+from utils.onboarding import NightLoopView, onboarding_embed
 
 if TYPE_CHECKING:
     from database import Database
@@ -49,16 +50,11 @@ class AgeGateView(discord.ui.View):
         self, interaction: discord.Interaction, _button: discord.ui.Button,
     ) -> None:
         await self.db.set_age_verified(self.user_id, self.guild_id, True)
-        embed = branded_embed(
-            "Welcome to GoonBot",
-            description=(
-                "Age confirmed. Use `/profile` for the launcher hub, "
-                "or browse slash commands. Play in NSFW channels when your "
-                "server requires it."
-            ),
-        )
+        member_name = getattr(interaction.user, "display_name", None)
+        embed = onboarding_embed(member_name=member_name)
+        view = NightLoopView()
         self.stop()
-        await interaction.response.edit_message(embed=embed, view=None)
+        await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="I am under 18", style=discord.ButtonStyle.danger, row=0)
     async def refuse_underage(

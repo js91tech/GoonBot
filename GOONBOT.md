@@ -33,6 +33,14 @@
 - When `nsfw_channel_only` is on (default), slash commands fail outside NSFW channels (server admins can still run commands for setup).
 - No sexual content involving minors is permitted in code, lore, items, or bosses.
 
+## First night (after 18+)
+
+1. `/daily` — claim goonbux
+2. `/jobs` — lounge grind
+3. `/shop` + `/equip` — gear up
+4. `/boss` — raid Velvet Vixen
+5. `/profile` — hubs for casino, drugs, crime, empire
+
 ## Player hubs (entry points)
 
 - `/profile` — launcher

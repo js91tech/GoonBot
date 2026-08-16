@@ -462,7 +462,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
             pages=_static_pages(
                 "Business Empire",
                 [
-                    "**Build an empire** — `/business create` opens a Lemon Stand. Income "
+                    "**Build an empire** — `/business create` opens a Tip Jar Cam. Income "
                     "accrues passively into a capped store; `/business collect` banks it. "
                     "`/business info` opens the panel (Collect · Upgrade · Tier up · "
                     "Districts · Compete · Refresh).",

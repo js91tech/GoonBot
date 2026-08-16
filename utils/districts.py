@@ -35,19 +35,19 @@ class DistrictDef:
 # tourism vs. lower costs) is captured in the label; the net effect is income.
 DISTRICT_MAP: dict[str, DistrictDef] = {
     "downtown": DistrictDef(
-        "downtown", "Downtown", "🏙️", 1.20, "+20% customer traffic",
+        "downtown", "Red-Light Strip", "💋", 1.20, "+20% night traffic",
     ),
     "financial": DistrictDef(
-        "financial", "Financial District", "🏦", 1.25, "+25% business income",
+        "financial", "Sugar District", "💎", 1.25, "+25% high-roller income",
     ),
     "industrial": DistrictDef(
-        "industrial", "Industrial Zone", "🏭", 1.30, "+30% production efficiency",
+        "industrial", "Studio Row", "🎬", 1.30, "+30% content production",
     ),
     "beachfront": DistrictDef(
-        "beachfront", "Beachfront", "🏖️", 1.15, "+15% tourism income",
+        "beachfront", "Afterhours Beach", "🌙", 1.15, "+15% party tourism",
     ),
     "residential": DistrictDef(
-        "residential", "Residential District", "🏘️", 1.10, "-10% operating costs",
+        "residential", "Bedroom Suburbs", "🛏️", 1.10, "-10% operating costs",
     ),
 }
 

@@ -23,10 +23,10 @@ class QuestDef:
 
 
 ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
-    QuestDef("claim_daily", "First Rations", "Claim `/daily` once.", 1, 500.0, "daily_claim"),
-    QuestDef("buy_gear", "Arm Up", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
-    QuestDef("raid_once", "Join the Raid", "Deal damage to a boss with `/attack`.", 1, 1000.0, "boss_attack"),
-    QuestDef("heal_once", "Field Medic", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
+    QuestDef("claim_daily", "First Tips", "Claim `/daily` once.", 1, 500.0, "daily_claim"),
+    QuestDef("buy_gear", "Dress the Part", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
+    QuestDef("raid_once", "Face Velvet", "Deal damage to a boss with `/attack`.", 1, 1000.0, "boss_attack"),
+    QuestDef("heal_once", "Aftercare", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
     QuestDef("pay_friend", "Spread the Wealth", "Send goonbux with `/pay`.", 1, 500.0, "wallet_pay"),
     QuestDef(
         "gift_once",
