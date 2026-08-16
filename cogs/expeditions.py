@@ -67,7 +67,7 @@ class Expeditions(commands.Cog):
     @app_commands.describe(
         action="Status or contribute",
         scrap="Scrap to contribute",
-        nuggets="Nuggets to contribute",
+        nuggets="Goonbux to contribute",
     )
     @app_commands.choices(
         action=[
@@ -106,13 +106,13 @@ class Expeditions(commands.Cog):
             n = max(0.0, nuggets or 0.0)
             if s <= 0 and n <= 0:
                 await interaction.response.send_message(
-                    "Provide scrap and/or nuggets to contribute.", ephemeral=True,
+                    "Provide scrap and/or goonbux to contribute.", ephemeral=True,
                 )
                 return
             result = await self.bot.db.contribute_expedition(gid, interaction.user.id, scrap=s, nuggets=n)
             if result is None:
                 await interaction.response.send_message(
-                    "Contribution failed — check scrap/nugget balance.", ephemeral=True,
+                    "Contribution failed — check scrap/goonbux balance.", ephemeral=True,
                 )
                 return
             await record_expansion_event(

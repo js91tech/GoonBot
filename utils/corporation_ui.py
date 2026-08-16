@@ -113,7 +113,7 @@ async def build_project_embed(
     progress = await cog.bot.db.list_corporate_projects(guild_id, crew_name)
     embed = discord.Embed(
         title=f"🏗️ {crew_name} — Corporate Projects",
-        description="Large multi-member goals. Contribute nuggets to complete them for a treasury windfall.",
+        description="Large multi-member goals. Contribute goonbux to complete them for a treasury windfall.",
         color=discord.Color.gold(),
     )
     for defn in CORPORATE_PROJECTS:

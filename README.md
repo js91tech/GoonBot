@@ -59,18 +59,18 @@ python bot.py
 
 | Command | Description |
 |---------|-------------|
-| `/daily` | Claim 75 nuggets daily |
+| `/daily` | Claim daily goonbux |
 | `/balance` | Pocket + bank panel with deposit/withdraw/expand buttons |
 | `/guide` | Interactive popup guide — all systems, gear tiers, and items |
-| `/deposit amount` | Move nuggets pocket → bank (100k base cap; `/bank-heist` targets bank) |
-| `/withdraw amount` | Move nuggets bank → pocket |
+| `/deposit amount` | Move goonbux pocket → bank (100k base cap; `/bank-heist` targets bank) |
+| `/withdraw amount` | Move goonbux bank → pocket |
 | `/expand-bank` | Buy a tiered vault expansion (T1 **+10k** / T2 **+50k** / T3 **+250k** / T4 **+500k** cap; cost matches gain) |
 | `/leaderboard` | Top 10 by net worth (pocket + bank) |
-| `/pay @user amount` | Send nuggets from your pocket to another user |
+| `/pay @user amount` | Send goonbux from your pocket to another user |
 
 **House pot** — gambling losses/taxes, scourge bank hits, and expired coin drops feed a guild pool that funds random **Claim** drops in the main channel (no minting when the pot is empty).
 
-**Bank vault** — personal bank holds up to **100k** nuggets by default. **/expand-bank** offers four expansion tiers: **+10k**, **+50k**, **+250k**, and **+500k** capacity (each tier costs the same amount as its cap gain). Use `/balance` → **Vault expansions** for the tier picker. Prestiges **1–9** reset your pocket only; reaching **prestige 10** also resets your bank balance and vault expansions.
+**Bank vault** — personal bank holds up to **100k** goonbux by default. **/expand-bank** offers four expansion tiers: **+10k**, **+50k**, **+250k**, and **+500k** capacity (each tier costs the same amount as its cap gain). Use `/balance` → **Vault expansions** for the tier picker. Prestiges **1–9** reset your pocket only; reaching **prestige 10** also resets your bank balance and vault expansions.
 
 ### Bounty
 
@@ -124,7 +124,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 Bosses auto-spawn every **40 minutes** when none is active.
 
-**Raid adds** — After the boss drops below 50% HP, **Hannah's Henchmen** and **Court of Kitty's Jesters** can spawn mid-fight. Use **Attack Add** on the `/boss` panel for alchemy scrap and void hardener (never celestial shards).
+**Raid adds** — After the boss drops below 50% HP, **Velvet's Henchmen** and **Court of Kitty's Jesters** can spawn mid-fight. Use **Attack Add** on the `/boss` panel for alchemy scrap and void hardener (never celestial shards).
 
 | `/summon variant` | **Admin only:** force-spawn a boss |
 
@@ -158,9 +158,9 @@ Persistent crews share a **treasury** funded by member deposits. Deposits earn c
 | `/crew panel` action | What it does |
 |----------------|--------------|
 | **Bank / status** | Opens the interactive crew panel (treasury, deposits, loans, buttons) |
-| **Deposit** | Move nuggets from your wallet into the crew treasury (tracks your contribution) |
+| **Deposit** | Move goonbux from your wallet into the crew treasury (tracks your contribution) |
 | **Withdraw** | Pull up to what you deposited (blocked while you owe a loan) |
-| **Loan** | Borrow from the treasury within your crew level cap (min 50 nuggets) |
+| **Loan** | Borrow from the treasury within your crew level cap (min 50 goonbux) |
 | **Repay** | Pay down your loan; interest returns to the treasury |
 | **Leave** | Blocked until your crew loan is paid off |
 
@@ -168,13 +168,13 @@ Persistent crews share a **treasury** funded by member deposits. Deposits earn c
 
 ### Territories
 
-Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly nuggets paid into crew treasury** (1,800–6,000/hr by tier).
+Five zones per server (**Docks** → **Citadel**). Crews hold zones for **hourly goonbux paid into crew treasury** (1,800–6,000/hr by tier).
 
 | `/territory` action | What it does |
 |---------------------|--------------|
 | **Map / status** | Interactive territory map — hire guards on held zones (+1/+5 wallet or treasury) |
 | **Attack / claim** | Claim neutral zones instantly; contested zones enter a **30 min** siege |
-| **Buy guards** | Spend nuggets to add defenders (improves hold chance when sieged) |
+| **Buy guards** | Spend goonbux to add defenders (improves hold chance when sieged) |
 | **Abandon** | Release a zone your crew holds |
 
 Max **3 zones per crew**. Siege cooldown **12h** per zone after an attack.
@@ -195,18 +195,18 @@ Max **3 zones per crew**. Siege cooldown **12h** per zone after an attack.
 | `/repair-gear` | Repair broken enhanced gear (10% of base item shop price) |
 | `/equip-instance` | Equip a specific gear instance by id (shown in `/enhance` and `/inventory`) |
 
-**Enhancement** — Each weapon, armor piece, and accessory is a unique instance. Use alchemy scrap (+1–+10), void hardener (+11–+15), and celestial shards (PRI–PENTA, mythic/ZZ Wrath boss drops only). Every attempt costs materials plus escalating nuggets. Failures can downgrade or break gear; broken gear is repaired with `/repair-gear`. Ring and amulet accessory slots grant flat combat bonuses.
+**Enhancement** — Each weapon, armor piece, and accessory is a unique instance. Use alchemy scrap (+1–+10), void hardener (+11–+15), and celestial shards (PRI–PENTA, mythic/ZZ Wrath boss drops only). Every attempt costs materials plus escalating goonbux. Failures can downgrade or break gear; broken gear is repaired with `/repair-gear`. Ring and amulet accessory slots grant flat combat bonuses.
 
 Weapons define base boss damage (plus a 1–5 roll) and tier crit chance; unarmed
-attacks deal 1–15. Armor adds HP and percentage mitigation on Hannah's counters.
-The best weapon and armor each cost 120,000 nuggets.
+attacks deal 1–15. Armor adds HP and percentage mitigation on Velvet Vixen's counters.
+The best weapon and armor each cost 120,000 goonbux.
 
 Top-end items:
 
 | Type | Item | Price | Effect |
 |------|------|-------|--------|
-| Weapon | Nugget Excalibur | 120,000 | 295 base damage, 16% crit |
-| Armor | Nugget Immortal Plate | 120,000 | ~67% mitigation, +345 HP |
+| Weapon | Goon Excalibur | 120,000 | 295 base damage, 16% crit |
+| Armor | Goon Immortal Plate | 120,000 | ~67% mitigation, +345 HP |
 
 Use `/set-main-channel` so boss spawns, defeat payouts, and coin drops post in one
 place instead of random channels.
@@ -223,8 +223,8 @@ All dashboard commands require Discord administrator permission.
 
 | Command | Description |
 |---------|-------------|
-| `/gift @user amount` | Give nuggets to one user from thin air |
-| `/gift-all amount` | Give nuggets to every human in the server |
+| `/gift @user amount` | Give goonbux to one user from thin air |
+| `/gift-all amount` | Give goonbux to every human in the server |
 | `/set-currency @user amount` | Set a user's wallet to an exact amount |
 | `/reset-user @user` | Wipe a user's wallet and stats |
 | `/config` | View all live tuneable settings |
@@ -263,7 +263,7 @@ server and take effect without restarting the bot.
 
 ## Web Dashboard
 
-NuggetBot includes a browser dashboard served by the same bot process, so it can
+GoonBot includes a browser dashboard served by the same bot process, so it can
 run on the same Railway service without a second paid app. It shows server
 economy totals, active bosses/viruses, bounty counts, custom config settings,
 and top wallets.
@@ -289,7 +289,7 @@ requests. If `DASHBOARD_TOKEN` is missing, only `/health` returns normal data.
 
 ### Accessing the dashboard on Railway
 
-1. In Railway, open the NuggetBot service.
+1. In Railway, open the GoonBot service.
 2. Go to **Variables** and add `DASHBOARD_TOKEN` with a long random value.
 3. Redeploy the service.
 4. Open the service's public Railway domain. If one is not shown, go to
@@ -303,7 +303,7 @@ Coins, inventory, equipped gear, config, and boss state are stored in the
 configured database. On Railway, PostgreSQL is recommended:
 
 1. Add a Railway PostgreSQL database.
-2. In the NuggetBot service, set `DATABASE_URL` to the PostgreSQL service's
+2. In the GoonBot service, set `DATABASE_URL` to the PostgreSQL service's
    internal `DATABASE_URL` reference.
 3. If Railway logs show `socket.gaierror: Name or service not known`, also set
    `DATABASE_PUBLIC_URL` to the PostgreSQL service's `DATABASE_PUBLIC_URL`.
@@ -320,10 +320,10 @@ environment variables are absent.
 This job is disabled by default. If `LAUNCH_GRANT_ENABLED=true`, for server
 `1388136234827649116`, the bot will:
 
-- gift every human member 150 nuggets
+- gift every human member 150 goonbux
 - grant and equip a Training Stick and Cardboard Shield
 - clear any existing boss for that server
-- spawn one normal 500 HP Hannah
+- spawn one normal 500 HP Velvet Vixen
 - announce the gift in chat
 
 The grant is tracked in the database per member, but keep
@@ -348,7 +348,7 @@ or misconfigured database from repeating the welcome gift.
 ## Project Structure
 
 ```text
-NuggetBot/
+GoonBot/
 ├── bot.py
 ├── config.py
 ├── dashboard.py

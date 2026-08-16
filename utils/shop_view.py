@@ -152,7 +152,7 @@ class ShopView(discord.ui.View):
         file = discord.File(io.BytesIO(png), filename="shop.png")
 
         label = CATEGORY_LABELS.get(self.category, self.category.title())
-        title = "Nugget Shop" if self.category == "all" else f"Nugget Shop — {label}"
+        title = "Goon Shop 💋" if self.category == "all" else f"Goon Shop — {label}"
         embed = discord.Embed(title=title, color=discord.Color.dark_green())
         embed.description = (
             f"**Pocket:** {fmt_amount(wallet)} · **Bank:** {fmt_amount(bank)} "

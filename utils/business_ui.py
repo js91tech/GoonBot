@@ -556,7 +556,7 @@ def build_upgrade_embed(row: object) -> discord.Embed:
     embed = discord.Embed(
         title="Business upgrades",
         description=(
-            "Spend nuggets to improve your business. Costs rise per level.\n"
+            "Spend goonbux to improve your business. Costs rise per level.\n"
             f"Current business income: **{fmt_amount(hourly)}/hr** "
             "(corp/event bonuses apply on top — see **/business info**)."
         ),

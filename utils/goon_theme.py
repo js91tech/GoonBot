@@ -4,8 +4,8 @@ from __future__ import annotations
 import discord
 
 BOT_DISPLAY_NAME = "GoonBot"
-BOT_TAGLINE = "Adult economy RPG — 18+ only"
-FOOTER_BRAND = "GoonBot · 18+ · NSFW channels preferred"
+BOT_TAGLINE = "Adult gooner economy RPG — 18+ only"
+FOOTER_BRAND = "GoonBot · 18+ · goonbux · NSFW preferred"
 
 # Charcoal / velvet crimson / warm gold (not purple-indigo glow)
 COLOR_PRIMARY = 0x8B1E3F  # velvet crimson

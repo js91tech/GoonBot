@@ -299,7 +299,7 @@ class Gambling(commands.Cog):
         name="coinflip",
         description="50/50 coinflip vs the house for goonbux. Try /casino for the full hub.",
     )
-    @app_commands.describe(amount="Nuggets to wager")
+    @app_commands.describe(amount="Goonbux to wager")
     @app_commands.guild_only()
     async def coinflip(self, interaction: discord.Interaction, amount: float) -> None:
         await self.play_coinflip_vs_house(interaction, amount)
@@ -341,7 +341,7 @@ class Gambling(commands.Cog):
         name="coinflip-duel",
         description="Challenge another player to a coinflip for goonbux.",
     )
-    @app_commands.describe(opponent="Player to challenge", amount="Nuggets each player stakes")
+    @app_commands.describe(opponent="Player to challenge", amount="Goonbux each player stakes")
     @app_commands.guild_only()
     async def coinflip_duel(
         self,
@@ -384,7 +384,7 @@ class Gambling(commands.Cog):
         )
 
     @app_commands.command(name="blackjack", description="Play blackjack vs the house.")
-    @app_commands.describe(amount="Nuggets to wager")
+    @app_commands.describe(amount="Goonbux to wager")
     @app_commands.guild_only()
     async def blackjack(self, interaction: discord.Interaction, amount: float) -> None:
         bet = await self._validate_bet(interaction, amount)
@@ -437,7 +437,7 @@ class Gambling(commands.Cog):
         name="slots",
         description="Spin the goonbux slots (3-reel). Try /casino for the full hub.",
     )
-    @app_commands.describe(amount="Nuggets to wager")
+    @app_commands.describe(amount="Goonbux to wager")
     @app_commands.guild_only()
     async def slots(self, interaction: discord.Interaction, amount: float) -> None:
         await self.play_slots_vs_house(interaction, amount)
@@ -459,7 +459,7 @@ class Gambling(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        symbols = ["🍘", "💰", "⚔️", "💎", "7️⃣"]
+        symbols = ["💋", "💰", "⚔️", "💎", "7️⃣"]
         reels = [random.choice(symbols) for _ in range(3)]
         tax = await self.bot.db.get_config_value(interaction.guild_id, "gambling_house_tax")
         payout = 0.0

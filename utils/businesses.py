@@ -2,7 +2,7 @@
 
 Defines the 7 business tiers, attribute/branch effects, and pure helper
 functions used by the business cog, UI, and background income tick. All money
-values are in nuggets (config.CURRENCY_NAME), keeping the design doc's relative
+values are in goonbux (config.CURRENCY_NAME), keeping the design doc's relative
 scale (Tier 1 costs 500, earns 20/hr).
 """
 from __future__ import annotations

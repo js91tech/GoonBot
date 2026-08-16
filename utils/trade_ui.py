@@ -73,7 +73,7 @@ class NuggetsModal(discord.ui.Modal, title="Trade goonbux"):
         super().__init__()
         self._view = view
         self.amount = discord.ui.TextInput(
-            label="Nuggets to offer",
+            label="Goonbux to offer",
             placeholder="0",
             default=str(int(view.nuggets)) if view.nuggets else "0",
             max_length=12,

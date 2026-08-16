@@ -4,7 +4,7 @@ import config
 
 
 def bank_capacity(expansions_by_tier: dict[int, int] | int) -> float:
-    """Max nuggets storable in the personal bank for a given expansion breakdown."""
+    """Max goonbux storable in the personal bank for a given expansion breakdown."""
     if isinstance(expansions_by_tier, int):
         expansions_by_tier = {1: max(0, expansions_by_tier)}
     extra = 0.0
@@ -17,5 +17,5 @@ def bank_capacity(expansions_by_tier: dict[int, int] | int) -> float:
 
 
 def bank_deposit_room(current_bank: float, expansions_by_tier: dict[int, int] | int) -> float:
-    """How many more nuggets can be deposited before hitting capacity."""
+    """How many more goonbux can be deposited before hitting capacity."""
     return max(0.0, bank_capacity(expansions_by_tier) - max(0.0, current_bank))

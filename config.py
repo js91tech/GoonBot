@@ -73,10 +73,10 @@ ACTIVITY_LEVEL_XP_GROWTH = 1.28
 ACTIVITY_LEVEL_MAX = 100
 ACTIVITY_ROLE_MILESTONES: tuple[int, ...] = (5, 10, 25, 50)
 ACTIVITY_ROLE_NAMES: dict[int, str] = {
-    5: "Street Regular",
-    10: "Connected",
-    25: "Veteran",
-    50: "Legend",
+    5: "Curious Gooner",
+    10: "Regular Gooner",
+    25: "Dedicated Gooner",
+    50: "Terminal Gooner",
 }
 
 # Player trades
@@ -290,7 +290,7 @@ BOSS_REWARD_MULT_BY_THREAT: dict[int, float] = {
     5: 2.0,
     6: 3.5,
 }
-# Personal boss nugget slice: income_mult × business bonus, soft-capped.
+# Personal boss goonbux slice: income_mult × business bonus, soft-capped.
 BOSS_REWARD_BUSINESS_TIER_BONUS = 0.02
 BOSS_REWARD_BUSINESS_PRESTIGE_BONUS = 0.015
 BOSS_REWARD_PERSONAL_MULT_CAP = 1.50
@@ -698,7 +698,7 @@ TERRITORY_PERK_CITADEL_INCOME_BONUS = 0.10
 
 # --- Business Empire ---------------------------------------------------------
 # Passive business income accrues into a capped store; players collect it with
-# /business collect. All values are in nuggets.
+# /business collect. All values are in goonbux.
 BUSINESS_INCOME_TICK_SECONDS = 5 * 60
 # Per-level multiplier contributions for the upgradeable attributes.
 BUSINESS_EFFICIENCY_BONUS_PER_LEVEL = 0.05

@@ -113,7 +113,7 @@ SKILL_KITS: dict[str, dict[str, SkillDef]] = {
         "mgp",
         (
             ("prospect", "Vein Tap", "Next hit +18% damage.", 15, 0, "damage_boost", 1.18, "⛏️"),
-            ("spark", "Gold Spark", "Small income spark on cast (+25 nuggets).", 25, 1, "income_spark", 25.0, "✨"),
+            ("spark", "Gold Spark", "Small income spark on cast (+25 goonbux).", 25, 1, "income_spark", 25.0, "✨"),
             ("rush", "Gold Rush", "Next hit +50% damage.", 60, 2, "heavy_strike", 1.50, "🤑"),
         ),
     ),

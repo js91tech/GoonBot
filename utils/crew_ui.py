@@ -153,7 +153,7 @@ async def refresh_crew_message(
 class _AmountModal(discord.ui.Modal):
     amount = discord.ui.TextInput(
         label="Amount",
-        placeholder="How many nuggets?",
+        placeholder="How many goonbux?",
         required=True,
         max_length=16,
     )
@@ -197,7 +197,7 @@ class DepositModal(_AmountModal):
         if err:
             msgs = {
                 "not_in_crew": "Join a crew first.",
-                "insufficient_funds": "Not enough nuggets in your pocket.",
+                "insufficient_funds": "Not enough goonbux in your pocket.",
                 "invalid_amount": "Enter a positive amount.",
                 "treasury_error": "Could not update crew treasury. Try again.",
             }
@@ -259,7 +259,7 @@ class BorrowModal(_AmountModal):
                 "active_loan": "You already have a crew loan. Repay it first.",
                 "amount_too_low": f"Minimum loan is {fmt_amount(config.CREW_LOAN_MIN_AMOUNT)}.",
                 "amount_too_high": "Loan exceeds your crew limit or treasury.",
-                "insufficient_treasury": "Crew treasury does not have enough nuggets.",
+                "insufficient_treasury": "Crew treasury does not have enough goonbux.",
                 "no_treasury": "Crew treasury is missing — rejoin or ask an admin.",
                 "invalid_amount": "Enter a positive amount.",
             }
@@ -282,7 +282,7 @@ class RepayModal(_AmountModal):
         if err:
             msgs = {
                 "no_loan": "You have no active crew loan.",
-                "insufficient_funds": "Not enough nuggets in your wallet.",
+                "insufficient_funds": "Not enough goonbux in your wallet.",
                 "invalid_amount": "Enter a positive amount.",
             }
             await interaction.followup.send(msgs.get(err, err), ephemeral=True)
@@ -491,7 +491,7 @@ class CrewPanelView(discord.ui.View):
         pay = min(remaining, wallet)
         if pay <= 0:
             await interaction.response.send_message(
-                "Not enough nuggets in your pocket to repay.", ephemeral=True,
+                "Not enough goonbux in your pocket to repay.", ephemeral=True,
             )
             return
         await interaction.response.defer()
@@ -515,7 +515,7 @@ class CrewPanelView(discord.ui.View):
         if err:
             msgs = {
                 "not_in_crew": "Join a crew first.",
-                "insufficient_funds": "Not enough nuggets in your pocket.",
+                "insufficient_funds": "Not enough goonbux in your pocket.",
                 "invalid_amount": "Enter a positive amount.",
                 "treasury_error": "Could not update crew treasury. Try again.",
             }

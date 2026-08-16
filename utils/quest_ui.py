@@ -25,12 +25,12 @@ if TYPE_CHECKING:
 # quest.event -> (button label, cog lookup name or slash hint)
 QUEST_SHORTCUT_HINTS: dict[str, str] = {
     "daily_claim": "Use `/daily` to claim.",
-    "wallet_pay": "Use `/pay` to send nuggets.",
+    "wallet_pay": "Use `/pay` to send goonbux.",
     "boss_heal": "Use `/heal` on a downed ally.",
     "gamble_play": "Use `/coinflip`, `/blackjack`, or `/slots`.",
     "craft_done": "Use `/craft` to forge upgrades.",
     "job_work": "Use `/work` for instant shifts.",
-    "chat_message": "Stay active in chat to earn passive nuggets.",
+    "chat_message": "Stay active in chat to earn passive goonbux.",
     "territory_claim": "Use `/territory` to claim zones.",
     "territory_guards": "Use `/territory guards` to hire mercs.",
     "corp_project": "Open **Corp Projects** from `/crew panel`.",

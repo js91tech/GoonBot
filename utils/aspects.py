@@ -74,7 +74,7 @@ ASPECT_DEFINITIONS: tuple[AspectDefinition, ...] = (
     AspectDefinition(
         "aspect_plunder",
         "Plunderer's Seal",
-        "Steal extra nuggets when you win duels.",
+        "Steal extra goonbux when you win duels.",
         "plunder",
     ),
     AspectDefinition(
@@ -323,7 +323,7 @@ def format_aspect_effect(instance: AspectInstance) -> str:
             f"(+{b.energy_regen_flat} per tick)"
         )
     if effect == "plunder":
-        return f"×{b.duel_loot_mult:.2f} nuggets stolen on duel wins"
+        return f"×{b.duel_loot_mult:.2f} goonbux stolen on duel wins"
     if effect == "windfall":
         return (
             f"×{b.daily_reward_mult:.2f} daily · "

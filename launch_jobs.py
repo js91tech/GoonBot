@@ -50,7 +50,7 @@ async def run_launch_grant(bot: commands.Bot) -> None:
         try:
             await channel.send(
                 "Launch gift delivered! Every human member received "
-                f"{int(config.LAUNCH_GRANT_AMOUNT)} nuggets, a Training Stick, and a Cardboard Shield. "
+                f"{int(config.LAUNCH_GRANT_AMOUNT)} goonbux, a Training Stick, and a Cardboard Shield. "
                 "Any old boss was cleared and a normal 500 HP Velvet Vixen has spawned.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )

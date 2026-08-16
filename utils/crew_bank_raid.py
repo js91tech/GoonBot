@@ -165,7 +165,7 @@ def format_raid_embed(
         color = discord.Color.green()
         summary = (
             f"**{attacker_crew}** cleared **{result.defenders_defeated}** defenders "
-            f"and stole **{loot:,.2f}** nuggets (**{int(config.CREW_BANK_RAID_LOOT_FRACTION * 100)}%** "
+            f"and stole **{loot:,.2f}** goonbux (**{int(config.CREW_BANK_RAID_LOOT_FRACTION * 100)}%** "
             f"of the vault).\n"
             f"**{defender_crew}** treasury: **{defender_treasury_after:,.2f}** remaining."
         )
@@ -240,7 +240,7 @@ def format_business_raid_embed(
         color = discord.Color.green()
         summary = (
             f"**{attacker_crew}** cleared **{result.defenders_defeated}** defenders and stole "
-            f"**{loot:,.2f}** nuggets (**{int(config.CREW_BUSINESS_RAID_LOOT_FRACTION * 100)}%** "
+            f"**{loot:,.2f}** goonbux (**{int(config.CREW_BUSINESS_RAID_LOOT_FRACTION * 100)}%** "
             f"of uncollected business income).\n"
             f"**{defender_crew}** vaults remaining: **{defender_stored_after:,.2f}** uncollected."
         )

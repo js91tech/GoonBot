@@ -271,7 +271,7 @@ class Crews(commands.Cog):
     @app_commands.describe(
         action="What to do",
         name="Crew name (Join — pick from autocomplete)",
-        amount="Nuggets for deposit, withdraw, loan, or repay",
+        amount="Goonbux for deposit, withdraw, loan, or repay",
     )
     @app_commands.choices(
         action=[

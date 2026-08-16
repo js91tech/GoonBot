@@ -69,7 +69,7 @@ SET_DISPLAY_NAMES: dict[str, str] = {
     "void": "Void",
     "dragon": "Dragon",
     "cosmic": "Cosmic",
-    "nugget": "Nugget Royal",
+    "nugget": "Goon Royal",
     "mythic": "Mythic Raid",
     "slayer": "Boss Slayer",
     "apex": "Apex",

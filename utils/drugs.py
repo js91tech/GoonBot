@@ -33,7 +33,7 @@ class DrugDef:
     grow_seconds: int
     yield_min: int
     yield_max: int
-    street_price: float  # base nuggets per unit
+    street_price: float  # base goonbux per unit
     effect_summary: str
     effect_energy: int = 0
     effect_heal_pct: float = 0.0

@@ -27,7 +27,7 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "excalibur_owner": Achievement(
         "excalibur_owner",
         "Excalibur Bearer",
-        "Own a Nugget Excalibur.",
+        "Own a Goon Excalibur.",
         "👑",
     ),
     "master_crafter": Achievement("master_crafter", "Master Crafter", "Upgrade battle-worn gear once.", "🔨"),

@@ -62,7 +62,7 @@ RELIC_DEFINITIONS: dict[str, RelicDefinition] = {
     "relic_plunder_seal": RelicDefinition(
         "relic_plunder_seal",
         "Plunderer's Seal",
-        "Steal more nuggets from duel wins.",
+        "Steal more goonbux from duel wins.",
         "plunder",
         "💰",
     ),

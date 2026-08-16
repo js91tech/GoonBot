@@ -11,11 +11,11 @@ FREAKY_NIKKI_ASSETS = ASSETS_ROOT / "freaky_nikki"
 
 # Velvet Vixen tiers share art keyed by variant; TomAss and ZZ's Wrath have dedicated portraits.
 VARIANT_ART_FILES: dict[str, str] = {
-    "normal": "hannah_normal.png",
-    "enraged": "hannah_enraged.png",
-    "shadow": "hannah_shadow.png",
-    "celestial": "hannah_celestial.png",
-    "mythic": "hannah_mythic.png",
+    "normal": "velvet_vixen_normal.png",
+    "enraged": "velvet_vixen_enraged.png",
+    "shadow": "velvet_vixen_shadow.png",
+    "celestial": "velvet_vixen_celestial.png",
+    "mythic": "velvet_vixen_mythic.png",
     "tomass": "tomass.png",
     "zz_wrath": "zz_wrath.png",
     "freaky_nikki": "freaky_nikki/spawn.gif",
