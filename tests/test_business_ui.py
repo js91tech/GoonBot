@@ -49,7 +49,7 @@ class BusinessPanelViewTests(unittest.IsolatedAsyncioTestCase):
         payload = await build_business_payload(cog, member, self.guild_id, self.user_id)
         self.assertIsNotNone(payload)
         embed, files, view = payload  # type: ignore[misc]
-        self.assertEqual(embed.title.split("'s", 1)[0], "🍋 Tester")
+        self.assertEqual(embed.title.split("'s", 1)[0], "📸 Tester")
         self.assertGreaterEqual(len(files), 1)
         self.assertIsInstance(view, BusinessPanelView)
 
