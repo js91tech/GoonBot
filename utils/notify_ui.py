@@ -20,12 +20,17 @@ NOTIFY_OPTIONS: tuple[tuple[str, int, str], ...] = (
 
 
 def build_notify_embed(flags: int, *, configured: bool, eligible: bool) -> discord.Embed:
-    if configured:
+    if not config.DM_NOTIFICATIONS_ENABLED:
+        intro = (
+            "**GoonBot does not send DMs.** Reminder categories below are saved "
+            "but will not message you until an admin re-enables `DM_NOTIFICATIONS_ENABLED`."
+        )
+    elif configured:
         intro = "Your saved reminder preferences. Uncheck everything to opt out of all DMs."
     elif eligible:
         intro = (
-            "You receive reminders automatically as an **active player** or **raid veteran**. "
-            "Toggle categories below to customize, or clear all to opt out."
+            "Reminders stay **off** unless you opt in below. "
+            "Toggle categories to enable DMs."
         )
     else:
         intro = (

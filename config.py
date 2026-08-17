@@ -84,6 +84,13 @@ TRADE_EXPIRE_SECONDS = 300
 TRADE_MAX_DRUG_TYPES = 5
 TRADE_MAX_GEAR_INSTANCES = 5
 
+# DM reminders are off. GoonBot must not DM players unless this is explicitly re-enabled.
+DM_NOTIFICATIONS_ENABLED = os.getenv("DM_NOTIFICATIONS_ENABLED", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 # Opt-in DM reminders (see utils/notify_prefs.py)
 NOTIFY_TICK_SECONDS = 90
 NOTIFY_CROPS = 1
@@ -93,7 +100,8 @@ NOTIFY_DEFENSE = 8
 NOTIFY_USER_CONFIGURED = 16
 NOTIFY_CATEGORY_MASK = NOTIFY_CROPS | NOTIFY_BOSS | NOTIFY_BUSINESS | NOTIFY_DEFENSE
 NOTIFY_DEFAULT_FLAGS = 0
-NOTIFY_ELIGIBLE_DEFAULT_FLAGS = NOTIFY_CATEGORY_MASK
+# Never auto-opt anyone into DMs (even if DM_NOTIFICATIONS_ENABLED is later turned on).
+NOTIFY_ELIGIBLE_DEFAULT_FLAGS = 0
 NOTIFY_ACTIVE_MIN_XP = 1
 NOTIFY_BUSINESS_FILL_PCT = 0.90
 

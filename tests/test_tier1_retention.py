@@ -7,6 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import config
 from database import Database
@@ -140,26 +141,36 @@ class Tier1RetentionTests(unittest.IsolatedAsyncioTestCase):
 
         await self.db.add_activity_xp(self.user_a, self.guild_id, config.NOTIFY_ACTIVE_MIN_XP)
         self.assertTrue(await is_notify_eligible(self.db, self.user_a, self.guild_id))
-        self.assertEqual(
-            await effective_notify_flags(self.db, self.user_a, self.guild_id),
-            config.NOTIFY_ELIGIBLE_DEFAULT_FLAGS,
-        )
-
-        await self.db.set_notify_flags(
-            self.user_a, self.guild_id, config.NOTIFY_USER_CONFIGURED,
-        )
+        # DMs are disabled: even eligible / configured users get no reminder flags.
         self.assertEqual(
             await effective_notify_flags(self.db, self.user_a, self.guild_id),
             0,
         )
-
         await self.db.set_notify_flags(
             self.user_b, self.guild_id, config.NOTIFY_BOSS | config.NOTIFY_USER_CONFIGURED,
         )
         self.assertEqual(
             await effective_notify_flags(self.db, self.user_b, self.guild_id),
-            config.NOTIFY_BOSS,
+            0,
         )
+
+        with mock.patch.object(config, "DM_NOTIFICATIONS_ENABLED", True):
+            self.assertEqual(
+                await effective_notify_flags(self.db, self.user_a, self.guild_id),
+                config.NOTIFY_ELIGIBLE_DEFAULT_FLAGS,
+            )
+            self.assertEqual(
+                await effective_notify_flags(self.db, self.user_b, self.guild_id),
+                config.NOTIFY_BOSS,
+            )
+
+            await self.db.set_notify_flags(
+                self.user_a, self.guild_id, config.NOTIFY_USER_CONFIGURED,
+            )
+            self.assertEqual(
+                await effective_notify_flags(self.db, self.user_a, self.guild_id),
+                0,
+            )
 
     async def test_trade_with_drugs(self) -> None:
         await self.db.ensure_user(self.user_a, self.guild_id)

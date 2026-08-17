@@ -50,15 +50,19 @@ async def assign_activity_roles(member: discord.Member, level: int) -> None:
 class Retention(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.notify_tick.start()
+        if config.DM_NOTIFICATIONS_ENABLED:
+            self.notify_tick.start()
         self.trade_expire_tick.start()
 
     def cog_unload(self) -> None:
-        self.notify_tick.cancel()
+        if self.notify_tick.is_running():
+            self.notify_tick.cancel()
         self.trade_expire_tick.cancel()
 
     @tasks.loop(seconds=config.NOTIFY_TICK_SECONDS)
     async def notify_tick(self) -> None:
+        if not config.DM_NOTIFICATIONS_ENABLED:
+            return
         await self.bot.wait_until_ready()
         for guild in self.bot.guilds:
             await self._tick_guild_notifications(guild)
@@ -85,6 +89,8 @@ class Retention(commands.Cog):
         body: str,
         cooldown_seconds: float = 6 * 3600,
     ) -> None:
+        if not config.DM_NOTIFICATIONS_ENABLED:
+            return
         flags = await effective_notify_flags(self.bot.db, user_id, guild_id)
         if not (flags & flag):
             return
@@ -177,7 +183,7 @@ class Retention(commands.Cog):
 
     @app_commands.command(
         name="notify",
-        description="Manage DM reminders (active/raid players get defaults; others opt in).",
+        description="DM reminders are currently disabled. This panel is a no-op.",
     )
     @app_commands.guild_only()
     async def notify(self, interaction: discord.Interaction) -> None:
