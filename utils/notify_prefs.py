@@ -36,6 +36,8 @@ async def is_notify_eligible(db: Database, user_id: int, guild_id: int) -> bool:
 
 
 async def effective_notify_flags(db: Database, user_id: int, guild_id: int) -> int:
+    if not config.DM_NOTIFICATIONS_ENABLED:
+        return 0
     raw = await db.get_notify_flags(user_id, guild_id)
     if raw & config.NOTIFY_USER_CONFIGURED:
         return raw & NOTIFY_CATEGORY_MASK
