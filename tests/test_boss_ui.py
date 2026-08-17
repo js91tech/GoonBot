@@ -48,7 +48,7 @@ class BossFightEmbedTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(err)
         assert embed is not None
         loadout_field = next(f for f in embed.fields if f.name == "Your loadout")
-        self.assertIn("Twig Sword", loadout_field.value)
+        self.assertIn("Tease Blade", loadout_field.value)
 
     async def test_build_embed_no_boss_returns_error(self) -> None:
         await self.db.clear_boss(self.guild_id)

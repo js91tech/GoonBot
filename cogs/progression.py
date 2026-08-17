@@ -15,7 +15,7 @@ from utils.quests import record_quest_event
 
 EVENT_LABELS: dict[str, tuple[str, float]] = {
     "double_drops": ("Double boss drop rolls", 2.0),
-    "bonus_income": ("Bonus nugget income", 1.5),
+    "bonus_income": ("Bonus goonbux income", 1.5),
     "festival_boss": ("Festival boss HP (+25%)", 1.25),
     "trivia_fiesta": ("Double trivia rewards", 2.0),
     "world_boss_week": ("World Leviathan week (unique boss + loot)", 1.5),
@@ -370,7 +370,7 @@ class Progression(commands.Cog):
         )
         embed.add_field(
             name="Richest",
-            value=format_rows(snapshot["richest"], value_label="nuggets"),
+            value=format_rows(snapshot["richest"], value_label="goonbux"),
             inline=False,
         )
         embed.add_field(

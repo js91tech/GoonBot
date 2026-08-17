@@ -66,7 +66,7 @@ async def cast_skill_for_user(
         from utils.helpers import fmt_amount
 
         await db.credit_wallet(user_id, guild_id, state.income_bonus)
-        extra_lines.append(f"Gained **{fmt_amount(state.income_bonus)}** nuggets.")
+        extra_lines.append(f"Gained **{fmt_amount(state.income_bonus)}** goonbux.")
 
     if state.heist_bonus > 0:
         await db.add_heist_spell_bonus(user_id, guild_id, state.heist_bonus)

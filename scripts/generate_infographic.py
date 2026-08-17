@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/NuggetBot_How_To_Play.png — run from repo root."""
+"""Generate docs/GoonBot_How_To_Play.png — run from repo root."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def build() -> None:
     hero_font, section_font, body_font, small_font = fonts
 
     # Header
-    draw.text((W // 2, 48), "NUGGETBOT", fill=GOLD, font=hero_font, anchor="mm")
+    draw.text((W // 2, 48), "GOONBOT", fill=GOLD, font=hero_font, anchor="mm")
     draw.text(
         (W // 2, 88),
         "How to Play  ·  Classes, Mana & Skills",
@@ -119,7 +119,7 @@ def build() -> None:
 
     cards = [
         (
-            "Earn Nuggets",
+            "Earn Goonbux",
             GOLD,
             [
                 "/daily — 24h claim",

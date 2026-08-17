@@ -21,7 +21,7 @@ EXPEDITION_TEMPLATES: tuple[ExpeditionTemplate, ...] = (
     ExpeditionTemplate(
         "rebuild_docks",
         "Rebuild the Docks",
-        "Contribute scrap and nuggets to restore the harbor.",
+        "Contribute scrap and goonbux to restore the harbor.",
         500, 25_000.0, 48.0,
     ),
     ExpeditionTemplate(
@@ -69,6 +69,6 @@ def format_expedition_status(
         f"**{template.name}** — {pct:.0f}% complete\n"
         f"_{template.description}_\n"
         f"Scrap: **{contributed_scrap}/{template.goal_scrap}** · "
-        f"Nuggets: **{fmt_amount(contributed_nuggets)}/{fmt_amount(template.goal_nuggets)}**\n"
+        f"Goonbux: **{fmt_amount(contributed_nuggets)}/{fmt_amount(template.goal_nuggets)}**\n"
         f"Ends <t:{int(ends_at)}:R> ({remaining // 3600}h left)"
     )

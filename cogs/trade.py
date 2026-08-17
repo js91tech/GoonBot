@@ -14,7 +14,7 @@ class Trade(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="trade", description="Send a trade offer (nuggets, gear, stash drugs).")
+    @app_commands.command(name="trade", description="Send a trade offer (goonbux, gear, stash drugs).")
     @app_commands.describe(user="Player to trade with")
     @app_commands.guild_only()
     async def trade(

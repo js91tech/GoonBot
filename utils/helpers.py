@@ -17,7 +17,7 @@ def now() -> float:
 
 
 def fmt_amount(amount: float) -> str:
-    """Format nugget amounts for display.
+    """Format goonbux amounts for display.
 
     Positive fractional balances use one decimal place **rounded down** toward zero
     so we never show ``250.0`` when the float is still slightly below ``250`` (which

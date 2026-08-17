@@ -22,14 +22,14 @@ class AvatarDef:
     name: str
     description: str
     price: float
-    emoji: str = "🍘"
+    emoji: str = "💋"
 
 
 AVATARS: tuple[AvatarDef, ...] = (
     AvatarDef(
         "nugget_raider",
-        "Nugget Raider",
-        "Default raid mascot — unlocked for everyone.",
+        "Goon Raider",
+        "Default gooner raid mascot — unlocked for everyone.",
         0.0,
         "⚔️",
     ),

@@ -77,7 +77,7 @@ class Shop(commands.Cog):
             if current_lower in item.id.lower() or current_lower in item.name.lower()
         ][:25]
         return [
-            app_commands.Choice(name=f"{item.name} ({item.id})", value=item.id) for item in matches
+            app_commands.Choice(name=item.name[:100], value=item.id) for item in matches
         ]
 
     async def buy_item_autocomplete(
@@ -95,7 +95,7 @@ class Shop(commands.Cog):
             and (current_lower in item.id.lower() or current_lower in item.name.lower())
         ][:25]
         return [
-            app_commands.Choice(name=f"{item.name} ({item.id})", value=item.id) for item in matches
+            app_commands.Choice(name=item.name[:100], value=item.id) for item in matches
         ]
 
     async def equip_item_autocomplete(
@@ -230,13 +230,16 @@ class Shop(commands.Cog):
             "consumable": "Consumables",
         }
         title = (
-            "Nugget Shop"
+            "Goon Shop 💋"
             if category == "all"
-            else f"Nugget Shop — {category_labels.get(category, category.title())}"
+            else f"Goon Shop — {category_labels.get(category, category.title())}"
         )
         lines = [_item_line(item) for item in items]
         description, field_chunks = _shop_embed_chunks(lines)
-        embed = discord.Embed(title=title, color=discord.Color.orange())
+        from utils.goon_theme import brand_color, FOOTER_BRAND
+
+        embed = discord.Embed(title=title, color=brand_color())
+        embed.set_footer(text=FOOTER_BRAND)
         if description is not None:
             embed.description = description
         else:

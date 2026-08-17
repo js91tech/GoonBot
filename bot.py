@@ -137,6 +137,15 @@ class GoonBot(commands.Bot):
     async def on_ready(self) -> None:
         assert self.user is not None
         logging.info("Logged in as %s (%s)", self.user, self.user.id)
+        try:
+            await self.change_presence(
+                activity=discord.Activity(
+                    type=discord.ActivityType.playing,
+                    name=f"{config.BOT_DISPLAY_NAME} · 18+ goonbux RPG",
+                )
+            )
+        except Exception:
+            logging.exception("Failed to set presence")
         if not self._launch_jobs_started:
             self._launch_jobs_started = True
             asyncio.create_task(run_launch_grant(self))

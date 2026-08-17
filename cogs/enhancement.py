@@ -203,7 +203,7 @@ class EnhanceView(discord.ui.View):
                 await self.cog.bot.db.grant_item(
                     self.user_id, self.guild_id, cost.material_id,
                 )
-            await interaction.followup.send("Could not debit nuggets.", ephemeral=True)
+            await interaction.followup.send("Could not debit goonbux.", ephemeral=True)
             return
         instance_id = int(row["instance_id"])
         result = roll_enhancement(level)
@@ -307,7 +307,7 @@ class Enhancement(commands.Cog):
             color=discord.Color.gold(),
         )
 
-    @app_commands.command(name="enhance", description="Enhance gear (+1 to PENTA) with materials and nuggets.")
+    @app_commands.command(name="enhance", description="Enhance gear (+1 to PENTA) with materials and goonbux.")
     @app_commands.guild_only()
     async def enhance(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None:

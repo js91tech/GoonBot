@@ -2,7 +2,7 @@
 
 Defines the 7 business tiers, attribute/branch effects, and pure helper
 functions used by the business cog, UI, and background income tick. All money
-values are in nuggets (config.CURRENCY_NAME), keeping the design doc's relative
+values are in goonbux (config.CURRENCY_NAME), keeping the design doc's relative
 scale (Tier 1 costs 500, earns 20/hr).
 """
 from __future__ import annotations
@@ -26,32 +26,32 @@ class BusinessTierDef:
 # Ordered by tier. Costs/income mirror the design document.
 BUSINESS_TIERS: tuple[BusinessTierDef, ...] = (
     BusinessTierDef(
-        1, "lemon_stand", "Lemon Stand", 500.0, 20.0, "🍋",
-        "A humble roadside stand. Everyone starts somewhere.",
+        1, "lemon_stand", "Tip Jar Cam", 500.0, 20.0, "📸",
+        "A shaky phone stand and a tip jar. Everyone starts somewhere.",
     ),
     BusinessTierDef(
-        2, "food_cart", "Food Cart", 2_500.0, 100.0, "🌭",
-        "Wheels and warm snacks — your first taste of foot traffic.",
+        2, "food_cart", "Afterparty Cart", 2_500.0, 100.0, "🍸",
+        "Wheels, drinks, and foot traffic from the clubs.",
     ),
     BusinessTierDef(
-        3, "coffee_shop", "Coffee Shop", 10_000.0, 350.0, "☕",
-        "Caffeine never sleeps, and neither do the profits.",
+        3, "coffee_shop", "Late-Night Lounge", 10_000.0, 350.0, "🥂",
+        "Low lights, long nights, and loyal regulars.",
     ),
     BusinessTierDef(
-        4, "restaurant", "Restaurant", 50_000.0, 1_500.0, "🍽️",
-        "Table service, a real kitchen, and loyal regulars.",
+        4, "restaurant", "VIP Booth Club", 50_000.0, 1_500.0, "💃",
+        "Private booths, bottle service, and real cover charges.",
     ),
     BusinessTierDef(
-        5, "chain_restaurant", "Chain Restaurant", 250_000.0, 8_000.0, "🍔",
-        "Franchise the brand and scale across the server.",
+        5, "chain_restaurant", "Franchise Clubs", 250_000.0, 8_000.0, "🏙️",
+        "Stamp the brand across the server's nightlife map.",
     ),
     BusinessTierDef(
-        6, "factory", "Factory", 1_000_000.0, 30_000.0, "🏭",
-        "Mass production. Smoke stacks and serious cash flow.",
+        6, "factory", "Content Studio", 1_000_000.0, 30_000.0, "🎥",
+        "Sets, lights, and industrial-scale goonbux output.",
     ),
     BusinessTierDef(
-        7, "corporation", "Corporation", 5_000_000.0, 250_000.0, "🏢",
-        "A towering empire. The peak of the corporate ladder.",
+        7, "corporation", "Adult Empire HQ", 5_000_000.0, 250_000.0, "👑",
+        "The tower at the top of the ladder. Own the night.",
     ),
 )
 
@@ -68,25 +68,25 @@ MIN_TIER: int = min(defn.tier for defn in BUSINESS_TIERS)
 # Upgrade branches (Phase 2 wires interactive upgrades; Phase 1 stores levels).
 UPGRADE_BRANCHES: dict[str, tuple[str, ...]] = {
     "security": (
-        "Cameras",
-        "Alarms",
+        "Door Cameras",
+        "Bouncer Alarms",
         "Security Team",
         "Reinforced Vault",
-        "Corporate Security Division",
+        "Empire Security Division",
     ),
     "growth": (
-        "Flyers",
-        "Local Advertising",
-        "Social Media Campaigns",
-        "Influencer Sponsorships",
+        "Flyer Runs",
+        "Club Ads",
+        "Social Tease Campaigns",
+        "Creator Sponsorships",
         "National Branding",
     ),
     "production": (
-        "Better Equipment",
-        "Workflow Optimization",
+        "Better Lights",
+        "Set Optimization",
         "Automation",
-        "Robotics",
-        "AI Management",
+        "Multi-Cam Rigs",
+        "AI Scheduling",
     ),
 }
 

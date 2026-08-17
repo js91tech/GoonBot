@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/NuggetBot_Player_Guide.pdf - run from repo root."""
+"""Generate docs/GoonBot_Player_Guide.pdf - run from repo root."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ class GuidePDF(FPDF):
         if self.page_no() > 1:
             self.set_font("Helvetica", "I", 8)
             self.set_text_color(120, 120, 120)
-            self.cell(0, 8, "NuggetBot Player Guide", align="R", new_x="LMARGIN", new_y="NEXT")
+            self.cell(0, 8, "GoonBot Player Guide", align="R", new_x="LMARGIN", new_y="NEXT")
             self.ln(2)
 
     def footer(self) -> None:
@@ -57,7 +57,7 @@ def build() -> None:
     pdf.set_font("Helvetica", "B", 28)
     pdf.set_text_color(30, 60, 120)
     pdf.ln(40)
-    pdf.cell(0, 14, "NuggetBot", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 14, "GoonBot", align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 16)
     pdf.set_text_color(80, 80, 80)
     pdf.cell(0, 10, "Player Guide", align="C", new_x="LMARGIN", new_y="NEXT")
@@ -68,7 +68,7 @@ def build() -> None:
     pdf.multi_cell(
         cover_w,
         6,
-        "Everything you need to earn nuggets, gear up, raid bosses, "
+        "Everything you need to earn goonbux, gear up, raid bosses, "
         "run heists, dodge the virus, and climb to endgame.",
         align="C",
         new_x="LMARGIN",
@@ -82,30 +82,30 @@ def build() -> None:
     pdf.add_page()
     pdf.chapter_title("1. Getting started")
     pdf.body(
-        "NuggetBot is a server economy game. Your currency is nuggets. "
+        "GoonBot is an adult 18+ server economy RPG. Your currency is goonbux. "
         "Most actions use slash commands: type / in any channel where the bot can read messages."
     )
     pdf.bullet("Check your wallet: /balance")
-    pdf.bullet("Claim free nuggets daily: /daily")
+    pdf.bullet("Claim free goonbux daily: /daily")
     pdf.bullet("See your combat build: /stats")
     pdf.bullet("Browse gear: /shop")
     pdf.ln(2)
     pdf.body(
         "Passive income: chatting, staying active each hour, hanging in voice, "
-        "and random coin drops in the main channel all add nuggets without commands."
+        "and random coin drops in the main channel all add goonbux without commands."
     )
 
     # 2 - Economy
-    pdf.chapter_title("2. Earning nuggets")
-    pdf.bullet("/daily - once every 24 hours (default 75 nuggets)")
+    pdf.chapter_title("2. Earning goonbux")
+    pdf.bullet("/daily - once every 24 hours (default goonbux grant)")
     pdf.bullet("Chat in server - small reward per message")
-    pdf.bullet("Voice chat - nuggets per minute in VC")
+    pdf.bullet("Voice chat - goonbux per minute in VC")
     pdf.bullet("Coin drops - first to click Claim wins (needs several active chatters)")
-    pdf.bullet("/pay @user amount - send nuggets to friends")
+    pdf.bullet("/pay @user amount - send goonbux to friends")
     pdf.bullet("/leaderboard - richest players")
     pdf.bullet("/hall-of-fame - richest, boss kills, heals, achievements")
     pdf.bullet("/quests - onboarding steps and daily goals")
-    pdf.bullet("Boss raids - damage share when Hannah falls")
+    pdf.bullet("Boss raids - damage share when Velvet Vixen falls")
     pdf.bullet("/trivia - guess a word from server history")
     pdf.bullet("/heist - steal from others (risky)")
     pdf.bullet("/bounty - reward when someone says a trigger word")
@@ -123,7 +123,7 @@ def build() -> None:
     pdf.ln(2)
     pdf.body("Weapons: base damage + random 1-5 per hit, plus crit chance.")
     pdf.body("Armor: reduces boss counter damage and adds max HP in raids.")
-    pdf.body("Top shop tier: Nugget Excalibur + Nugget Immortal Plate (120,000 each).")
+    pdf.body("Top shop tier: Goon Excalibur + Goon Immortal Plate (120,000 each).")
     pdf.body("Beyond that: Mythic Voidreaver + Mythic Aetherplate (175,000 each).")
     pdf.body("Ultimate shop: Apex / Sovereign / Transcendent sets (500k / 750k / 1.5M per piece).")
     pdf.ln(2)
@@ -131,25 +131,25 @@ def build() -> None:
     pdf.body(
         "Equip a matching weapon + armor theme for +5% damage and extra mitigation. "
         "Examples: Ember Axe + Ember Mail, Void Blade + Void Ward, "
-        "Nugget Excalibur + Nugget Immortal Plate."
+        "Goon Excalibur + Goon Immortal Plate."
     )
     pdf.body("/stats shows your full combat sheet including set and prestige bonuses.")
 
     # 4 - Boss
-    pdf.chapter_title("4. Boss raids (Hannah)")
+    pdf.chapter_title("4. Boss raids (Velvet Vixen)")
     pdf.body(
         "A boss spawns automatically about every 30–45 minutes when none is active, or an admin can /summon. "
         "Everyone attacks together; rewards split by damage dealt."
     )
     pdf.bullet("/boss - HP bar and threat level")
-    pdf.bullet("/attack - hit Hannah (need gear equipped for best damage)")
+    pdf.bullet("/attack - hit Velvet Vixen (need gear equipped for best damage)")
     pdf.bullet("/raid-leaderboard - who is contributing most")
-    pdf.bullet("/heal @user - revive downed raiders (+1000 nuggets; +100 if you revive yourself)")
+    pdf.bullet("/heal @user - revive downed raiders (+1000 goonbux; +100 if you revive yourself)")
     pdf.ln(2)
     pdf.body("Boss variants (weakest to strongest): normal, enraged, shadow, celestial, mythic.")
     pdf.body("TomAss: rare enraged mirror boss with regen every 3 hits (admin /summon).")
     pdf.body("Bosses have elements - class element can boost or reduce your /attack damage.")
-    pdf.body("At 75%, 50%, and 25% HP Hannah enters new phases - counters get nastier.")
+    pdf.body("At 75%, 50%, and 25% HP Velvet Vixen enters new phases - counters get nastier.")
     pdf.body("Loot: battle-worn gear (common), epic raid pieces (rare), mythic drops on celestial/mythic kills.")
     pdf.body("/craft - upgrade battle-worn drops into real shop items for a fee.")
 
@@ -239,7 +239,7 @@ def build() -> None:
     pdf.bullet("/event status - see active event")
     pdf.body("Admins can run:")
     pdf.bullet("double_drops - 2x boss loot chance")
-    pdf.bullet("bonus_income - 1.5x nugget earnings")
+    pdf.bullet("bonus_income - 1.5x goonbux earnings")
     pdf.bullet("festival_boss - 1.25x boss HP")
     pdf.bullet("trivia_fiesta - 2x trivia rewards")
 
@@ -268,10 +268,10 @@ def build() -> None:
     pdf.chapter_title("Tips")
     pdf.bullet("Equip gear before raiding - /stats shows your damage range.")
     pdf.bullet("Match set pieces for the damage bonus.")
-    pdf.bullet("Heal downed teammates - you earn nuggets and achievements.")
+    pdf.bullet("Heal downed teammates - you earn goonbux and achievements.")
     pdf.bullet("Craft battle-worn drops instead of selling them cheap.")
     pdf.bullet("Use /stats public:true to show off your build in channel.")
-    pdf.bullet("Check /quests daily for bonus nuggets.")
+    pdf.bullet("Check /quests daily for bonus goonbux.")
     pdf.bullet("Duel prepared opponents - gear and HP matter.")
     pdf.bullet("Cast a spell before /attack or /duel for bonus damage or defense.")
     pdf.bullet("Warden healers: /cast mend, then keep raiding without burning out on mana.")

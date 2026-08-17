@@ -11,6 +11,7 @@ import config
 from utils.business_art import render_business_image
 from utils.business_competition import action_by_id
 from utils.businesses import (
+    MAX_TIER,
     UPGRADE_EFFECT_HINTS,
     BusinessIncomeBreakdown,
     capacity_for_level,
@@ -259,7 +260,7 @@ async def send_business_panel(interaction: discord.Interaction, cog: commands.Co
     if payload is None:
         await interaction.followup.send(
             "You don't own a business yet. Use **/business create** to start "
-            f"with a Lemon Stand ({fmt_amount(tier_def(1).purchase_cost)}).",
+            f"with a **{tier_def(1).name}** ({fmt_amount(tier_def(1).purchase_cost)}).",
             ephemeral=True,
         )
         return
@@ -449,10 +450,14 @@ class BusinessDefendButton(discord.ui.Button):
 def build_prestige_embed(row: object) -> discord.Embed:
     prestige = int(row["business_prestige"])
     next_bonus = int((prestige + 1) * config.BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)
+    top = tier_def(MAX_TIER)
+    starter = tier_def(1)
+    top_name = top.name if top else "Adult Empire HQ"
+    starter_name = starter.name if starter else "Tip Jar Cam"
     embed = discord.Embed(
         title="⭐ Business Prestige",
         description=(
-            "Prestiging resets your **Corporation back to a Lemon Stand**, clears "
+            f"Prestiging resets your **{top_name} back to a {starter_name}**, clears "
             "stored revenue, and **resets all business upgrades** (security, reputation, "
             "efficiency, branches, etc.), but grants a **permanent** business income bonus.\n\n"
             f"Current prestige: **{prestige}** / {config.BUSINESS_PRESTIGE_MAX_LEVEL}\n"
@@ -513,7 +518,7 @@ class PrestigeConfirmView(discord.ui.View):
             return
         await interaction.response.edit_message(
             content=(
-                f"⭐ **Prestige {new_prestige}!** Your empire restarts as a Lemon Stand "
+                f"⭐ **Prestige {new_prestige}!** Your empire restarts as a **{tier_def(1).name}** "
                 f"with a permanent **+{bonus}%** business income bonus."
             ),
             embed=None,
@@ -556,7 +561,7 @@ def build_upgrade_embed(row: object) -> discord.Embed:
     embed = discord.Embed(
         title="Business upgrades",
         description=(
-            "Spend nuggets to improve your business. Costs rise per level.\n"
+            "Spend goonbux to improve your business. Costs rise per level.\n"
             f"Current business income: **{fmt_amount(hourly)}/hr** "
             "(corp/event bonuses apply on top — see **/business info**)."
         ),

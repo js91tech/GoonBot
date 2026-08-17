@@ -65,10 +65,12 @@ async def build_alchemy_embed(
         if r.waste_cost:
             extra.append(f"{r.waste_cost} waste")
         extra_txt = f" + {', '.join(extra)}" if extra else ""
+        out = get_item(r.output_item_id)
+        out_label = out.name if out else r.name
         embed.add_field(
             name=f"{status} {r.name}{mark}",
             value=(
-                f"{r.scrap_cost} scrap + {fmt_amount(r.nugget_cost)}{extra_txt} → `{r.output_item_id}`\n"
+                f"{r.scrap_cost} scrap + {fmt_amount(r.nugget_cost)}{extra_txt} → **{out_label}**\n"
                 f"_{r.description}_"
             ),
             inline=False,

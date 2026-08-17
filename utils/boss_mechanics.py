@@ -64,7 +64,7 @@ def business_boss_reward_mult(
     tier: int | None = None,
     business_prestige: int | None = None,
 ) -> float:
-    """Personal business bonus on boss nugget slices. No business → 1.0."""
+    """Personal business bonus on boss goonbux slices. No business → 1.0."""
     if tier is None:
         return 1.0
     safe_tier = max(1, int(tier))

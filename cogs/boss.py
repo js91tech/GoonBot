@@ -1148,14 +1148,14 @@ class Boss(commands.Cog):
     @app_commands.command(
         name="summon",
         description=(
-            f"Admin only: spawn a boss for {int(config.SUMMON_COST):,} coins "
+            f"Admin only: spawn a boss for {int(config.SUMMON_COST):,} goonbux "
             "(summoner penalties apply)."
         ),
     )
     @app_commands.describe(boss="Boss to summon")
     @app_commands.choices(
         boss=[
-            app_commands.Choice(name="Velvet Vixen (enraged)", value="hannah_enraged"),
+            app_commands.Choice(name="Velvet Vixen (enraged)", value="velvet_enraged"),
             app_commands.Choice(name="TomAss (enraged mirror ×1.75)", value="tomass"),
             app_commands.Choice(name="Freaky Nikki", value="freaky_nikki"),
         ],
@@ -1165,7 +1165,7 @@ class Boss(commands.Cog):
     async def summon(
         self,
         interaction: discord.Interaction,
-        boss: str = "hannah_enraged",
+        boss: str = "velvet_enraged",
     ) -> None:
         if interaction.guild_id is None or interaction.guild is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
