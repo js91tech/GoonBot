@@ -17,6 +17,7 @@ from utils.districts import (
     format_influence_race_line,
     relocate_cost,
 )
+from utils.bot_room import send_bot_room_message
 from utils.helpers import fmt_amount, resolve_main_channel
 from utils.quests import record_quest_event
 
@@ -205,7 +206,11 @@ async def _announce_district_event(
     if channel is None:
         return
     try:
-        await channel.send(
+        await send_bot_room_message(
+            cog.bot,
+            guild,
+            cog.bot.db,
+            channel,
             content=content,
             allowed_mentions=discord.AllowedMentions.none(),
         )

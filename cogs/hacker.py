@@ -9,6 +9,7 @@ from discord.ext import commands
 
 import config
 from utils.bot_players import pvp_target_error
+from utils.bot_room import bot_room_channel_id, send_bot_room_message
 from utils.gear_sets import hack_penalty_multiplier
 from utils.helpers import fmt_amount, guild_only_message
 from utils.stats import hp_bar
@@ -88,20 +89,26 @@ class Hacker(commands.Cog):
         removed = await self.bot.db.remove_up_to_balance(holder_id, guild_id, penalty)
         await self.bot.db.clear_hacker_pot(guild_id)
 
-        channel = self.bot.get_channel(channel_id)
-        if isinstance(channel, discord.abc.Messageable):
-            embed = discord.Embed(
-                title="Virus detonated",
-                description=(
-                    f"<@{int(pot['holder_id'])}> took the hit for **{fmt_amount(removed)}**."
-                ),
-                color=discord.Color.dark_red(),
-            )
-            embed.add_field(name="Passes before pop", value=str(int(pot["pass_count"])), inline=True)
-            await channel.send(
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+        preferred = self.bot.get_channel(channel_id)
+        embed = discord.Embed(
+            title="Virus detonated",
+            description=(
+                f"<@{int(pot['holder_id'])}> took the hit for **{fmt_amount(removed)}**."
+            ),
+            color=discord.Color.dark_red(),
+        )
+        embed.add_field(name="Passes before pop", value=str(int(pot["pass_count"])), inline=True)
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            preferred if isinstance(preferred, discord.abc.Messageable) else None,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     @app_commands.command(name="hack", description="Start a hot-potato virus.")
     @app_commands.describe(target="Initial virus holder")
@@ -145,7 +152,16 @@ class Hacker(commands.Cog):
             current,
             current + timer_seconds,
         )
-        self._replace_timer(interaction.guild_id, interaction.channel_id)
+        announce_id = await bot_room_channel_id(interaction.guild, self.bot.db)
+        if announce_id is None:
+            await self.bot.db.clear_hacker_pot(interaction.guild_id)
+            await interaction.response.send_message(
+                "Bot room is not configured. Ask an admin to run "
+                "`/admin set-designated-channel`.",
+                ephemeral=True,
+            )
+            return
+        self._replace_timer(interaction.guild_id, announce_id)
         penalty = await self._penalty(interaction.guild_id, 0, target.id)
         embed = self._virus_embed(
             title="Virus deployed",
@@ -157,9 +173,26 @@ class Hacker(commands.Cog):
             pass_count=0,
             color=discord.Color.red(),
         )
-        await interaction.response.send_message(
+        await interaction.response.defer(ephemeral=True)
+        posted = await send_bot_room_message(
+            self.bot,
+            interaction.guild,
+            self.bot.db,
+            interaction.channel,
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
+        )
+        if posted is None:
+            await self.bot.db.clear_hacker_pot(interaction.guild_id)
+            await interaction.followup.send(
+                "Could not announce the virus — set the bot room with "
+                "`/admin set-designated-channel`.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"Virus announced in {posted.channel.mention}.",
+            ephemeral=True,
         )
 
     @app_commands.command(name="transfer", description="Pass the virus to someone else.")
@@ -178,7 +211,10 @@ class Hacker(commands.Cog):
         current = time.time()
         if pot is None or float(pot["expires_at"]) <= current:
             if pot is not None:
-                await self._detonate(interaction.guild_id, interaction.channel_id)
+                announce_id = await bot_room_channel_id(interaction.guild, self.bot.db)
+                if announce_id is None:
+                    announce_id = interaction.channel_id
+                await self._detonate(interaction.guild_id, announce_id)
             await interaction.response.send_message("No active virus is transferable.", ephemeral=True)
             return
         if int(pot["holder_id"]) != interaction.user.id:
@@ -194,7 +230,10 @@ class Hacker(commands.Cog):
             current,
             current + timer_seconds,
         )
-        self._replace_timer(interaction.guild_id, interaction.channel_id)
+        announce_id = await bot_room_channel_id(interaction.guild, self.bot.db)
+        if announce_id is None:
+            announce_id = interaction.channel_id
+        self._replace_timer(interaction.guild_id, announce_id)
         penalty = await self._penalty(interaction.guild_id, next_pass_count, target.id)
         seconds_left = float(pot["expires_at"]) - current
         seconds_left = min(float(timer_seconds), max(0.0, seconds_left))
@@ -209,9 +248,25 @@ class Hacker(commands.Cog):
             color=discord.Color.orange(),
         )
         embed.description = f"{interaction.user.mention} passed the hot potato to {target.mention}."
-        await interaction.response.send_message(
+        await interaction.response.defer(ephemeral=True)
+        posted = await send_bot_room_message(
+            self.bot,
+            interaction.guild,
+            self.bot.db,
+            interaction.channel,
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
+        )
+        if posted is None:
+            await interaction.followup.send(
+                "Could not announce the transfer — set the bot room with "
+                "`/admin set-designated-channel`.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"Transfer announced in {posted.channel.mention}.",
+            ephemeral=True,
         )
 
 

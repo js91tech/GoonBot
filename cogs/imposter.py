@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 
 import config
+from utils.bot_room import message_allowed_for_gameplay
 
 
 class Imposter(commands.Cog):
@@ -19,6 +20,8 @@ class Imposter(commands.Cog):
         if message.author.bot or message.guild is None:
             return
         if not isinstance(message.channel, discord.TextChannel):
+            return
+        if not await message_allowed_for_gameplay(message, self.bot.db):
             return
         if message.attachments or message.stickers:
             return

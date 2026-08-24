@@ -51,6 +51,7 @@ async def _apply_action_result(
     defender = guild.get_member(defender_id)
     action = action_by_id(str(result["action"]))
     action_name = action.name if action else "an attack"
+    from utils.bot_room import send_bot_room_message
     from utils.helpers import resolve_main_channel
 
     channel = await resolve_main_channel(guild, cog.bot.db)
@@ -71,7 +72,11 @@ async def _apply_action_result(
     view = DefendView(cog, guild.id, defender_id)
     content = defender.mention if defender else None
     with contextlib.suppress(discord.HTTPException):
-        await channel.send(
+        await send_bot_room_message(
+            cog.bot,
+            guild,
+            cog.bot.db,
+            channel,
             content=content,
             embed=embed,
             view=view,

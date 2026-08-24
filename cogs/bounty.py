@@ -7,6 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils.bot_players import pvp_target_error, skip_gameplay_bot
+from utils.bot_room import message_allowed_for_gameplay, send_bot_room_message
 from utils.crime_hub_ui import CrimeHubView
 from utils.helpers import (
     contains_word,
@@ -137,14 +138,33 @@ class Bounty(commands.Cog):
                 )
             embed.description = "\n\n".join(lines)
         embed.set_footer(text="Say the trigger word after the target slips up to claim")
-        # Attach the full Crime Hub (pocket heist, bank heist, bounties, arrests) so
-        # anyone in the channel can jump straight into a hustle from this post.
         view = CrimeHubView(self, interaction.guild.id)
-        await interaction.response.send_message(embed=embed, view=view)
+        await interaction.response.defer(ephemeral=True)
+        posted = await send_bot_room_message(
+            self.bot,
+            interaction.guild,
+            self.bot.db,
+            interaction.channel,
+            embed=embed,
+            view=view,
+        )
+        if posted is None:
+            await interaction.followup.send(
+                "Could not post the bounty board — set the bot room with "
+                "`/admin set-designated-channel`.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"Bounty board posted in {posted.channel.mention}.",
+            ephemeral=True,
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         if skip_gameplay_bot(message.author) or message.guild is None:
+            return
+        if not await message_allowed_for_gameplay(message, self.bot.db):
             return
 
         rows = await self.bot.db.list_bounties(message.guild.id)
@@ -161,8 +181,15 @@ class Bounty(commands.Cog):
                 if bounty_id in self.triggered_bounties:
                     return
                 self.triggered_bounties.add(bounty_id)
-                await message.channel.send(
-                    f"Bounty #{bounty_id} has been triggered. Say `{trigger_word}` to claim it!"
+                await send_bot_room_message(
+                    self.bot,
+                    message.guild,
+                    self.bot.db,
+                    message.channel,
+                    content=(
+                        f"Bounty #{bounty_id} has been triggered. "
+                        f"Say `{trigger_word}` to claim it!"
+                    ),
                 )
                 return
 
@@ -174,9 +201,15 @@ class Bounty(commands.Cog):
             await self.bot.db.credit_wallet(message.author.id, message.guild.id, float(row["amount"]))
             await self.bot.db.delete_bounty(bounty_id, message.guild.id)
             self.triggered_bounties.discard(bounty_id)
-            await message.channel.send(
-                f"{message.author.mention} claimed bounty #{bounty_id} for "
-                f"{fmt_amount(float(row['amount']))}!",
+            await send_bot_room_message(
+                self.bot,
+                message.guild,
+                self.bot.db,
+                message.channel,
+                content=(
+                    f"{message.author.mention} claimed bounty #{bounty_id} for "
+                    f"{fmt_amount(float(row['amount']))}!"
+                ),
                 allowed_mentions=discord.AllowedMentions.none(),
             )
             return

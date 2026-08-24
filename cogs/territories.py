@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 import config
 from utils.achievements import evaluate_unlocks, format_unlock_message
 from utils.expansion_events import record_expansion_event
+from utils.bot_room import send_bot_room_message
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel, send_error
 from utils.quests import record_quest_event
 from utils.territory_ui import send_territory_map_panel
@@ -439,14 +440,20 @@ class Territories(commands.Cog):
             timeout=config.TERRITORY_SIEGE_DURATION_SECONDS + 60,
         )
         try:
-            message = await channel.send(
+            message = await send_bot_room_message(
+                self.bot,
+                guild,
+                self.bot.db,
+                channel,
                 content,
                 embed=embed,
                 view=view,
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
+            if message is None:
+                return
             await self.bot.db.set_territory_siege_message(
-                guild_id, defn.territory_id, channel.id, message.id,
+                guild_id, defn.territory_id, message.channel.id, message.id,
             )
         except discord.HTTPException:
             logger.exception("siege announce failed guild=%s", guild_id)
@@ -574,10 +581,22 @@ class Territories(commands.Cog):
                     )
                     if unlocked and channel is not None:
                         with contextlib.suppress(discord.HTTPException):
-                            await channel.send(format_unlock_message(unlocked))
+                            await send_bot_room_message(
+                                self.bot,
+                                guild,
+                                self.bot.db,
+                                channel,
+                                format_unlock_message(unlocked),
+                            )
                 if channel is not None:
                     try:
-                        await channel.send(embed=build_siege_result_embed(item))
+                        await send_bot_room_message(
+                            self.bot,
+                            guild,
+                            self.bot.db,
+                            channel,
+                            embed=build_siege_result_embed(item),
+                        )
                     except discord.HTTPException:
                         logger.exception("territory siege result failed")
 

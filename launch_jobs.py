@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 
 import config
+from utils.bot_room import send_bot_room_message
 from utils.helpers import resolve_bot_announcement_channel
 
 
@@ -48,7 +49,11 @@ async def run_launch_grant(bot: commands.Bot) -> None:
     channel = await resolve_bot_announcement_channel(guild, bot.db)
     if channel is not None:
         try:
-            await channel.send(
+            await send_bot_room_message(
+                bot,
+                guild,
+                bot.db,
+                channel,
                 "Launch gift delivered! Every human member received "
                 f"{int(config.LAUNCH_GRANT_AMOUNT)} goonbux, a Training Stick, and a Cardboard Shield. "
                 "Any old boss was cleared and a normal 500 HP Velvet Vixen has spawned.",

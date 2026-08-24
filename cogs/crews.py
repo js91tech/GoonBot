@@ -11,6 +11,7 @@ import config
 from utils.crew_ui import build_crew_leaderboard_embed, send_crew_panel
 from utils.crew_bank_raid_ui import send_crew_bank_raid_panel
 from utils.crew_raid_ui import RaidKind, send_crew_raid_panel
+from utils.bot_room import send_bot_room_message
 from utils.helpers import (
     fmt_amount,
     guild_only_message,
@@ -61,7 +62,13 @@ class Crews(commands.Cog):
                 color=discord.Color.gold(),
             )
             with contextlib.suppress(discord.HTTPException):
-                await channel.send(embed=embed)
+                await send_bot_room_message(
+                    self.bot,
+                    guild,
+                    self.bot.db,
+                    channel,
+                    embed=embed,
+                )
 
     @corporate_war_tick.before_loop
     async def before_corporate_war_tick(self) -> None:

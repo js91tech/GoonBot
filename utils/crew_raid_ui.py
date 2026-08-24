@@ -1,6 +1,7 @@
 """Shared Discord UI for all crew PvP raid types."""
 from __future__ import annotations
 
+import contextlib
 import random
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -17,6 +18,7 @@ from utils.crew_bank_raid import (
     simulate_crew_raid,
 )
 from utils.drugs import drug_by_id
+from utils.bot_room import send_bot_room_message
 from utils.helpers import fmt_amount
 
 if TYPE_CHECKING:
@@ -473,20 +475,22 @@ async def run_crew_raid(
 
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-    channel = interaction.channel
-    if isinstance(channel, discord.abc.Messageable):
-        public = discord.Embed(
-            title=f"{meta['emoji']} Crew {meta['title']} raid",
-            description=(
-                f"**{attacker_crew}** {'robbed' if result.attacker_won else 'failed to rob'} "
-                f"**{defender}**{public_loot}."
-            ),
-            color=discord.Color.green() if result.attacker_won else discord.Color.red(),
+    public = discord.Embed(
+        title=f"{meta['emoji']} Crew {meta['title']} raid",
+        description=(
+            f"**{attacker_crew}** {'robbed' if result.attacker_won else 'failed to rob'} "
+            f"**{defender}**{public_loot}."
+        ),
+        color=discord.Color.green() if result.attacker_won else discord.Color.red(),
+    )
+    with contextlib.suppress(discord.HTTPException):
+        await send_bot_room_message(
+            cog.bot,
+            guild,
+            cog.bot.db,
+            interaction.channel,
+            embed=public,
         )
-        try:
-            await channel.send(embed=public)
-        except discord.HTTPException:
-            pass
 
 
 async def format_crew_raid_cooldowns(cog: Crews, guild_id: int, crew_name: str) -> str:
