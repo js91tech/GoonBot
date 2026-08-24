@@ -498,6 +498,36 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         await self._migrate_loadout_preset_accessories()
         await self._migrate_gameplay_expansion()
         await self._migrate_goonbot_age_gate()
+        await self._migrate_heat_status()
+
+    async def _migrate_heat_status(self) -> None:
+        """Lifetime goonbux spent → VIP / heat tiers."""
+        progress_cols = [
+            ("goonbux_spent", "REAL NOT NULL DEFAULT 0"),
+        ]
+        if self.is_postgres:
+            for col, typedef in progress_cols:
+                cursor = await self.conn.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = ANY (current_schemas(true))
+                      AND table_name = 'user_progress' AND column_name = ?
+                    """,
+                    (col,),
+                )
+                if await cursor.fetchone() is None:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        else:
+            cursor = await self.conn.execute("PRAGMA table_info(user_progress)")
+            existing = {row[1] for row in await cursor.fetchall()}
+            for col, typedef in progress_cols:
+                if col not in existing:
+                    await self.conn.execute(
+                        f"ALTER TABLE user_progress ADD COLUMN {col} {typedef}",
+                    )
+        await self.conn.commit()
 
     async def _migrate_goonbot_age_gate(self) -> None:
         """GoonBot 18+ age verification flag on users."""
@@ -6220,6 +6250,12 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         event = await self.get_active_guild_event(guild_id)
         if event is not None and str(event["event_type"]) == "double_drops":
             return float(event["multiplier"])
+        if event is not None and str(event["event_type"]) == "velvet_night":
+            return max(float(event["multiplier"]), float(config.VELVET_NIGHT_DROP_MULT))
+        from utils.velvet_night import velvet_night_active_now
+
+        if velvet_night_active_now(event):
+            return float(config.VELVET_NIGHT_DROP_MULT)
         return 1.0
 
     async def get_boss_hp_multiplier(self, guild_id: int) -> float:
@@ -6231,6 +6267,8 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         if event_type == "festival_boss":
             return mult
         if event_type == "world_boss_week":
+            return mult
+        if event_type == "velvet_night":
             return mult
         return 1.0
 

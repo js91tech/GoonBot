@@ -15,6 +15,7 @@ class JobDef:
     payout_min: float
     payout_max: float
     emoji: str
+    required_root: str | None = None  # vanguard / mogul / shade — None = open floor
 
 
 JOBS: tuple[JobDef, ...] = (
@@ -53,6 +54,36 @@ JOBS: tuple[JobDef, ...] = (
         75.0,
         120.0,
         "📦",
+    ),
+    JobDef(
+        "stage_talent",
+        "Main-Stage Shift",
+        "Talent-only — own the lights while the floor tips hard.",
+        12,
+        110.0,
+        165.0,
+        "🎤",
+        required_root="vanguard",
+    ),
+    JobDef(
+        "floor_host",
+        "Booth Host",
+        "Host-only — work the booths and keep tabs flowing.",
+        10,
+        120.0,
+        175.0,
+        "🥂",
+        required_root="mogul",
+    ),
+    JobDef(
+        "backroom_fixer",
+        "Back-Room Fix",
+        "Fixer-only — quiet jobs behind the velvet rope.",
+        11,
+        100.0,
+        160.0,
+        "🕶️",
+        required_root="shade",
     ),
 )
 

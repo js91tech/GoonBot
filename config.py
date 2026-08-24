@@ -620,6 +620,20 @@ GAMBLING_MIN_BET = 10.0
 GAMBLING_MAX_BET = 50_000.0
 GAMBLING_HOUSE_TAX = 0.05
 
+# VIP / heat — lifetime goonbux spent (shop, casino, unlocks, summons, etc.)
+HEAT_TIER_REGULAR_SPEND = 25_000.0
+HEAT_TIER_VIP_SPEND = 100_000.0
+HEAT_TIER_BOOTH_SPEND = 500_000.0
+HEAT_BOOTH_MOOD_COUNTER_MULT = 0.90  # Booth softens Velvet counters for that player
+
+# Velvet Walks In — scheduled night windows (UTC) + admin /event type
+VELVET_NIGHT_AUTO_ENABLED = True
+VELVET_NIGHT_UTC_HOURS: frozenset[int] = frozenset({2, 3, 14, 15, 22, 23})
+VELVET_NIGHT_SPAWN_BIAS = 0.90  # chance to force a Velvet variant during the window
+VELVET_NIGHT_DROP_MULT = 1.5
+VELVET_NIGHT_START_MOOD = "aggressive"
+VELVET_NIGHT_SPAWN_VARIANTS: tuple[str, ...] = ("normal", "enraged", "shadow", "mythic")
+
 DUEL_LOSS_FRACTION = 0.10
 DUEL_SAME_TARGET_COOLDOWN_SECONDS = 40 * 60
 DUEL_MAX_ATTACKS_PER_HOUR = 3
@@ -1004,6 +1018,7 @@ SEASONAL_EVENT_TYPES: tuple[str, ...] = (
     "festival_boss",
     "trivia_fiesta",
     "world_boss_week",
+    "velvet_night",
     "summer_festival",
     "holiday_rush",
     "economic_crisis",

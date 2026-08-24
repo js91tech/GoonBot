@@ -10,6 +10,12 @@ from utils.energy import energy_bar, energy_snapshot
 from utils.goon_theme import FOOTER_BRAND, branded_embed, panel_title
 from utils.helpers import fmt_amount, guild_only_message
 from utils.jobs import JOBS, JobDef, get_job, roll_job_payout
+from utils.persona_floors import (
+    available_jobs,
+    job_unlocked,
+    locked_jobs,
+    persona_floor_blurb,
+)
 from utils.quests import record_quest_event
 
 if TYPE_CHECKING:
@@ -25,6 +31,7 @@ async def build_jobs_hub_embed(
     last_result: tuple[JobDef, float, float] | None = None,
 ) -> discord.Embed:
     row = await cog.bot.db.get_user_character(user_id, guild_id)
+    class_id = await cog.bot.db.get_class_id(user_id, guild_id)
     regen_per_tick = int(
         await cog.bot.db.get_config_value(guild_id, "energy_regen_per_tick"),
     )
@@ -51,20 +58,35 @@ async def build_jobs_hub_embed(
         f"+{snap.regen_per_tick} every {snap.tick_seconds // 60} min · {regen_note}"
     )
 
+    open_jobs = available_jobs(class_id)
+    closed = locked_jobs(class_id)
     lines = []
-    for job in JOBS:
+    for job in open_jobs:
         marker = "➡️ " if job.job_id == selected_job else ""
         lines.append(
             f"{marker}{job.emoji} **{job.name}** (`{job.job_id}`) — "
             f"**{job.energy_cost}** energy → "
             f"**{fmt_amount(job.payout_min)}–{fmt_amount(job.payout_max)}**"
         )
+    locked_lines = [
+        f"🔒 {job.emoji} **{job.name}** — needs that persona floor"
+        for job in closed
+    ]
 
     embed = branded_embed(
         panel_title("Jobs Hub"),
-        description="Pick a hustle from the dropdown, then hit **Work / hustle** to run the shift.",
+        description=(
+            f"{persona_floor_blurb(class_id)}\n"
+            "Pick a hustle from the dropdown, then hit **Work / hustle**."
+        ),
     )
-    embed.add_field(name="Jobs", value="\n".join(lines), inline=False)
+    embed.add_field(
+        name="Open floor",
+        value="\n".join(lines) if lines else "_No open shifts — pick a persona._",
+        inline=False,
+    )
+    if locked_lines:
+        embed.add_field(name="Locked floors", value="\n".join(locked_lines), inline=False)
     embed.add_field(name="Your energy", value=energy_text, inline=False)
     embed.add_field(
         name="Upgrade cap",
@@ -92,7 +114,7 @@ async def build_jobs_hub_embed(
 
 
 class JobSelect(discord.ui.Select):
-    def __init__(self, view: JobsHubView) -> None:
+    def __init__(self, view: JobsHubView, jobs: tuple[JobDef, ...]) -> None:
         self._view = view
         options = [
             discord.SelectOption(
@@ -105,8 +127,16 @@ class JobSelect(discord.ui.Select):
                 emoji=job.emoji,
                 default=job.job_id == view.selected_job,
             )
-            for job in JOBS
+            for job in jobs
         ]
+        if not options:
+            options = [
+                discord.SelectOption(
+                    label="No open shifts",
+                    value="none",
+                    description="Pick a persona with /class choose",
+                ),
+            ]
         super().__init__(
             placeholder="Choose a job / hustle…",
             min_values=1,
@@ -116,6 +146,11 @@ class JobSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        if self.values[0] == "none":
+            await interaction.response.send_message(
+                "Pick a persona with `/class choose` first.", ephemeral=True,
+            )
+            return
         self._view.selected_job = self.values[0]
         for option in self.options:
             option.default = option.value == self._view.selected_job
@@ -129,13 +164,21 @@ class JobSelect(discord.ui.Select):
 
 
 class JobsHubView(discord.ui.View):
-    def __init__(self, cog: commands.Cog, guild_id: int, user_id: int) -> None:
+    def __init__(
+        self,
+        cog: commands.Cog,
+        guild_id: int,
+        user_id: int,
+        *,
+        class_id: str | None = None,
+    ) -> None:
         super().__init__(timeout=180.0)
         self.cog = cog
         self.guild_id = guild_id
         self.user_id = user_id
-        self.selected_job: str = JOBS[0].job_id
-        self.add_item(JobSelect(self))
+        open_jobs = available_jobs(class_id)
+        self.selected_job: str = open_jobs[0].job_id if open_jobs else JOBS[0].job_id
+        self.add_item(JobSelect(self, open_jobs if open_jobs else ()))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
@@ -159,6 +202,13 @@ class JobsHubView(discord.ui.View):
         job_def = get_job(self.selected_job)
         if job_def is None:
             await interaction.response.send_message("Pick a job first.", ephemeral=True)
+            return
+        class_id = await self.cog.bot.db.get_class_id(self.user_id, self.guild_id)
+        if not job_unlocked(job_def, class_id):
+            await interaction.response.send_message(
+                f"**{job_def.name}** is locked to another persona floor.",
+                ephemeral=True,
+            )
             return
 
         ok, err = await self.cog.bot.db.spend_job_energy(
@@ -246,7 +296,10 @@ async def send_jobs_hub(cog: commands.Cog, interaction: discord.Interaction) -> 
     if interaction.guild_id is None:
         await interaction.response.send_message(guild_only_message(), ephemeral=True)
         return
-    view = JobsHubView(cog, interaction.guild_id, interaction.user.id)
+    class_id = await cog.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
+    view = JobsHubView(
+        cog, interaction.guild_id, interaction.user.id, class_id=class_id,
+    )
     embed = await build_jobs_hub_embed(
         cog, interaction.guild_id, interaction.user.id, selected_job=view.selected_job,
     )

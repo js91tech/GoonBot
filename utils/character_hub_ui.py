@@ -65,9 +65,12 @@ async def build_character_embed(
         )
         options: list = []
     else:
+        from utils.persona_floors import persona_floor_blurb
+
         threshold = evolution_threshold(cls.tier)
         options = can_evolve(class_id, xp, roots) if not _is_jester_bound(user_id) else []
         desc = cls.description
+        desc += f"\n\n{persona_floor_blurb(class_id)}"
         if threshold is not None:
             desc += f"\nEvolve at **{threshold}** class XP (you have **{xp}**)."
         if options:

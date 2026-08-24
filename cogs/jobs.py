@@ -83,6 +83,17 @@ class Jobs(commands.Cog):
             await interaction.response.send_message("Unknown job.", ephemeral=True)
             return
 
+        from utils.persona_floors import job_unlocked
+
+        class_id = await self.bot.db.get_class_id(interaction.user.id, interaction.guild_id)
+        if not job_unlocked(job_def, class_id):
+            await interaction.response.send_message(
+                f"**{job_def.name}** is locked to another persona floor. "
+                "Pick the matching persona with `/class choose`.",
+                ephemeral=True,
+            )
+            return
+
         ok, err = await self.bot.db.spend_job_energy(
             interaction.user.id,
             interaction.guild_id,

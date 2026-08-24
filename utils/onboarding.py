@@ -12,10 +12,11 @@ ONBOARDING_BODY = (
     "Tonight isn't a dungeon grind. It's a **night out**.\n\n"
     "**1.** `/daily` — tip yourself in (goonbux)\n"
     "**2.** `/class choose` — pick a **persona** "
-    "(Talent / Host / Fixer)\n"
-    "**3.** `/jobs` or `/business` — make floor money\n"
-    "**4.** `/boss` — when **Velvet Vixen** walks in, be there\n"
-    "**5.** `/profile` — casino tables, private rooms, hustles, empire\n\n"
+    "(Talent / Host / Fixer) for your floor\n"
+    "**3.** `/jobs` or `/business` — make floor money "
+    "(persona hustles unlock)\n"
+    "**4.** `/boss` — when **Velvet Walks In**, be there\n"
+    "**5.** `/profile` — heat / VIP tables, private rooms, hustles, empire\n\n"
     "Play in **NSFW channels**. Admins can toggle `nsfw_channel_only`."
 )
 

@@ -38,9 +38,15 @@
 1. `/onboard` — age gate + NSFW consent (guest list)
 2. `/daily` — claim goonbux
 3. `/class choose` — pick a **persona** (Talent / Host / Fixer)
-4. `/jobs` or `/business` — make floor money
-5. `/boss` — when **Velvet Vixen** walks the floor
-6. `/profile` — check heat + persona
+4. `/jobs` or `/business` — make floor money (persona-gated hustles unlock)
+5. `/boss` — when **Velvet Vixen** walks the floor (auto **Velvet Walks In** windows)
+6. `/profile` — heat / VIP, casino tables, hustles, empire
+
+### Nightlife verbs
+
+- **Heat / VIP** — lifetime goonbux spent raises table limits; Door role softens; Booth softens Velvet counters. Buy next tier from Profile → **Buy VIP heat**.
+- **Persona floors** — Talent / Host / Fixer unlock exclusive jobs (Main-Stage / Booth Host / Back-Room Fix).
+- **Velvet Walks In** — UTC nightlife hours (and `/event start velvet_night`) bias Velvet spawns + hotter drops.
 
 ## Player hubs (entry points)
 

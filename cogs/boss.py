@@ -1075,10 +1075,15 @@ class Boss(commands.Cog):
         world_week = (
             event is not None and str(event["event_type"]) == "world_boss_week"
         )
+        from utils.velvet_night import velvet_night_active_now, velvet_night_label
+
+        velvet_night = velvet_night_active_now(event)
         roll = random.random()
         mirrored_variant = None
         if world_week and roll < config.BOSS_WORLD_EVENT_SPAWN_CHANCE:
             variant = "world_leviathan"
+        elif velvet_night and roll < config.VELVET_NIGHT_SPAWN_BIAS:
+            variant = random.choice(config.VELVET_NIGHT_SPAWN_VARIANTS)
         else:
             ultra = config.BOSS_ULTRA_SPAWN_CHANCE
             nikki = config.BOSS_AUTO_SPAWN_FREAKY_NIKKI_CHANCE
@@ -1101,9 +1106,24 @@ class Boss(commands.Cog):
             )
         else:
             hp = await self._spawn_boss(guild.id, variant)
+        if velvet_night:
+            self.raid_moods[guild.id] = config.VELVET_NIGHT_START_MOOD
         boss_row = await self.bot.db.get_active_boss(guild.id)
         elem = str(boss_row["element"]) if boss_row else None
         await self._send_boss_spawn_embed(guild, variant=variant, hp=hp, element=elem)
+        if velvet_night:
+            channel = await resolve_bot_announcement_channel(guild, self.bot.db)
+            if channel is not None:
+                gate = getattr(self.bot, "outbound_gate", None)
+                await safe_channel_send(
+                    channel,
+                    content=(
+                        f"💋 **{velvet_night_label()}** — {config.BOSS_DISPLAY_NAME} is on the floor. "
+                        f"Mood: **{config.VELVET_NIGHT_START_MOOD}**. Drops are hotter tonight."
+                    ),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                    gate=gate,
+                )
 
     @auto_spawn.before_loop
     async def before_auto_spawn(self) -> None:
@@ -2036,7 +2056,18 @@ class Boss(commands.Cog):
             damage = apply_summoner_counter_damage(damage)
         role = self.get_raid_role(guild_id, victim_id)
         mood = self.raid_moods.get(guild_id)
-        damage = max(1, int(damage * role_counter_taken_mult(role) * mood_counter_mult(mood)))
+        counter_mult = role_counter_taken_mult(role) * mood_counter_mult(mood)
+        try:
+            spent = await self.bot.db.get_goonbux_spent(victim_id, guild_id)
+            from utils.heat import door_counter_mult_for_spend, mood_soften_for_spend
+
+            if role == "tank":
+                counter_mult *= door_counter_mult_for_spend(spent)
+            if mood_soften_for_spend(spent) and mood in ("aggressive", "frantic"):
+                counter_mult *= float(config.HEAT_BOOTH_MOOD_COUNTER_MULT)
+        except Exception:
+            logging.exception("heat counter perk failed for %s", victim_id)
+        damage = max(1, int(damage * counter_mult))
         hp, max_hp = await self.bot.db.damage_player(victim_id, guild_id, damage, max_hp)
         hp, potion_note = await self.bot.db.try_auto_potion_heal(
             victim_id, guild_id, current_hp=hp, max_hp=max_hp,

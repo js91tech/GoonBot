@@ -281,9 +281,14 @@ class Gambling(commands.Cog):
                 ephemeral=True,
             )
             return None
-        if amount > config.GAMBLING_MAX_BET:
+        from utils.heat import gambling_max_bet
+
+        spent = await self.bot.db.get_goonbux_spent(interaction.user.id, interaction.guild_id)
+        max_bet = gambling_max_bet(spent)
+        if amount > max_bet:
             await interaction.response.send_message(
-                f"Maximum bet is {fmt_amount(config.GAMBLING_MAX_BET)}.",
+                f"Maximum bet is {fmt_amount(max_bet)} "
+                f"(raise heat / VIP for higher tables).",
                 ephemeral=True,
             )
             return None
@@ -447,9 +452,14 @@ class Gambling(commands.Cog):
         bet = await self._validate_bet(interaction, amount)
         if bet is None or interaction.guild_id is None:
             return
-        if bet > config.SLOTS_MAX_BET:
+        from utils.heat import slots_max_bet
+
+        spent = await self.bot.db.get_goonbux_spent(interaction.user.id, interaction.guild_id)
+        slots_cap = slots_max_bet(spent)
+        if bet > slots_cap:
             await interaction.response.send_message(
-                f"Max slots bet is {fmt_amount(config.SLOTS_MAX_BET)}.",
+                f"Max slots bet is {fmt_amount(slots_cap)} "
+                f"(raise heat / VIP for higher tables).",
                 ephemeral=True,
             )
             return

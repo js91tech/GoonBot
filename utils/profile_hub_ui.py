@@ -31,21 +31,30 @@ async def _gather_profile_summary(db: Database, user_id: int, guild_id: int) -> 
         tick_seconds=tick_seconds,
     )
     class_id = await db.get_class_id(user_id, guild_id)
+    goonbux_spent = await db.get_goonbux_spent(user_id, guild_id)
     return {
         "wallet": wallet,
         "bank": bank,
         "energy_current": snap.current,
         "energy_cap": snap.cap,
         "class_id": class_id,
+        "goonbux_spent": goonbux_spent,
     }
 
 
 def build_profile_hub_embed(member: discord.Member, summary: dict) -> discord.Embed:
+    from utils.classes import get_class
+    from utils.heat import format_heat_line, gambling_max_bet, heat_tier_for_spend
+    from utils.persona_floors import persona_floor_blurb
+
     wallet = float(summary.get("wallet", 0.0))
     bank = float(summary.get("bank", 0.0))
     energy_current = int(summary.get("energy_current", 0))
     energy_cap = int(summary.get("energy_cap", 0))
     class_id = summary.get("class_id")
+    spent = float(summary.get("goonbux_spent", 0.0))
+    heat = heat_tier_for_spend(spent)
+    cls = get_class(class_id if isinstance(class_id, str) else None)
 
     embed = branded_embed(
         panel_title("Profile Hub", member_name=member.display_name),
@@ -63,8 +72,20 @@ def build_profile_hub_embed(member: discord.Member, summary: dict) -> discord.Em
         value=f"`{energy_bar(energy_current, energy_cap)}` **{energy_current}/{energy_cap}**",
         inline=True,
     )
-    class_text = class_id or "_No class — /class choose_"
-    embed.add_field(name="Class", value=f"`{class_text}`", inline=True)
+    if cls is not None:
+        class_text = f"{cls.emoji} **{cls.name}**"
+    else:
+        class_text = "_No persona — /class choose_"
+    embed.add_field(name="Persona", value=class_text, inline=True)
+    embed.add_field(
+        name=f"Heat · {heat.name}",
+        value=(
+            f"{format_heat_line(spent)}\n"
+            f"Table max **{fmt_amount(gambling_max_bet(spent))}**"
+        ),
+        inline=False,
+    )
+    embed.add_field(name="Your floor", value=persona_floor_blurb(class_id if isinstance(class_id, str) else None), inline=False)
     embed.set_footer(text=f"{FOOTER_BRAND} · /stats for full combat breakdown")
     return embed
 
@@ -123,7 +144,10 @@ class ProfileHubView(discord.ui.View):
         del button
         from utils.jobs_hub_ui import JobsHubView, build_jobs_hub_embed
 
-        view = JobsHubView(self.cog, self.guild_id, self.user_id)
+        class_id = await self.cog.bot.db.get_class_id(self.user_id, self.guild_id)
+        view = JobsHubView(
+            self.cog, self.guild_id, self.user_id, class_id=class_id,
+        )
         embed = await build_jobs_hub_embed(
             self.cog, self.guild_id, self.user_id, selected_job=view.selected_job,
         )
@@ -202,7 +226,14 @@ class ProfileHubView(discord.ui.View):
             await interaction.response.edit_message(content=None, embed=embed, view=self)
             return
 
-        embed = build_casino_hub_embed(interaction.user.display_name)
+        from utils.heat import gambling_max_bet, slots_max_bet
+
+        spent = await self.cog.bot.db.get_goonbux_spent(self.user_id, self.guild_id)
+        embed = build_casino_hub_embed(
+            interaction.user.display_name,
+            max_bet=gambling_max_bet(spent),
+            slots_cap=slots_max_bet(spent),
+        )
         view = CasinoHubView(self.user_id)
         await interaction.response.edit_message(content=None, embed=embed, view=view)
 
@@ -241,6 +272,43 @@ class ProfileHubView(discord.ui.View):
         from utils.meta_hub_ui import send_chaos_hub
 
         await send_chaos_hub(interaction, self.cog)
+
+    @discord.ui.button(label="Buy VIP heat", style=discord.ButtonStyle.success, row=2)
+    async def vip_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        from utils.heat import heat_tier_for_spend, next_heat_tier
+
+        err, cost = await self.cog.bot.db.buy_heat_boost(self.user_id, self.guild_id)
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        summary = await _gather_profile_summary(self.cog.bot.db, self.user_id, self.guild_id)
+        embed = build_profile_hub_embed(member, summary)
+        if err == "max_tier":
+            await interaction.response.edit_message(
+                content="You're already **Booth** heat — top of the house.",
+                embed=embed,
+                view=self,
+            )
+            return
+        if err == "insufficient_funds":
+            nxt = next_heat_tier(float(summary.get("goonbux_spent", 0.0)))
+            need = nxt.spend_needed - float(summary.get("goonbux_spent", 0.0)) if nxt else 0
+            await interaction.response.edit_message(
+                content=f"Need **{fmt_amount(need)}** in pocket to buy the next heat tier.",
+                embed=embed,
+                view=self,
+            )
+            return
+        tier = heat_tier_for_spend(float(summary.get("goonbux_spent", 0.0)))
+        await interaction.response.edit_message(
+            content=f"Paid **{fmt_amount(cost)}** — heat is now **{tier.name}**.",
+            embed=embed,
+            view=self,
+        )
 
 
 async def send_profile_hub(

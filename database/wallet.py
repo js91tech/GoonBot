@@ -319,8 +319,39 @@ class DatabaseWalletMixin:
                 """,
                 (amount, user_id, guild_id),
             )
+            await self._ensure_progress_no_lock(user_id, guild_id)
+            await self.conn.execute(
+                """
+                UPDATE user_progress
+                SET goonbux_spent = goonbux_spent + ?
+                WHERE user_id = ? AND guild_id = ?
+                """,
+                (amount, user_id, guild_id),
+            )
             await self.conn.commit()
             return True
+
+    async def get_goonbux_spent(self, user_id: int, guild_id: int) -> float:
+        progress = await self.get_user_progress(user_id, guild_id)
+        try:
+            return float(progress["goonbux_spent"])
+        except (KeyError, IndexError, TypeError):
+            return 0.0
+
+    async def buy_heat_boost(self, user_id: int, guild_id: int) -> tuple[str | None, float]:
+        """Spend wallet goonbux to reach the next heat tier. Returns (error, spent)."""
+        from utils.heat import cost_to_reach_tier, next_heat_tier
+
+        spent = await self.get_goonbux_spent(user_id, guild_id)
+        nxt = next_heat_tier(spent)
+        if nxt is None:
+            return "max_tier", 0.0
+        cost = cost_to_reach_tier(spent, nxt)
+        if cost <= 0:
+            return "max_tier", 0.0
+        if not await self.debit_wallet(user_id, guild_id, cost):
+            return "insufficient_funds", 0.0
+        return None, cost
 
     async def remove_up_to_balance(self, user_id: int, guild_id: int, amount: float) -> float:
         if amount <= 0:

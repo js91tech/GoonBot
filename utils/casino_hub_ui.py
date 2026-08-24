@@ -18,16 +18,25 @@ def _gambling_cog(interaction: discord.Interaction) -> Gambling | None:
     return interaction.client.get_cog("Gambling")  # type: ignore[return-value]
 
 
-def build_casino_hub_embed(member_name: str) -> discord.Embed:
+def build_casino_hub_embed(
+    member_name: str,
+    *,
+    max_bet: float | None = None,
+    slots_cap: float | None = None,
+) -> discord.Embed:
+    table_max = max_bet if max_bet is not None else config.GAMBLING_MAX_BET
+    slots_max = slots_cap if slots_cap is not None else config.SLOTS_MAX_BET
     embed = branded_embed(
         panel_title("Casino Hub", member_name=member_name),
-        description="The house always takes a cut. Pick your poison below.",
+        description=(
+            "The house always takes a cut. Higher **heat / VIP** unlocks hotter tables."
+        ),
     )
     embed.add_field(
         name="🪙 Coinflip",
         value=(
             f"50/50 vs the house · min **{fmt_amount(config.GAMBLING_MIN_BET)}** · "
-            f"max **{fmt_amount(config.GAMBLING_MAX_BET)}**"
+            f"max **{fmt_amount(table_max)}**"
         ),
         inline=False,
     )
@@ -35,7 +44,7 @@ def build_casino_hub_embed(member_name: str) -> discord.Embed:
         name="🎰 Slots",
         value=(
             f"3-reel spin · min **{fmt_amount(config.GAMBLING_MIN_BET)}** · "
-            f"max **{fmt_amount(config.SLOTS_MAX_BET)}** · triple 7️⃣ pays **8×**"
+            f"max **{fmt_amount(slots_max)}** · triple 7️⃣ pays **8×**"
         ),
         inline=False,
     )
@@ -170,10 +179,19 @@ class CasinoHubView(discord.ui.View):
 
 
 async def send_casino_hub(cog: object, interaction: discord.Interaction) -> None:
-    del cog  # kept for API symmetry with the other hub launchers
     if interaction.guild_id is None:
         await interaction.response.send_message(guild_only_message(), ephemeral=True)
         return
-    embed = build_casino_hub_embed(interaction.user.display_name)
+    from utils.heat import gambling_max_bet, slots_max_bet
+
+    spent = 0.0
+    db = getattr(cog, "bot", None)
+    if db is not None and getattr(db, "db", None) is not None:
+        spent = await db.db.get_goonbux_spent(interaction.user.id, interaction.guild_id)
+    embed = build_casino_hub_embed(
+        interaction.user.display_name,
+        max_bet=gambling_max_bet(spent),
+        slots_cap=slots_max_bet(spent),
+    )
     view = CasinoHubView(interaction.user.id)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
