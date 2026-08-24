@@ -14,6 +14,7 @@ from discord.ext import commands, tasks
 
 import config
 from utils.bot_players import skip_gameplay_bot
+from utils.bot_room import message_allowed_for_gameplay, resolve_public_channel, send_bot_room_message
 from utils.drugs import DRUGS, drug_by_id
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel
 
@@ -217,13 +218,17 @@ class Trivia(commands.Cog):
         await self._disable_round_view(active)
         if not announce or active.message is None:
             return
-        try:
-            await active.message.channel.send(
-                f"⏰ Trivia timed out — the answer was `{active.answer}`.",
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-        except discord.HTTPException:
-            logging.exception("Trivia: failed to announce timeout in channel %s", channel_id)
+        guild = active.message.guild
+        if guild is None:
+            return
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            active.message.channel,
+            content=f"⏰ Trivia timed out — the answer was `{active.answer}`.",
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def _start_round(
         self,
@@ -232,6 +237,12 @@ class Trivia(commands.Cog):
         *,
         announce_prefix: bool = False,
     ) -> bool:
+        resolved = await resolve_public_channel(guild, self.bot.db, channel)
+        if not isinstance(resolved, discord.TextChannel):
+            logging.warning("Trivia: no bot room to start in guild %s", guild.id)
+            return False
+        channel = resolved
+
         puzzle = await self._make_puzzle(guild)
         if puzzle is None:
             return False
@@ -249,12 +260,24 @@ class Trivia(commands.Cog):
         )
         self.active_rounds[channel.id] = round_state
         header = "**Random Lore Roulette!** " if announce_prefix else ""
-        message = await channel.send(
-            f"{header}Guess the missing word within {format_trivia_window()} — "
-            f"**faster answers pay more**, and winners can snag a **free drug**:\n\n> {prompt}\n\n"
-            "_Type your answer in chat, or tap **Answer** to submit privately._",
+        message = await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            channel,
+            content=(
+                f"{header}Guess the missing word within {format_trivia_window()} — "
+                f"**faster answers pay more**, and winners can snag a **free drug**:\n\n"
+                f"> {prompt}\n\n"
+                "_Type your answer in chat, or tap **Answer** to submit privately._"
+            ),
             view=view,
         )
+        if message is None:
+            self.active_rounds.pop(channel.id, None)
+            if round_state.end_task is not None and not round_state.end_task.done():
+                round_state.end_task.cancel()
+            return False
         view.message = message
         round_state.message = message
         delay = max(0.5, round_state.expires_at - time.time())
@@ -458,14 +481,20 @@ class Trivia(commands.Cog):
 
         channel = interaction.guild.get_channel(channel_id) or self.bot.get_channel(channel_id)
         if isinstance(channel, discord.abc.Messageable):
-            try:
-                await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
-            except discord.HTTPException:
-                logging.exception("Trivia: failed to announce modal answer in channel %s", channel_id)
+            await send_bot_room_message(
+                self.bot,
+                interaction.guild,
+                self.bot.db,
+                channel,
+                content=text,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         if skip_gameplay_bot(message.author) or message.guild is None:
+            return
+        if not await message_allowed_for_gameplay(message, self.bot.db):
             return
 
         active = self.active_rounds.get(message.channel.id)
@@ -485,7 +514,14 @@ class Trivia(commands.Cog):
         text = await self._reward_correct_answer(
             message.guild, message.author, claimed.answer, claimed.expires_at, claimed.started_at,
         )
-        await message.channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+        await send_bot_room_message(
+            self.bot,
+            message.guild,
+            self.bot.db,
+            message.channel,
+            content=text,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

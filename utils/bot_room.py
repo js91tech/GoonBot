@@ -171,3 +171,52 @@ async def guard_public_send(
     if channel_id is not None and int(channel_id) == int(bot_room.id):
         return channel
     return bot_room
+
+
+async def resolve_public_channel(
+    guild: discord.Guild,
+    db: object,
+    preferred: discord.abc.Messageable | None = None,
+) -> discord.abc.Messageable | None:
+    """Pick where a public bot post should land (bot room when locked)."""
+    if preferred is not None:
+        guarded = await guard_public_send(guild, db, preferred)
+        if guarded is not None:
+            return guarded
+    if await bot_room_only_enabled(db, guild.id):
+        return await resolve_bot_room(guild, db)
+    return preferred
+
+
+async def bot_room_channel_id(guild: discord.Guild, db: object) -> int | None:
+    channel = await resolve_bot_room(guild, db)
+    if channel is None:
+        return None
+    return int(channel.id)
+
+
+async def message_allowed_for_gameplay(message: discord.Message, db: object) -> bool:
+    """When bot-room-only, gameplay listeners only run in the bot room."""
+    if message.guild is None:
+        return False
+    if not await bot_room_only_enabled(db, message.guild.id):
+        return True
+    return await channel_is_allowed_bot_room(message.guild, db, message.channel)
+
+
+async def send_bot_room_message(
+    bot: discord.Client,
+    guild: discord.Guild,
+    db: object,
+    preferred: discord.abc.Messageable | None,
+    *args: object,
+    **kwargs: object,
+) -> discord.Message | None:
+    """Send a public message, redirecting to the bot room when locked."""
+    from utils.discord_api import safe_channel_send
+
+    channel = await resolve_public_channel(guild, db, preferred)
+    if channel is None:
+        return None
+    gate = getattr(bot, "outbound_gate", None)
+    return await safe_channel_send(channel, *args, gate=gate, **kwargs)  # type: ignore[arg-type]

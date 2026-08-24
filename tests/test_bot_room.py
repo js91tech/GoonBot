@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
@@ -120,6 +120,104 @@ class BotRoomGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok)
         msg = interaction.response.send_message.await_args.args[0]
         self.assertIn("only runs", msg.lower())
+
+
+class BotRoomPublicSendTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.bot_ch = MagicMock(spec=discord.TextChannel)
+        self.bot_ch.id = 555
+        self.bot_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        self.other_ch = MagicMock(spec=discord.TextChannel)
+        self.other_ch.id = 111
+        self.other_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        self.guild = MagicMock(spec=discord.Guild)
+        self.guild.id = 42
+        self.guild.me = MagicMock()
+        self.guild.get_channel.side_effect = lambda cid: {
+            555: self.bot_ch,
+            111: self.other_ch,
+        }.get(cid)
+        self.guild.text_channels = [self.bot_ch, self.other_ch]
+
+        self.db = MagicMock()
+        self.db.get_config_value = AsyncMock(return_value=1.0)
+        self.db.get_designated_channel_id = AsyncMock(return_value=555)
+        self.db.get_main_channel_id = AsyncMock(return_value=555)
+
+    async def test_resolve_public_channel_redirects_when_locked(self) -> None:
+        resolved = await bot_room.resolve_public_channel(
+            self.guild,
+            self.db,
+            self.other_ch,
+        )
+        self.assertIs(resolved, self.bot_ch)
+
+    async def test_send_bot_room_message_redirects_when_locked(self) -> None:
+        bot = MagicMock()
+        bot.outbound_gate = None
+        sent = MagicMock(spec=discord.Message)
+        with patch(
+            "utils.discord_api.safe_channel_send",
+            new_callable=AsyncMock,
+            return_value=sent,
+        ) as mock_send:
+            result = await bot_room.send_bot_room_message(
+                bot,
+                self.guild,
+                self.db,
+                self.other_ch,
+                content="hello",
+            )
+        self.assertIs(result, sent)
+        mock_send.assert_awaited_once()
+        self.assertIs(mock_send.await_args.args[0], self.bot_ch)
+
+    async def test_message_allowed_for_gameplay_blocks_outside_bot_room(self) -> None:
+        message = MagicMock(spec=discord.Message)
+        message.guild = self.guild
+        message.channel = self.other_ch
+        allowed = await bot_room.message_allowed_for_gameplay(message, self.db)
+        self.assertFalse(allowed)
+
+    async def test_message_allowed_for_gameplay_allows_bot_room(self) -> None:
+        message = MagicMock(spec=discord.Message)
+        message.guild = self.guild
+        message.channel = self.bot_ch
+        allowed = await bot_room.message_allowed_for_gameplay(message, self.db)
+        self.assertTrue(allowed)
+
+    async def test_drops_send_when_bot_room_unset_and_locked(self) -> None:
+        self.db.get_designated_channel_id = AsyncMock(return_value=None)
+        self.db.get_main_channel_id = AsyncMock(return_value=None)
+        self.guild.get_channel = MagicMock(return_value=None)
+        self.guild.text_channels = [self.other_ch]
+        self.other_ch.name = "general"
+
+        with patch.object(config, "BOT_CHANNEL_ID", None):
+            resolved = await bot_room.resolve_public_channel(
+                self.guild,
+                self.db,
+                self.other_ch,
+            )
+            self.assertIsNone(resolved)
+
+            bot = MagicMock()
+            bot.outbound_gate = None
+            with patch(
+                "utils.discord_api.safe_channel_send",
+                new_callable=AsyncMock,
+            ) as mock_send:
+                result = await bot_room.send_bot_room_message(
+                    bot,
+                    self.guild,
+                    self.db,
+                    self.other_ch,
+                    content="should not send",
+                )
+            self.assertIsNone(result)
+            mock_send.assert_not_awaited()
 
 
 if __name__ == "__main__":

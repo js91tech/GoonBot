@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 
 import config
 from utils.bot_players import bot_players_enabled, pvp_target_error
-from utils.discord_api import safe_channel_send
+from utils.bot_room import bot_room_channel_id, send_bot_room_message
 from utils.helpers import fmt_amount, guild_only_message, resolve_bot_announcement_channel
 from utils.scourge_media import (
     attach_local_warning_gif,
@@ -126,26 +126,81 @@ class Scourge(commands.Cog):
             await self.bot.db.credit_house_pot(guild_id, removed)
         await self.bot.db.clear_scourge_pot(guild_id)
 
-        channel = self.bot.get_channel(channel_id)
-        if isinstance(channel, discord.abc.Messageable):
-            embed = discord.Embed(
-                title="Scourge Virus detonated",
-                description=(
-                    f"<@{holder_id}> lost **{fmt_amount(removed)}** from their bank "
-                    f"(rolled cap **{fmt_amount(penalty)}**)."
-                ),
-                color=discord.Color.dark_red(),
-            )
-            embed.add_field(
-                name="Passes before pop",
-                value=str(int(pot["pass_count"])),
-                inline=True,
-            )
-            await safe_channel_send(
-                channel,
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+        preferred = self.bot.get_channel(channel_id)
+        embed = discord.Embed(
+            title="Scourge Virus detonated",
+            description=(
+                f"<@{holder_id}> lost **{fmt_amount(removed)}** from their bank "
+                f"(rolled cap **{fmt_amount(penalty)}**)."
+            ),
+            color=discord.Color.dark_red(),
+        )
+        embed.add_field(
+            name="Passes before pop",
+            value=str(int(pot["pass_count"])),
+            inline=True,
+        )
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            preferred if isinstance(preferred, discord.abc.Messageable) else None,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    async def _send_warning(self, guild: discord.Guild, channel_id: int) -> None:
+        preferred = self.bot.get_channel(channel_id)
+        embed = scourge_warning_embed(seconds_until_active=config.SCOURGE_WARNING_SECONDS)
+        attach_local_warning_gif(embed)
+        files = scourge_warning_files()
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            preferred if isinstance(preferred, discord.abc.Messageable) else None,
+            embed=embed,
+            files=files or None,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    async def _send_outbreak_start(self, guild: discord.Guild, channel_id: int) -> None:
+        preferred = self.bot.get_channel(channel_id)
+        embed = discord.Embed(
+            title=f"☣️ {config.SCOURGE_VIRUS_NAME} outbreak",
+            description=(
+                "The Scourge is active — random top players get infected. "
+                "Pass it with `/scourge-pass` before the timer pops!"
+            ),
+            color=discord.Color.dark_purple(),
+        )
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            preferred if isinstance(preferred, discord.abc.Messageable) else None,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    async def _send_outbreak_end(self, guild: discord.Guild, channel_id: int) -> None:
+        preferred = self.bot.get_channel(channel_id)
+        embed = discord.Embed(
+            title="Scourge contained",
+            description=f"The **{config.SCOURGE_VIRUS_NAME}** outbreak has ended.",
+            color=discord.Color.green(),
+        )
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            preferred if isinstance(preferred, discord.abc.Messageable) else None,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def _ensure_event_row(
         self,
@@ -162,55 +217,6 @@ class Scourge(commands.Cog):
             phase="idle",
             phase_ends_at=0.0,
             next_hourly_roll_at=self._schedule_next_hourly(now),
-        )
-
-    async def _send_warning(self, guild: discord.Guild, channel_id: int) -> None:
-        channel = self.bot.get_channel(channel_id)
-        if not isinstance(channel, discord.abc.Messageable):
-            return
-        embed = scourge_warning_embed(seconds_until_active=config.SCOURGE_WARNING_SECONDS)
-        attach_local_warning_gif(embed)
-        files = scourge_warning_files()
-        await safe_channel_send(
-            channel,
-            embed=embed,
-            files=files or None,
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-
-    async def _send_outbreak_start(self, guild: discord.Guild, channel_id: int) -> None:
-        channel = self.bot.get_channel(channel_id)
-        if not isinstance(channel, discord.abc.Messageable):
-            return
-        embed = discord.Embed(
-            title="☣️ SCOURGE OUTBREAK",
-            description=(
-                f"**{config.SCOURGE_VIRUS_NAME}** is live for "
-                f"**{config.SCOURGE_ACTIVE_SECONDS // 60} minutes** — "
-                f"one infection from the top **{config.SCOURGE_TOP_TARGETS}** "
-                f"every **{config.SCOURGE_INFECTION_INTERVAL_SECONDS}s**."
-            ),
-            color=discord.Color.red(),
-        )
-        await safe_channel_send(
-            channel,
-            embed=embed,
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-
-    async def _send_outbreak_end(self, guild: discord.Guild, channel_id: int) -> None:
-        channel = self.bot.get_channel(channel_id)
-        if not isinstance(channel, discord.abc.Messageable):
-            return
-        embed = discord.Embed(
-            title="Scourge contained",
-            description="The outbreak has ended. Vaults are safe… for now.",
-            color=discord.Color.dark_grey(),
-        )
-        await safe_channel_send(
-            channel,
-            embed=embed,
-            allowed_mentions=discord.AllowedMentions.none(),
         )
 
     async def _top5_candidate_ids(self, guild_id: int) -> list[int]:
@@ -255,13 +261,15 @@ class Scourge(commands.Cog):
                 f"<@{user_id}> was infected during the **{config.SCOURGE_VIRUS_NAME}** outbreak!"
             ),
         )
-        channel = self.bot.get_channel(channel_id)
-        if isinstance(channel, discord.abc.Messageable):
-            await safe_channel_send(
-                channel,
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
+        preferred = self.bot.get_channel(channel_id)
+        await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            preferred if isinstance(preferred, discord.abc.Messageable) else None,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def _infect_random_top5(self, guild: discord.Guild, channel_id: int) -> None:
         candidates = await self._top5_candidate_ids(guild.id)
@@ -422,9 +430,15 @@ class Scourge(commands.Cog):
 
         pot = await self.bot.db.get_scourge_pot(interaction.guild_id)
         current = time.time()
+        guild = interaction.guild
+        assert guild is not None
+        announce_id = await bot_room_channel_id(guild, self.bot.db)
+        if announce_id is None:
+            announce_id = interaction.channel_id
+
         if pot is None or float(pot["expires_at"]) <= current:
             if pot is not None:
-                await self._detonate(interaction.guild_id, interaction.channel_id)
+                await self._detonate(interaction.guild_id, announce_id)
             await interaction.response.send_message(
                 "No active Scourge infection to pass.",
                 ephemeral=True,
@@ -448,7 +462,7 @@ class Scourge(commands.Cog):
             current + timer,
             penalty,
         )
-        self._replace_timer(interaction.guild_id, interaction.channel_id)
+        self._replace_timer(interaction.guild_id, announce_id)
         embed = self._virus_embed(
             title="Scourge passed",
             holder=target,
@@ -460,9 +474,25 @@ class Scourge(commands.Cog):
             color=discord.Color.orange(),
             description=f"{interaction.user.mention} passed the infection to {target.mention}.",
         )
-        await interaction.response.send_message(
+        await interaction.response.defer(ephemeral=True)
+        posted = await send_bot_room_message(
+            self.bot,
+            guild,
+            self.bot.db,
+            interaction.channel,
             embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
+        )
+        if posted is None:
+            await interaction.followup.send(
+                "Could not announce the pass — set the bot room with "
+                "`/admin set-designated-channel`.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"Scourge pass announced in {posted.channel.mention}.",
+            ephemeral=True,
         )
 
 

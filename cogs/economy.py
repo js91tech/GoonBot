@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 
 import config
 from utils.bot_players import pvp_target_error, skip_passive_bot
+from utils.bot_room import send_bot_room_message
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel, valid_amount
 from utils.quests import record_quest_event
 
@@ -162,7 +163,14 @@ class Economy(commands.Cog):
                 )
                 view = CoinDropView(self.bot, guild.id, amount)
                 try:
-                    await channel.send(body, view=view)
+                    await send_bot_room_message(
+                        self.bot,
+                        guild,
+                        self.bot.db,
+                        channel,
+                        body,
+                        view=view,
+                    )
                 except discord.HTTPException:
                     logging.exception("Coin drop: failed to send in guild %s", guild.id)
         finally:
