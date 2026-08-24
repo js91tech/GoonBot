@@ -49,10 +49,10 @@ class CrimeHubTests(unittest.IsolatedAsyncioTestCase):
     def test_hub_embed_lists_all_hustles(self) -> None:
         embed = build_crime_hub_embed("Tester")
         names = [field.name for field in embed.fields]
-        self.assertIn("🥷 Pocket Heist", names)
-        self.assertIn("🏦 Bank Heist", names)
-        self.assertIn("🎯 Bounty Board", names)
-        self.assertIn("🚨 Arrests", names)
+        self.assertIn("🕶️ Wallet Lift", names)
+        self.assertIn("💋 Velvet Vault Job", names)
+        self.assertIn("📋 Name-Drop Board", names)
+        self.assertIn("🚨 Catch a Thief", names)
 
     async def test_bounty_board_shows_no_bounties_message(self) -> None:
         guild = MagicMock()

@@ -10,21 +10,21 @@ import config
 
 RAID_ROLES: dict[str, dict[str, float | str]] = {
     "tank": {
-        "label": "🛡️ Tank",
+        "label": "🚪 Door",
         "damage_mult": 0.85,
         "counter_taken_mult": 0.70,
         "aggro_weight": 2.5,
-        "blurb": "Soak counters (−30% taken), deal −15% damage.",
+        "blurb": "Hold the door (−30% counters taken), deal −15% damage.",
     },
     "healer": {
-        "label": "💚 Healer",
+        "label": "💋 Aftercare",
         "damage_mult": 0.90,
         "counter_taken_mult": 1.0,
         "aggro_weight": 0.8,
         "blurb": "Deal −10% damage; 30% chance to pulse-heal after a hit.",
     },
     "glass": {
-        "label": "🗡️ Glass",
+        "label": "🎤 Main Stage",
         "damage_mult": 1.25,
         "counter_taken_mult": 1.35,
         "aggro_weight": 1.0,
@@ -34,10 +34,10 @@ RAID_ROLES: dict[str, dict[str, float | str]] = {
 
 
 MOOD_BY_HP_RATIO: tuple[tuple[float, str, str], ...] = (
-    (0.75, "calm", "The boss watches calmly."),
-    (0.50, "aggressive", "The boss grows aggressive — counters land harder."),
-    (0.25, "armored", "Armor plates lock — Glass cuts through; others hit softer."),
-    (0.0, "frantic", "Frantic thrashing — race for the killing blow!"),
+    (0.75, "calm", "Velvet watches from the booth — calm, amused."),
+    (0.50, "aggressive", "The night turns sharp — her counters hit harder."),
+    (0.25, "armored", "Velvet locks in — Main Stage cuts through; others hit softer."),
+    (0.0, "frantic", "Last call frenzy — race for the finishing blow!"),
 )
 
 

@@ -59,9 +59,9 @@ async def build_character_embed(
 
     if cls is None:
         embed.description = (
-            "No class picked yet — every persona in GoonBot starts naked-stat and "
-            "levels into something filthier. Pick a starter below.\n"
-            f"**Starters:** {', '.join(s.title() for s in STARTER_IDS)}"
+            "No persona yet — every GoonBot starter walks in cold and levels into "
+            "something filthier. Pick below.\n"
+            f"**Personas:** {', '.join(get_class(s).name for s in STARTER_IDS if get_class(s))}"
         )
         options: list = []
     else:

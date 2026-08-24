@@ -733,7 +733,7 @@ ACCESSORIES: tuple[ShopItem, ...] = (
         "accessory",
         0,
         0,
-        "Court of Kitty's token of chaos.",
+        "House Jester's token of chaos.",
         flat_damage=5,
         flat_hp=15,
         shop_listed=False,

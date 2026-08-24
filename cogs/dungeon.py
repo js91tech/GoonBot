@@ -129,7 +129,7 @@ class Dungeon(commands.Cog):
 
         if run is None:
             embed = discord.Embed(
-                title="Dungeon — choose your depth",
+                title="After hours — pick your floor",
                 description=(
                     f"**{config.DUNGEON_ROOMS} rooms** per run · "
                     f"**{config.DUNGEON_ENERGY_COST}** energy to enter"
@@ -150,7 +150,7 @@ class Dungeon(commands.Cog):
             can_start = current_energy >= config.DUNGEON_ENERGY_COST
             embed.set_footer(
                 text=(
-                    "Solo standard below · unlock Vault for a party raid"
+                    "Solo afterparty below · unlock Velvet Vault for a party crawl"
                     if can_start
                     else f"Need {config.DUNGEON_ENERGY_COST} energy ({current_energy}/{cap})"
                 ),
@@ -203,11 +203,11 @@ class Dungeon(commands.Cog):
             config.DUNGEON_VAULT_UNLOCK_COST,
         )
         if err == "already_unlocked":
-            return DungeonActionResult(error="You already have Gilded Vault access.")
+            return DungeonActionResult(error="You already have Velvet Vault access.")
         if err == "insufficient_funds":
             return DungeonActionResult(
                 error=(
-                    f"Gilded Vault access costs **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**."
+                    f"Velvet Vault access costs **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**."
                 ),
             )
         if err is not None:
@@ -216,7 +216,7 @@ class Dungeon(commands.Cog):
         return DungeonActionResult(
             embed=embed,
             message=(
-                f"**Gilded Vault unlocked!** "
+                f"**Velvet Vault unlocked!** "
                 f"(-{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}) "
                 "Create a vault party for premium rewards."
             ),

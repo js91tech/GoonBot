@@ -207,10 +207,10 @@ def build() -> None:
     pdf.bullet("Max prestige 10 - stacks +1% crit and +2% income per level")
     pdf.ln(2)
     pdf.body("Classes:")
-    pdf.bullet("/class choose - pick Vanguard, Mogul, or Shade (one time)")
+    pdf.bullet("/class choose - pick Talent, Host, or Fixer (one time)")
     pdf.bullet("/class - view XP and modifiers; /class evolve when ready")
     pdf.bullet("Earn class XP from duels and boss /attack damage")
-    pdf.bullet("Hybrids Warlord and Archon unlock after two master paths")
+    pdf.bullet("Hybrids Circuit Boss and House Idol unlock after two master paths")
     pdf.ln(2)
     pdf.body("Jobs (/jobs, /work) pay 4.5x base rates; class can further modify payouts.")
     pdf.ln(2)
@@ -224,7 +224,7 @@ def build() -> None:
         "dealing damage (18% of boss hit damage). High DPS = more casts."
     )
     pdf.body(
-        "Healer classes (Vanguard Warden branch) regen mana faster over time (+7 every 20s) "
+        "Aftercare classes (Talent Aftercare branch) regen mana faster over time (+7 every 20s) "
         "and get less mana from damage (6%) so they can heal without spam-attacking."
     )
     pdf.body(

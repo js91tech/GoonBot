@@ -12773,7 +12773,7 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         return int(progress["vault_dungeon_unlocked"]) != 0
 
     async def unlock_vault_dungeon(self, user_id: int, guild_id: int, price: float) -> str | None:
-        """Unlock Gilded Vault access. Returns None on success or an error code."""
+        """Unlock Velvet Vault access. Returns None on success or an error code."""
         if await self.has_vault_dungeon_unlocked(user_id, guild_id):
             return "already_unlocked"
         if not await self.debit_wallet(user_id, guild_id, price):

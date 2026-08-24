@@ -113,7 +113,7 @@ class DungeonView(discord.ui.View):
         await self._apply_result(interaction, result)
 
     @discord.ui.button(
-        label="🕳️ Delver's Depths",
+        label="🍸 Afterparty Crawl",
         style=discord.ButtonStyle.success,
         custom_id="dungeon:start:normal",
         row=1,
@@ -129,7 +129,7 @@ class DungeonView(discord.ui.View):
         await self._apply_result(interaction, result)
 
     @discord.ui.button(
-        label="🏛️ Vault party",
+        label="💋 Velvet Vault party",
         style=discord.ButtonStyle.primary,
         custom_id="dungeon:party:vault",
         row=1,

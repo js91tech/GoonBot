@@ -266,17 +266,17 @@ class BossFightView(discord.ui.View):
         embed.set_footer(text="Rewards scale with damage share when the boss falls")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="🛡️ Tank", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="🚪 Door", style=discord.ButtonStyle.secondary, row=2)
     async def role_tank_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         await self._pick_role(interaction, "tank")
 
-    @discord.ui.button(label="💚 Healer", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="💋 Aftercare", style=discord.ButtonStyle.secondary, row=2)
     async def role_healer_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         await self._pick_role(interaction, "healer")
 
-    @discord.ui.button(label="🗡️ Glass", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="🎤 Main Stage", style=discord.ButtonStyle.secondary, row=2)
     async def role_glass_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         await self._pick_role(interaction, "glass")

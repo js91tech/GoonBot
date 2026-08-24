@@ -34,7 +34,7 @@ QUEST_SHORTCUT_HINTS: dict[str, str] = {
     "territory_claim": "Use `/territory` to claim zones.",
     "territory_guards": "Use `/territory guards` to hire mercs.",
     "corp_project": "Open **Corp Projects** from `/crew panel`.",
-    "dungeon_clear": "Use `/dungeon` to run a delve.",
+    "dungeon_clear": "Use `/dungeon` for an afterparty crawl or Velvet Vault run.",
 }
 
 QUEST_PANEL_COGS: dict[str, str] = {

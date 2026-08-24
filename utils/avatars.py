@@ -49,7 +49,7 @@ AVATARS: tuple[AvatarDef, ...] = (
     ),
     AvatarDef(
         "vault_mogul",
-        "Vault Mogul",
+        "Vault Host",
         "Economy grinder aesthetic.",
         5_000.0,
         "💰",

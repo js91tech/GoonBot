@@ -35,11 +35,12 @@
 
 ## First night (after 18+)
 
-1. `/daily` — claim goonbux
-2. `/jobs` — lounge grind
-3. `/shop` + `/equip` — gear up
-4. `/boss` — raid Velvet Vixen
-5. `/profile` — hubs for casino, drugs, crime, empire
+1. `/onboard` — age gate + NSFW consent (guest list)
+2. `/daily` — claim goonbux
+3. `/class choose` — pick a **persona** (Talent / Host / Fixer)
+4. `/jobs` or `/business` — make floor money
+5. `/boss` — when **Velvet Vixen** walks the floor
+6. `/profile` — check heat + persona
 
 ## Player hubs (entry points)
 

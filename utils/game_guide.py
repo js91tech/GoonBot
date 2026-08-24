@@ -179,7 +179,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "1. `/daily` — free goonbux\n"
                     "2. `/shop` — buy a weapon and armor\n"
                     "3. `/equip` — wear your gear\n"
-                    "4. `/class choose` — pick Vanguard, Mogul, or Shade\n"
+                    "4. `/class choose` — pick Talent, Host, or Fixer\n"
                     "5. `/boss` or `/attack` — join the raid\n"
                     "6. `/balance` — pocket vs bank vault",
                     "**Core loops**\n"
@@ -223,7 +223,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· Active-hour bonus while chatting\n"
                     "· Job shifts (`/work`) — costs energy, regens over time\n"
                     "· Boss damage payouts, quest rewards, trivia, coin drops\n"
-                    "· Class modifiers (Mogul boosts income/jobs)",
+                    "· Persona modifiers (Host boosts income/jobs)",
                     f"**Prestige** (`/prestige`)\n"
                     f"· Requires **{fmt_amount(config.PRESTIGE_MIN_WALLET)}**+ in pocket\n"
                     f"· Max **{config.PRESTIGE_MAX_LEVEL}** — +{int(config.PRESTIGE_CRIT_BONUS_PER_LEVEL * 100)}% "
@@ -257,7 +257,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· Damage share when the boss falls; killing blow shows your avatar pose",
                     "**Raid adds** (after boss drops below **50%** HP)\n"
                     "· **Velvet's Henchman** — alchemy scrap (rare void hardener on celestial+ fights)\n"
-                    "· **Court of Kitty's Jester** — void hardener (sometimes scrap)\n"
+                    "· **House Jester's Jester** — void hardener (sometimes scrap)\n"
                     "· Use **Attack Add** on the `/boss` panel — adds never drop celestial shards",
                     "**Variants** (weakest → strongest)\n"
                     "normal → enraged → shadow → celestial → mythic\n"
@@ -278,13 +278,13 @@ def _build_sections() -> tuple[GuideSection, ...]:
                 "Dungeons",
                 [
                     "`/dungeon` — interactive panel\n"
-                    f"· **Delver's Depths** — solo, **{config.DUNGEON_ENERGY_COST}** energy per run\n"
-                    f"· **Gilded Vault** — unlock **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**, "
+                    f"· **Afterparty Crawl** — solo, **{config.DUNGEON_ENERGY_COST}** energy per run\n"
+                    f"· **Velvet Vault** — unlock **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**, "
                     f"party of **{config.DUNGEON_VAULT_MIN_PARTY_SIZE}**+ raiders",
                     "**Rewards** — room goonbux, clear bonus, **alchemy scrap** for `/alchemy` and **enhancement**\n"
                     f"· Accessory drop chance on clear (~{int(config.DUNGEON_ACCESSORY_DROP_CHANCE * 100)}% standard, "
                     f"~{int(config.DUNGEON_VAULT_ACCESSORY_DROP_CHANCE * 100)}% vault)\n"
-                    "· **Gilded Vault** full clear can also roll **void hardener**",
+                    "· **Velvet Vault** full clear can also roll **void hardener**",
                     "`/alchemy` — craft raid potions, energy drinks, trap bombs from scrap",
                     f"**Energy** — base cap **{config.ENERGY_BASE_CAP}**, regen every "
                     f"{config.ENERGY_REGEN_INTERVAL_SECONDS // 60} min; `/upgrade-energy` raises max",
@@ -321,8 +321,8 @@ def _build_sections() -> tuple[GuideSection, ...]:
                 "Character build",
                 [
                     "**Classes** — `/class choose` then `/class evolve` with class XP from duels and boss damage\n"
-                    "Starters: **Vanguard** (combat), **Mogul** (income), **Shade** (heists)\n"
-                    "Evolve → master branches → hybrids (**Warlord**, **Archon**) need multiple master roots",
+                    "Starters: **Talent** (combat), **Host** (income), **Fixer** (heists)\n"
+                    "Evolve → master branches → hybrids (**Circuit Boss**, **Velvet Archon**) need multiple master roots",
                     "**Attributes** — `/attributes` STR/DEX/AGI/DEF/VIT from class XP; "
                     "caps scale with prestige\n"
                     "**Skills** — `/cast` in raids/duels; mana from damage dealt (healers regen over time)\n"

@@ -16,7 +16,7 @@ BLUEPRINT_DEFINITIONS: dict[str, BlueprintDefinition] = {
     # Alchemy
     "bp_flask_enrage": BlueprintDefinition(
         "bp_flask_enrage", "Flask of Enrage", "Craft high-risk raid flasks.", "alchemy",
-        "Clear Delver's Depths",
+        "Clear Afterparty Crawl",
     ),
     "bp_smuggler_satchel": BlueprintDefinition(
         "bp_smuggler_satchel", "Smuggler's Satchel", "Risk-free street sales.", "alchemy",
@@ -36,7 +36,7 @@ BLUEPRINT_DEFINITIONS: dict[str, BlueprintDefinition] = {
     ),
     "bp_trap_cluster": BlueprintDefinition(
         "bp_trap_cluster", "Trap Cluster", "Multi-trap duel bombs.", "alchemy",
-        "Clear Gilded Vault",
+        "Clear Velvet Vault",
     ),
     # Business
     "bp_auto_marketing": BlueprintDefinition(
@@ -67,7 +67,7 @@ BLUEPRINT_DEFINITIONS: dict[str, BlueprintDefinition] = {
     # Combat
     "bp_affix_reroll": BlueprintDefinition(
         "bp_affix_reroll", "Affix Reroll Kit", "Reroll one gear affix.", "combat",
-        "Clear Gilded Vault 3 times",
+        "Clear Velvet Vault 3 times",
     ),
     "bp_relic_polish": BlueprintDefinition(
         "bp_relic_polish", "Relic Polish", "Duplicate relic converts to scrap.", "combat",

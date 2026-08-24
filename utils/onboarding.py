@@ -1,4 +1,4 @@
-"""Post-age-gate onboarding — teach the GoonBot night loop."""
+"""Post-age-gate onboarding — guest list → persona → floor → Velvet."""
 from __future__ import annotations
 
 import discord
@@ -6,15 +6,17 @@ import discord
 from utils.goon_theme import FOOTER_BRAND, brand_color, branded_embed, panel_title
 
 
-ONBOARDING_TITLE = "Tonight's loop — start here"
+ONBOARDING_TITLE = "You're on the guest list"
 ONBOARDING_BODY = (
-    "You're in. GoonBot is an **18+ goonbux** economy RPG.\n\n"
-    "**1.** `/daily` — claim your goonbux\n"
-    "**2.** `/jobs` — grind the lounge for pocket cash\n"
-    "**3.** `/shop` — buy a weapon, then `/equip`\n"
-    "**4.** `/boss` — raid **Velvet Vixen**\n"
-    "**5.** `/profile` — launcher for casino, drugs, crime, empire\n\n"
-    "Prefer **NSFW channels**. Admins can toggle `nsfw_channel_only`."
+    "Welcome to **GoonBot** — an 18+ nightlife economy. "
+    "Tonight isn't a dungeon grind. It's a **night out**.\n\n"
+    "**1.** `/daily` — tip yourself in (goonbux)\n"
+    "**2.** `/class choose` — pick a **persona** "
+    "(Talent / Host / Fixer)\n"
+    "**3.** `/jobs` or `/business` — make floor money\n"
+    "**4.** `/boss` — when **Velvet Vixen** walks in, be there\n"
+    "**5.** `/profile` — casino tables, private rooms, hustles, empire\n\n"
+    "Play in **NSFW channels**. Admins can toggle `nsfw_channel_only`."
 )
 
 
@@ -34,15 +36,15 @@ class NightLoopView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=300)
 
-    @discord.ui.button(label="Got it — let's goon", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label="I'm in — open the night", style=discord.ButtonStyle.primary, row=0)
     async def dismiss(
         self, interaction: discord.Interaction, _button: discord.ui.Button,
     ) -> None:
         embed = branded_embed(
-            "You're cleared",
+            "Doors are open",
             description=(
-                "Open `/profile` anytime for hubs. "
-                "Start with `/daily`, then `/jobs` or `/boss`."
+                "Claim `/daily`, pick `/class choose`, then hit the floor. "
+                "When Velvet shows, `/boss` is last call."
             ),
         )
         self.stop()

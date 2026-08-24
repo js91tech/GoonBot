@@ -23,14 +23,14 @@ class QuestDef:
 
 
 ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
-    QuestDef("claim_daily", "First Tips", "Claim `/daily` once.", 1, 500.0, "daily_claim"),
-    QuestDef("buy_gear", "Dress the Part", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
-    QuestDef("raid_once", "Face Velvet", "Deal damage to a boss with `/attack`.", 1, 1000.0, "boss_attack"),
-    QuestDef("heal_once", "Aftercare", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
-    QuestDef("pay_friend", "Spread the Wealth", "Send goonbux with `/pay`.", 1, 500.0, "wallet_pay"),
+    QuestDef("claim_daily", "Guest List", "Claim `/daily` once.", 1, 500.0, "daily_claim"),
+    QuestDef("buy_gear", "Look the Part", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
+    QuestDef("raid_once", "When Velvet Walks In", "Deal damage with `/attack`.", 1, 1000.0, "boss_attack"),
+    QuestDef("heal_once", "Aftercare Duty", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
+    QuestDef("pay_friend", "Buy Someone In", "Send goonbux with `/pay`.", 1, 500.0, "wallet_pay"),
     QuestDef(
         "gift_once",
-        "Share the Goods",
+        "Plus-One Gift",
         "Gift an item with `/gift-item` or product with `/drugs gift`.",
         1,
         500.0,
@@ -48,7 +48,7 @@ DAILY_QUEST_POOL: tuple[QuestDef, ...] = (
     QuestDef("job_shifts", "Day Job", "Complete 3 instant job shifts with `/work`.", 3, 650.0, "job_work"),
     QuestDef("duel_win", "Duelist", "Win a `/duel`.", 1, 900.0, "duel_win"),
     QuestDef("slots_spin", "Lucky Slots", "Play `/slots` once.", 1, 550.0, "gamble_play"),
-    QuestDef("dungeon_clear", "Delver", "Clear a `/dungeon` run.", 1, 1_100.0, "dungeon_clear"),
+    QuestDef("dungeon_clear", "Afterparty", "Clear a `/dungeon` private-room run.", 1, 1_100.0, "dungeon_clear"),
     QuestDef("territory_claim", "Land Grab", "Claim or capture a territory.", 1, 1_200.0, "territory_claim"),
     QuestDef("territory_guards", "Mercenary", "Hire territory guards (any amount).", 1, 800.0, "territory_guards"),
     QuestDef("biz_collect", "Empire Revenue", "Collect business revenue once.", 1, 700.0, "business_collect"),

@@ -1,4 +1,4 @@
-"""Raid adds: Velvet Vixen's Henchmen and Court of Kitty's Jesters."""
+"""Raid adds: Velvet's Floor Staff and Floor Jesters."""
 from __future__ import annotations
 
 import random
@@ -11,13 +11,13 @@ import config
 ADD_TYPES = ("henchman", "court_jester")
 
 ADD_DISPLAY_NAMES = {
-    "henchman": "Velvet's Henchman",
-    "court_jester": "Court of Kitty's Jester",
+    "henchman": "Velvet's Floor Staff",
+    "court_jester": "Velvet's Floor Jester",
 }
 
 ADD_SPAWN_ANNOUNCEMENTS = {
-    "henchman": "A **Velvet's Henchman** crashes the raid!",
-    "court_jester": "A **Court of Kitty's Jester** leaps into the raid!",
+    "henchman": "A member of **Velvet's Floor Staff** crashes the night!",
+    "court_jester": "A **Velvet Floor Jester** leaps into the crowd!",
 }
 
 # Explicit: celestial_shard never in add loot.
@@ -80,7 +80,7 @@ def roll_add_loot(add_type: str, boss_variant: str) -> list[tuple[str, int]]:
 
 
 def roll_add_companion(add_type: str) -> str | None:
-    """Return companion id when the add drops a henchling, else None."""
+    """Return companion id when the add drops a plus-one, else None."""
     from utils.companions import ADD_COMPANION_DROPS
 
     companion_id = ADD_COMPANION_DROPS.get(add_type)

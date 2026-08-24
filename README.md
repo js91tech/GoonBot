@@ -124,7 +124,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 Bosses auto-spawn every **40 minutes** when none is active.
 
-**Raid adds** — After the boss drops below 50% HP, **Velvet's Henchmen** and **Court of Kitty's Jesters** can spawn mid-fight. Use **Attack Add** on the `/boss` panel for alchemy scrap and void hardener (never celestial shards).
+**Raid adds** — After the boss drops below 50% HP, **Velvet's Henchmen** and **Velvet's Floor Jesters** can spawn mid-fight. Use **Attack Add** on the `/boss` panel for alchemy scrap and void hardener (never celestial shards).
 
 | `/summon variant` | **Admin only:** force-spawn a boss |
 
@@ -147,7 +147,7 @@ Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `p
 | `/equip-best` | Auto-equip best weapon and armor |
 | `/sell-worn` | Sell all battle-worn drops |
 | `/use` | Raid potion, energy drink |
-| `/dungeon` | Solo standard dungeon panel (25 energy) · unlock Gilded Vault (50k) for a 3+ raider party raid |
+| `/dungeon` | Solo afterparty crawl panel (25 energy) · unlock Velvet Vault (50k) for a 3+ raider party raid |
 | `/crew panel` | Interactive crew panel — join, deposit, withdraw, loans, repay |
 | `/slots` · `/jackpot` | Casino slots + server jackpot |
 

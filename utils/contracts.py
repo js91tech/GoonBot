@@ -35,7 +35,7 @@ CONTRACT_POOL: tuple[ContractDefinition, ...] = (
         1000.0, reward_tokens=8,
     ),
     ContractDefinition(
-        "contract_dungeon", "Delver", "Clear a dungeon.", 1, "dungeon_clear",
+        "contract_dungeon", "Afterparty", "Clear an afterparty crawl.", 1, "dungeon_clear",
         1500.0, reward_item_id="dungeon_essence", reward_qty=2,
     ),
     ContractDefinition(
@@ -75,7 +75,7 @@ CONTRACT_POOL: tuple[ContractDefinition, ...] = (
         1300.0, reward_item_id="void_hardener",
     ),
     ContractDefinition(
-        "contract_shade_duel", "Shadow Duelist", "Win a duel as Shade path.", 1, "duel_win_shade",
+        "contract_shade_duel", "Ghost Duelist", "Win a duel as Fixer path.", 1, "duel_win_shade",
         1200.0, reward_tokens=10,
     ),
     ContractDefinition(
@@ -99,7 +99,7 @@ CONTRACT_POOL: tuple[ContractDefinition, ...] = (
         900.0, reward_item_id="phenotype_catalyst",
     ),
     ContractDefinition(
-        "contract_vault", "Vault Raider", "Clear Gilded Vault.", 1, "dungeon_vault_clear",
+        "contract_vault", "Vault Regular", "Clear Velvet Vault.", 1, "dungeon_vault_clear",
         2000.0, reward_tokens=12, reward_item_id="void_hardener", reward_qty=1,
     ),
 )

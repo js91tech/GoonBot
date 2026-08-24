@@ -30,7 +30,7 @@ ASPECT_DEFINITIONS: tuple[AspectDefinition, ...] = (
     ),
     AspectDefinition(
         "aspect_bulwark",
-        "Bulwark Imprint",
+        "Door Imprint",
         "Improves armor mitigation.",
         "mitigation",
     ),

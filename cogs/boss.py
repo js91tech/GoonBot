@@ -1629,7 +1629,7 @@ class Boss(commands.Cog):
         if role == "healer" and random.random() < config.BOSS_HEALER_PULSE_CHANCE:
             heal_amt = max(1, int(player_max_hp * config.BOSS_HEALER_PULSE_PCT))
             await self.bot.db.heal_player(member.id, guild_id, heal_amt, player_max_hp)
-            healer_note = f"\n💚 Healer pulse restored **{heal_amt}** HP."
+            healer_note = f"\n💋 Aftercare pulse restored **{heal_amt}** HP."
             hit_value += healer_note
         if dot_note:
             hit_value = f"{dot_note}\n{hit_value}"

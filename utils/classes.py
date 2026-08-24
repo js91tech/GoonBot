@@ -64,19 +64,19 @@ STARTER_BRANCHES: dict[str, tuple[tuple[str, str, CombatRole, ClassModifiers], .
     "vanguard": (
         (
             "bulwark",
-            "Bulwark",
+            "Bodyguard",
             "bulwark",
             _mod(duel_mitigation_mult=1.12, max_hp_mult=1.08, duel_damage_mult=0.94, income_mult=0.95),
         ),
         (
             "slayer",
-            "Slayer",
+            "Headliner",
             "striker",
             _mod(duel_damage_mult=1.12, boss_damage_mult=1.10, duel_mitigation_mult=0.92),
         ),
         (
             "warden",
-            "Warden",
+            "Aftercare",
             "skirmisher",
             _mod(boss_damage_mult=1.08, crit_bonus=0.02, counter_damage_taken_mult=0.92),
         ),
@@ -84,19 +84,19 @@ STARTER_BRANCHES: dict[str, tuple[tuple[str, str, CombatRole, ClassModifiers], .
     "mogul": (
         (
             "prospector",
-            "Prospector",
+            "Tip Runner",
             "skirmisher",
             _mod(income_mult=1.10, job_payout_mult=1.12, duel_damage_mult=0.90),
         ),
         (
             "broker",
-            "Broker",
+            "Concierge",
             "bulwark",
             _mod(income_mult=1.14, job_payout_mult=1.08, heist_success_penalty=0.04),
         ),
         (
             "tycoon",
-            "Tycoon",
+            "Promoter",
             "striker",
             _mod(income_mult=1.18, job_payout_mult=1.06, duel_damage_mult=0.88, boss_damage_mult=0.92),
         ),
@@ -104,19 +104,19 @@ STARTER_BRANCHES: dict[str, tuple[tuple[str, str, CombatRole, ClassModifiers], .
     "shade": (
         (
             "cutpurse",
-            "Cutpurse",
+            "Guest-List",
             "skirmisher",
             _mod(heist_success_bonus=0.10, income_mult=1.04, duel_damage_mult=0.94),
         ),
         (
             "saboteur",
-            "Saboteur",
+            "Door Crash",
             "striker",
             _mod(heist_success_bonus=0.08, boss_damage_mult=0.90, duel_damage_mult=1.06),
         ),
         (
             "phantom",
-            "Phantom",
+            "Ghost",
             "bulwark",
             _mod(heist_success_bonus=0.12, duel_mitigation_mult=0.90, counter_damage_taken_mult=1.08),
         ),
@@ -125,34 +125,34 @@ STARTER_BRANCHES: dict[str, tuple[tuple[str, str, CombatRole, ClassModifiers], .
 
 STARTER_DEFS: dict[str, tuple[str, str, Element, ClassModifiers]] = {
     "vanguard": (
-        "Vanguard",
-        "Front-line duelist and raid striker.",
+        "Talent",
+        "Main-stage energy — duels hard and shows up when Velvet walks in.",
         "fire",
         _mod(duel_damage_mult=1.06, boss_damage_mult=1.05, income_mult=0.94),
     ),
     "mogul": (
-        "Mogul",
-        "Passive income and job specialist.",
+        "Host",
+        "Floor money specialist — tips, jobs, and empire income.",
         "verdant",
         _mod(income_mult=1.10, job_payout_mult=1.08, duel_damage_mult=0.92),
     ),
     "shade": (
-        "Shade",
-        "Heist expert with risky combat profile.",
+        "Fixer",
+        "Quiet hustles — guest-list lifts and risky back-room jobs.",
         "void",
         _mod(heist_success_bonus=0.06, duel_damage_mult=0.96, boss_damage_mult=0.96),
     ),
 }
 
 MASTER_NAMES: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
-    "bulwark": (("ironwall", "Ironwall"), ("bastion", "Bastion")),
-    "slayer": (("reaper", "Reaper"), ("ravager", "Ravager")),
-    "warden": (("sentinel", "Sentinel"), ("hexward", "Hexward")),
-    "prospector": (("veinlord", "Veinlord"), ("gilder", "Gilder")),
-    "broker": (("ledger", "Ledger"), ("vaultkeeper", "Vaultkeeper")),
-    "tycoon": (("magnate", "Magnate"), ("baron", "Baron")),
-    "cutpurse": (("filcher", "Filcher"), ("blackhand", "Blackhand")),
-    "saboteur": (("demolisher", "Demolisher"), ("incursor", "Incursor")),
+    "bulwark": (("ironwall", "Iron Door"), ("bastion", "Velvet Shield")),
+    "slayer": (("reaper", "Closer"), ("ravager", "Encore")),
+    "warden": (("sentinel", "Recovery"), ("hexward", "Afterglow")),
+    "prospector": (("veinlord", "Tip Lord"), ("gilder", "Gold Room")),
+    "broker": (("ledger", "Booker"), ("vaultkeeper", "House Bank")),
+    "tycoon": (("magnate", "Circuit Lead"), ("baron", "Night Baron")),
+    "cutpurse": (("filcher", "Slip"), ("blackhand", "Black Card")),
+    "saboteur": (("demolisher", "Blackout"), ("incursor", "Incursor")),
     "phantom": (("nightshade", "Nightshade"), ("wraith", "Wraith")),
 }
 
@@ -193,7 +193,7 @@ def _build_class_map() -> dict[str, ClassDef]:
                     class_id=master_id,
                     name=mname,
                     tier="master",
-                    description=f"Master {branch_name} — peak {name.lower()} path.",
+                    description=f"Master {branch_name} — peak {name} path on the floor.",
                     parent_id=evolved_id,
                     starter_root=starter_id,
                     element=element,
@@ -205,7 +205,7 @@ def _build_class_map() -> dict[str, ClassDef]:
                 class_id=evolved_id,
                 name=branch_name,
                 tier="evolved",
-                description=f"Evolved {name} — {branch_name} specialization.",
+                description=f"Evolved {name} — {branch_name} specialty.",
                 parent_id=starter_id,
                 children_ids=tuple(master_children),
                 starter_root=starter_id,
@@ -225,14 +225,14 @@ def _build_class_map() -> dict[str, ClassDef]:
             element=element,
             combat_role="striker" if starter_id == "vanguard" else "skirmisher",
             modifiers=mods,
-            emoji="🎖️" if starter_id == "vanguard" else "💰" if starter_id == "mogul" else "🌑",
+            emoji="🎤" if starter_id == "vanguard" else "🥂" if starter_id == "mogul" else "🕶️",
         )
 
     classes["warlord"] = ClassDef(
         class_id="warlord",
-        name="Warlord",
+        name="Circuit Boss",
         tier="hybrid",
-        description="Hybrid of Vanguard and Shade masters — duels and heists.",
+        description="Talent × Fixer hybrid — main-stage heat and back-room hustles.",
         required_master_roots=frozenset({"vanguard", "shade"}),
         element="fire",
         combat_role="striker",
@@ -242,13 +242,13 @@ def _build_class_map() -> dict[str, ClassDef]:
             income_mult=0.90,
             boss_damage_mult=1.05,
         ),
-        emoji="⚔️",
+        emoji="🔥",
     )
     classes["archon"] = ClassDef(
         class_id="archon",
-        name="Archon",
+        name="House Idol",
         tier="hybrid",
-        description="Hybrid of Vanguard and Mogul masters — combat and income.",
+        description="Talent × Host hybrid — stage presence and empire money.",
         required_master_roots=frozenset({"vanguard", "mogul"}),
         element="verdant",
         combat_role="bulwark",
@@ -258,13 +258,13 @@ def _build_class_map() -> dict[str, ClassDef]:
             duel_mitigation_mult=0.92,
             boss_damage_mult=1.06,
         ),
-        emoji="🏛️",
+        emoji="👑",
     )
     classes[config.JESTER_CLASS_ID] = ClassDef(
         class_id=config.JESTER_CLASS_ID,
-        name="Jester",
+        name="House Jester",
         tier="special",
-        description="Exclusive trickster — weak stats, deadly misdirection.",
+        description="Exclusive trickster — weak on paper, deadly misdirection on the floor.",
         modifiers=_mod(
             income_mult=config.JESTER_STAT_MULT,
             job_payout_mult=config.JESTER_STAT_MULT,
@@ -322,7 +322,7 @@ def silent_power_defense_mult(user_id: int | None) -> float:
 
 
 def is_healer_class(class_id: str | None) -> bool:
-    """Warden branch and their masters — strong mana regen over time."""
+    """Aftercare (Warden) branch and their masters — strong mana regen over time."""
     if not class_id:
         return False
     parts = class_id.split("_")
@@ -403,9 +403,9 @@ def format_modifiers_summary(mod: ClassModifiers) -> str:
     if mod.duel_mitigation_mult != 1.0:
         parts.append(f"Duel mit ×{mod.duel_mitigation_mult:.2f}")
     if mod.boss_damage_mult != 1.0:
-        parts.append(f"Boss dmg ×{mod.boss_damage_mult:.2f}")
+        parts.append(f"Velvet dmg ×{mod.boss_damage_mult:.2f}")
     if mod.heist_success_bonus > 0:
-        parts.append(f"Heist +{int(mod.heist_success_bonus * 100)}%")
+        parts.append(f"Hustle +{int(mod.heist_success_bonus * 100)}%")
     if mod.heist_success_penalty > 0:
-        parts.append(f"Heist risk +{int(mod.heist_success_penalty * 100)}%")
+        parts.append(f"Hustle risk +{int(mod.heist_success_penalty * 100)}%")
     return " · ".join(parts) if parts else "Balanced baseline"

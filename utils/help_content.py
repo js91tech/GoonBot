@@ -15,13 +15,13 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Raid & boss",
-        "**/boss** — fight panel: Attack, Attack Add, roles (Tank/Healer/Glass), Cast, Items, Heal\n"
+        "**/boss** — fight panel: Attack, Attack Add, roles (Door/Aftercare/Main Stage), Cast, Items, Heal\n"
         "**/attack** · **/heal** · **/cast** · **/use** · **/boss-status** · **/raid-leaderboard**\n"
         "**/boss-hunt** · **/boss-crew-lb**\n"
-        "**/enhance** · **/repair-gear** · **/equip-instance** — BDO-style gear enhancement (+1→PENTA)\n"
-        "Raid adds (**Velvet's Henchmen**, **Court of Kitty's Jesters**) drop scrap/hardener — never celestial shards.\n"
+        "**/enhance** · **/repair-gear** · **/equip-instance** — gear enhancement (+1→PENTA)\n"
+        "Raid adds (**Velvet's Floor Staff**, **Floor Jesters**) drop scrap/hardener — never celestial shards.\n"
         "**/shop** · **/buy** · **/equip** · **/craft** · **/prestige**\n"
-        "**/dungeon** — solo standard (**25** energy) · unlock **Gilded Vault** (**50k**, party raid) · **/alchemy** · **/season**",
+        "**/dungeon** — **Afterparty Crawl** (**25** energy) · unlock **Velvet Vault** (**50k**, party) · **/alchemy** · **/season**",
     ),
     (
         "PvP & casino",
@@ -33,7 +33,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Character",
-        "**/class** — `/class view|choose|evolve|tree` · **/cast** · **/mana** · **/aspects** · **/avatar** (upload custom)\n"
+        "**/class** — `/class view|choose|evolve|tree` — personas **Talent / Host / Fixer** · **/cast** · **/mana** · **/aspects** · **/avatar**\n"
         "**/use** — raid potion, energy drink, **Jail Key**, **Pick Key** · **/gift-item** — chia seeds · **/drugs gift** — stash product\n"
         "**/attributes** — interactive stat panel (50 pt pool +5/prestige; 15 + prestige/stat cap)\n"
         "**/profile** · **/stats** · **/inventory** · **/quests** · **/achievements** · **/fix** (unstable gear)\n"

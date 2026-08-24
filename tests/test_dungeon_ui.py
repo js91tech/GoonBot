@@ -31,11 +31,11 @@ class DungeonPanelTests(unittest.IsolatedAsyncioTestCase):
     async def test_build_embed_no_run_shows_tiers(self) -> None:
         embed, has_run, _ = await self.cog.build_dungeon_embed(self.guild_id, self.user_id)
         self.assertFalse(has_run)
-        self.assertIn("choose your depth", embed.title.lower())
+        self.assertIn("pick your floor", embed.title.lower())
         standard = next(f for f in embed.fields if f.name == "Standard")
-        self.assertIn("Delver's Depths", standard.value)
+        self.assertIn("Afterparty Crawl", standard.value)
         premium = next(f for f in embed.fields if f.name == "Premium")
-        self.assertIn("Gilded Vault", premium.value)
+        self.assertIn("Velvet Vault", premium.value)
 
     async def test_build_embed_active_run_shows_hp(self) -> None:
         await self.db.start_dungeon_run(self.user_id, self.guild_id, 100.0, 100.0, 80.0)

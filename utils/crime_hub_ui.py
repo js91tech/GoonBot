@@ -19,42 +19,42 @@ def _heist_cog(interaction: discord.Interaction):
 
 def build_crime_hub_embed(member_name: str) -> discord.Embed:
     embed = branded_embed(
-        panel_title("Crime Hub", member_name=member_name),
+        panel_title("Back-Room Hustles", member_name=member_name),
         description=(
-            "Pick your hustle. Pocket jobs are quick and dirty — bank jobs are the "
-            "big score if you can beat the vault guards. Snitches get bounties."
+            "Not every night is clean. Lift a tab, hit a vault, or put a name on the board. "
+            "Same risk math — nightlife fiction."
         ),
     )
     embed.add_field(
-        name="🥷 Pocket Heist",
+        name="🕶️ Wallet Lift",
         value=(
-            "Fast wallet grab on another player. Bring crew for better odds.\n"
+            "Quick pocket pull on another player. Bring crew for better odds.\n"
             "Use `/heist target:@who [crew1] [crew2]`."
         ),
         inline=False,
     )
     embed.add_field(
-        name="🏦 Bank Heist",
+        name="💋 Velvet Vault Job",
         value=(
-            "High-risk vault break-in — steals from a target's **bank**, not wallet. "
-            "Tiered risk/reward, bodyguards can stop you cold.\n"
+            "High-risk break-in — steals from a target's **bank**, not wallet. "
+            "Tiered risk/reward; bodyguards can stop you cold.\n"
             "Tap the button below and pick a target."
         ),
         inline=False,
     )
     embed.add_field(
-        name="🎯 Bounty Board",
-        value="See the fattest live bounties on this server and their trigger words.",
+        name="📋 Name-Drop Board",
+        value="Live bounties and their trigger words — say it after they slip.",
         inline=False,
     )
     embed.add_field(
-        name="🚨 Arrests",
+        name="🚨 Catch a Thief",
         value=(
-            "Beat a heist attempt on you? You get a 5-minute window to `/arrest` the thief."
+            "Someone lifted you? You get a 5-minute window to `/arrest` them."
         ),
         inline=False,
     )
-    embed.set_footer(text=f"{FOOTER_BRAND} · play dirty")
+    embed.set_footer(text=f"{FOOTER_BRAND} · keep it discreet")
     return embed
 
 
@@ -63,8 +63,8 @@ async def build_bounty_board_embed(cog: commands.Cog, guild: discord.Guild) -> d
     rows.sort(key=lambda row: float(row["amount"]), reverse=True)
 
     embed = branded_embed(
-        panel_title("Bounty Board"),
-        description="_Top live bounties by reward. Say the trigger word after the target slips up to claim._",
+        panel_title("Name-Drop Board"),
+        description="_Top live marks by reward. Say the trigger word after they slip to claim._",
     )
     if not rows:
         embed.add_field(

@@ -22,7 +22,7 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "raid_veteran": Achievement("raid_veteran", "Raid Veteran", "Help defeat 25 bosses.", "⚔️"),
     "mythic_slayer": Achievement("mythic_slayer", "Mythic Slayer", "Help defeat a mythic Velvet Vixen.", "🌌"),
     "heist_king": Achievement("heist_king", "Heist King", "Succeed at 10 heists.", "🎭"),
-    "field_medic": Achievement("field_medic", "Field Medic", "Revive 25 downed raiders.", "💊"),
+    "field_medic": Achievement("field_medic", "Aftercare Ace", "Revive 25 downed raiders.", "💋"),
     "wealthy": Achievement("wealthy", "Goon Baron", "Hold 200,000 goonbux at once.", "💰"),
     "excalibur_owner": Achievement(
         "excalibur_owner",
@@ -35,7 +35,7 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "prestige_5": Achievement("prestige_5", "Ascendant", "Reach prestige 5.", "✨"),
     "hundred_raids": Achievement("hundred_raids", "Raid Legend", "Help defeat 100 bosses.", "🏆"),
     "duel_master": Achievement("duel_master", "Duel Master", "Win 10 PvP duels.", "🥊"),
-    "dungeon_delver": Achievement("dungeon_delver", "Dungeon Delver", "Clear 5 dungeons.", "🗝️"),
+    "dungeon_delver": Achievement("dungeon_delver", "Afterparty Regular", "Clear 5 private-room runs.", "🍸"),
     "high_roller": Achievement("high_roller", "High Roller", "Win 20 casino games.", "🎰"),
     "territory_claimed": Achievement(
         "territory_claimed", "Landlord", "Claim or capture a territory.", "🏴",

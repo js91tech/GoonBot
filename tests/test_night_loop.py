@@ -15,11 +15,13 @@ class OnboardingTests(unittest.IsolatedAsyncioTestCase):
         embed = onboarding.onboarding_embed(member_name="Test")
         text = (embed.description or "") + embed.title
         self.assertIn("/daily", text)
+        self.assertIn("/class choose", text)
         self.assertIn("/jobs", text)
-        self.assertIn("/shop", text)
         self.assertIn("/boss", text)
         self.assertIn("/profile", text)
+        self.assertIn("persona", text.lower())
         self.assertIn("goonbux", text.lower())
+        self.assertIn("guest list", text.lower())
 
     async def test_age_confirm_shows_onboarding(self) -> None:
         db = MagicMock()

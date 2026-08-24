@@ -39,8 +39,8 @@ class DungeonTier:
 
 NORMAL_TIER = DungeonTier(
     tier_id="normal",
-    name="Delver's Depths",
-    emoji="🕳️",
+    name="Afterparty Crawl",
+    emoji="🍸",
     unlock_cost=0.0,
     room_reward_min=config.DUNGEON_ROOM_REWARD_MIN,
     room_reward_max=config.DUNGEON_ROOM_REWARD_MAX,
@@ -65,8 +65,8 @@ NORMAL_TIER = DungeonTier(
 
 VAULT_TIER = DungeonTier(
     tier_id="vault",
-    name="Gilded Vault",
-    emoji="🏛️",
+    name="Velvet Vault",
+    emoji="💋",
     unlock_cost=config.DUNGEON_VAULT_UNLOCK_COST,
     room_reward_min=config.DUNGEON_VAULT_ROOM_REWARD_MIN,
     room_reward_max=config.DUNGEON_VAULT_ROOM_REWARD_MAX,
