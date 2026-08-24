@@ -11,8 +11,11 @@ from utils.classes import (
     STARTER_IDS,
     can_evolve,
     evolution_threshold,
+    format_master_roots,
     format_modifiers_summary,
     get_class,
+    starter_display_name,
+    starter_names_list,
 )
 from utils.helpers import guild_only_message
 
@@ -23,7 +26,7 @@ class Classes(commands.Cog):
 
     class_group = app_commands.Group(
         name="class",
-        description="View, choose, and evolve your combat class.",
+        description="View, choose, and evolve your persona.",
         guild_only=True,
     )
 
@@ -51,11 +54,11 @@ class Classes(commands.Cog):
         cls = get_class(class_id)
         if cls is None:
             desc = (
-                "No class yet. Pick a starter with `/class choose`.\n"
-                f"Starters: **{', '.join(STARTER_IDS)}**"
+                "No persona yet. Pick a starter with `/class choose`.\n"
+                f"Personas: **{starter_names_list()}**"
             )
             embed = discord.Embed(
-                title=f"{target.display_name}'s Class",
+                title=f"{target.display_name}'s Persona",
                 description=desc,
                 color=discord.Color.greyple(),
             )
@@ -85,7 +88,7 @@ class Classes(commands.Cog):
             from utils.mana import mana_bar
 
             regen_hint = (
-                "healer time regen"
+                "aftercare time regen"
                 if is_healer_class(class_id)
                 else f"{int(config.MANA_ON_DAMAGE_PCT * 100)}% dmg → mana"
             )
@@ -95,13 +98,15 @@ class Classes(commands.Cog):
                 inline=False,
             )
             if roots:
-                embed.add_field(name="Master roots", value=", ".join(sorted(roots)), inline=True)
+                embed.add_field(name="Master roots", value=format_master_roots(roots), inline=True)
         await interaction.response.send_message(embed=embed)
 
-    @class_group.command(name="choose", description="Choose your starter class (one time).")
-    @app_commands.describe(starter="Starter class")
+    @class_group.command(name="choose", description="Choose your starter persona (one time).")
+    @app_commands.describe(starter="Starter persona")
     @app_commands.choices(
-        starter=[app_commands.Choice(name=s.title(), value=s) for s in STARTER_IDS],
+        starter=[
+            app_commands.Choice(name=starter_display_name(s), value=s) for s in STARTER_IDS
+        ],
     )
     async def class_choose(self, interaction: discord.Interaction, starter: str) -> None:
         if interaction.guild_id is None:
@@ -143,7 +148,7 @@ class Classes(commands.Cog):
         class_id, xp, roots = await self._profile(interaction.user.id, interaction.guild_id)
         if not class_id:
             await interaction.response.send_message(
-                "Choose a class first: `/class choose`.", ephemeral=True,
+                "Choose a persona first: `/class choose`.", ephemeral=True,
             )
             return
         options = can_evolve(class_id, xp, roots)
@@ -164,16 +169,18 @@ class Classes(commands.Cog):
         if len(options) == 1:
             chosen = options[0]
         else:
-            names = "\n".join(f"`{o.class_id}` — **{o.name}**" for o in options)
+            names = "\n".join(f"**{o.name}** — {o.description}" for o in options)
             await interaction.response.send_message(
-                f"Pick one with `/class evolve-to`:\n{names}",
+                f"Pick one with `/class evolve-to` (use the persona name below):\n{names}\n"
+                f"_IDs for evolve-to:_ "
+                + ", ".join(f"`{o.class_id}`" for o in options),
                 ephemeral=True,
             )
             return
         await self._apply_evolution(interaction, chosen.class_id)
 
-    @class_group.command(name="evolve-to", description="Evolve into a specific class.")
-    @app_commands.describe(class_id="Class id from /class view")
+    @class_group.command(name="evolve-to", description="Evolve into a specific persona.")
+    @app_commands.describe(class_id="Persona id from /class evolve")
     async def class_evolve_to(self, interaction: discord.Interaction, class_id: str) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
@@ -205,20 +212,29 @@ class Classes(commands.Cog):
             ephemeral=True,
         )
 
-    @class_group.command(name="tree", description="Browse the class evolution tree.")
+    @class_group.command(name="tree", description="Browse the persona evolution tree.")
     async def class_tree(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None:
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
-        lines = ["**Starters:** " + ", ".join(STARTER_IDS)]
-        lines.append("**Hybrids:** warlord (vanguard+shade masters), archon (vanguard+mogul masters)")
-        lines.append("**Special:** jester (exclusive)")
+        lines = [f"**Personas:** {starter_names_list()}"]
+        warlord = get_class("warlord")
+        archon = get_class("archon")
+        jester = get_class("jester")
+        lines.append(
+            f"**Hybrids:** {warlord.name if warlord else 'Circuit Boss'} "
+            f"(Talent×Fixer masters), "
+            f"{archon.name if archon else 'House Idol'} (Talent×Host masters)"
+        )
+        lines.append(
+            f"**Special:** {jester.name if jester else 'House Jester'} (exclusive)"
+        )
         for sid in STARTER_IDS:
             starter = CLASS_MAP[sid]
             branch_names = [CLASS_MAP[c].name for c in starter.children_ids]
             lines.append(f"**{starter.name}** → {', '.join(branch_names)}")
         embed = discord.Embed(
-            title="Class tree",
+            title="Persona tree",
             description="\n".join(lines[:20]),
             color=discord.Color.blue(),
         )

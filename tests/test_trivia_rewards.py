@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import config
 from cogs.trivia import (
+    Trivia,
+    TriviaRound,
     format_trivia_window,
+    normalize_trivia_guess,
     roll_trivia_drug,
     trivia_drug_chance,
     trivia_speed_fraction,
     trivia_speed_multiplier,
 )
+from database import Database
 
 
 class TriviaRewardMathTests(unittest.TestCase):
@@ -42,8 +49,60 @@ class TriviaRewardMathTests(unittest.TestCase):
         self.assertGreater(instant, late)
 
     def test_roll_trivia_drug_returns_catalog_id(self) -> None:
-        with mock.patch("cogs.trivia.random.choices", return_value=[type("D", (), {"drug_id": "blue_dream"})()]):
+        with mock.patch(
+            "cogs.trivia.random.choices",
+            return_value=[type("D", (), {"drug_id": "blue_dream"})()],
+        ):
             self.assertEqual(roll_trivia_drug(), "blue_dream")
+
+    def test_normalize_strips_punctuation(self) -> None:
+        self.assertEqual(normalize_trivia_guess("Hello!"), "hello")
+        self.assertEqual(normalize_trivia_guess("  goonbux. "), "goonbux")
+
+
+class TriviaPayoutTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Database(str(Path(self.tmp.name) / "trivia.sqlite3"))
+        await self.db.connect()
+        await self.db.init_schema()
+        self.bot = SimpleNamespace(db=self.db)
+        self.cog = Trivia(self.bot)  # type: ignore[arg-type]
+        self.cog.trivia_event_tick.cancel()
+
+    async def asyncTearDown(self) -> None:
+        self.cog.cog_unload()
+        await self.db.close()
+        self.tmp.cleanup()
+
+    async def test_reward_debits_house_pot(self) -> None:
+        guild = SimpleNamespace(id=42)
+        user = SimpleNamespace(id=7, mention="<@7>")
+        await self.db.credit_house_pot(42, 10_000.0)
+        before = await self.db.get_house_pot(42)
+        with mock.patch("cogs.trivia.random.random", return_value=1.0):
+            text = await self.cog._reward_correct_answer(
+                guild,  # type: ignore[arg-type]
+                user,  # type: ignore[arg-type]
+                "test",
+                expires_at=9999999999.0,
+                started_at=0.0,
+            )
+        after = await self.db.get_house_pot(42)
+        self.assertLess(after, before)
+        self.assertIn("Prize:", text)
+        wallet = await self.db.get_balance(7, 42)
+        self.assertGreater(wallet, 0)
+
+    async def test_stale_round_id_rejected(self) -> None:
+        self.cog.active_rounds[99] = TriviaRound(
+            round_id="abc",
+            answer="hello",
+            expires_at=9999999999.0,
+            started_at=0.0,
+        )
+        self.assertTrue(self.cog._round_is_active(99, "abc"))
+        self.assertFalse(self.cog._round_is_active(99, "zzz"))
 
 
 if __name__ == "__main__":

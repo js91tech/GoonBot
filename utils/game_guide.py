@@ -245,7 +245,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "`/boss-status` · `/raid-leaderboard` · `/boss-hunt` · `/boss-crew-lb`",
                     "**How raids work**\n"
                     "· Bosses auto-spawn about every **90** minutes (10‑min warning ping)\n"
-                    "· Pick a raid role on `/boss`: **Tank**, **Healer**, or **Glass**\n"
+                    "· Pick a raid role on `/boss`: **Door**, **Aftercare**, or **Main Stage**\n"
                     "· Boss **mood** shifts as HP drops (aggressive → armored → frantic)\n"
                     "· Faster kill race: first blood, killing blow, and top-damager crate bonuses\n"
                     "· Everyone who deals meaningful damage gets a participation purse + scrap\n"
@@ -256,8 +256,8 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· Velvet Vixen counters can down you — teammates `/heal` to revive\n"
                     "· Damage share when the boss falls; killing blow shows your avatar pose",
                     "**Raid adds** (after boss drops below **50%** HP)\n"
-                    "· **Velvet's Henchman** — alchemy scrap (rare void hardener on celestial+ fights)\n"
-                    "· **House Jester's Jester** — void hardener (sometimes scrap)\n"
+                    "· **Velvet's Floor Staff** — alchemy scrap (rare void hardener on celestial+ fights)\n"
+                    "· **Velvet's Floor Jester** — void hardener (sometimes scrap)\n"
                     "· Use **Attack Add** on the `/boss` panel — adds never drop celestial shards",
                     "**Variants** (weakest → strongest)\n"
                     "normal → enraged → shadow → celestial → mythic\n"
@@ -322,7 +322,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                 [
                     "**Classes** — `/class choose` then `/class evolve` with class XP from duels and boss damage\n"
                     "Starters: **Talent** (combat), **Host** (income), **Fixer** (heists)\n"
-                    "Evolve → master branches → hybrids (**Circuit Boss**, **Velvet Archon**) need multiple master roots",
+                    "Evolve → master branches → hybrids (**Circuit Boss**, **House Idol**) need multiple master roots",
                     "**Attributes** — `/attributes` STR/DEX/AGI/DEF/VIT from class XP; "
                     "caps scale with prestige\n"
                     "**Skills** — `/cast` in raids/duels; mana from damage dealt (healers regen over time)\n"

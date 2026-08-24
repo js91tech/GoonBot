@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import time
+import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import discord
@@ -13,6 +16,13 @@ import config
 from utils.bot_players import skip_gameplay_bot
 from utils.drugs import DRUGS, drug_by_id
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel
+
+
+_TRIVIA_PUNCT = ".,!?;:()[]{}\"'"
+
+
+def normalize_trivia_guess(text: str) -> str:
+    return text.strip().strip(_TRIVIA_PUNCT).lower()
 
 
 def trivia_speed_fraction(remaining_seconds: float, total_seconds: float = config.TRIVIA_SECONDS) -> float:
@@ -49,6 +59,17 @@ def format_trivia_window(seconds: int = config.TRIVIA_SECONDS) -> str:
     return f"{seconds} seconds"
 
 
+@dataclass
+class TriviaRound:
+    round_id: str
+    answer: str
+    expires_at: float
+    started_at: float
+    view: TriviaAnswerView | None = None
+    message: discord.Message | None = None
+    end_task: asyncio.Task | None = field(default=None, repr=False)
+
+
 class TriviaAnswerModal(discord.ui.Modal, title="Answer the trivia"):
     guess = discord.ui.TextInput(
         label="Missing word",
@@ -57,47 +78,66 @@ class TriviaAnswerModal(discord.ui.Modal, title="Answer the trivia"):
         max_length=100,
     )
 
-    def __init__(self, cog: Trivia, channel_id: int) -> None:
+    def __init__(self, cog: Trivia, channel_id: int, round_id: str) -> None:
         super().__init__()
         self.cog = cog
         self.channel_id = channel_id
+        self.round_id = round_id
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await self.cog.submit_answer(interaction, self.channel_id, str(self.guess.value))
+        await self.cog.submit_answer(
+            interaction, self.channel_id, str(self.guess.value), self.round_id,
+        )
 
 
 class TriviaAnswerView(discord.ui.View):
     """Attached to trivia round announcements so answers can be typed privately."""
 
-    def __init__(self, cog: Trivia, channel_id: int) -> None:
+    def __init__(self, cog: Trivia, channel_id: int, round_id: str) -> None:
         super().__init__(timeout=config.TRIVIA_SECONDS + 30)
         self.cog = cog
         self.channel_id = channel_id
+        self.round_id = round_id
+        self.message: discord.Message | None = None
 
     @discord.ui.button(label="✍️ Answer", style=discord.ButtonStyle.primary)
     async def answer_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
-        if not self.cog._channel_has_active_round(self.channel_id):
+        if not self.cog._round_is_active(self.channel_id, self.round_id):
             await interaction.response.send_message(
                 "That round already ended.", ephemeral=True,
             )
             return
-        await interaction.response.send_modal(TriviaAnswerModal(self.cog, self.channel_id))
+        await interaction.response.send_modal(
+            TriviaAnswerModal(self.cog, self.channel_id, self.round_id),
+        )
 
     async def on_timeout(self) -> None:
+        await self.cog._expire_round(self.channel_id, self.round_id, announce=True)
+
+    async def disable_buttons(self) -> None:
         for item in self.children:
-            item.disabled = True
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+        self.stop()
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                logging.debug("Trivia: could not disable Answer button on message edit")
 
 
 class Trivia(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        # channel_id -> (answer, expires_at, started_at)
-        self.active_rounds: dict[int, tuple[str, float, float]] = {}
+        self.active_rounds: dict[int, TriviaRound] = {}
         self.trivia_event_tick.start()
 
     def cog_unload(self) -> None:
         self.trivia_event_tick.cancel()
+        for round_state in list(self.active_rounds.values()):
+            if round_state.end_task is not None and not round_state.end_task.done():
+                round_state.end_task.cancel()
 
     @app_commands.command(name="trivia", description="Start a Lore Roulette trivia round.")
     @app_commands.guild_only()
@@ -147,7 +187,43 @@ class Trivia(commands.Cog):
 
     def _channel_has_active_round(self, channel_id: int) -> bool:
         active = self.active_rounds.get(channel_id)
-        return active is not None and active[1] > time.time()
+        return active is not None and active.expires_at > time.time()
+
+    def _round_is_active(self, channel_id: int, round_id: str) -> bool:
+        active = self.active_rounds.get(channel_id)
+        return (
+            active is not None
+            and active.round_id == round_id
+            and active.expires_at > time.time()
+        )
+
+    async def _disable_round_view(self, round_state: TriviaRound) -> None:
+        if round_state.view is not None:
+            await round_state.view.disable_buttons()
+
+    async def _expire_round(
+        self,
+        channel_id: int,
+        round_id: str,
+        *,
+        announce: bool,
+    ) -> None:
+        active = self.active_rounds.get(channel_id)
+        if active is None or active.round_id != round_id:
+            return
+        self.active_rounds.pop(channel_id, None)
+        if active.end_task is not None and not active.end_task.done():
+            active.end_task.cancel()
+        await self._disable_round_view(active)
+        if not announce or active.message is None:
+            return
+        try:
+            await active.message.channel.send(
+                f"⏰ Trivia timed out — the answer was `{active.answer}`.",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException:
+            logging.exception("Trivia: failed to announce timeout in channel %s", channel_id)
 
     async def _start_round(
         self,
@@ -162,20 +238,38 @@ class Trivia(commands.Cog):
 
         prompt, answer = puzzle
         started_at = time.time()
-        self.active_rounds[channel.id] = (
-            answer.lower(),
-            started_at + config.TRIVIA_SECONDS,
-            started_at,
+        round_id = uuid.uuid4().hex
+        view = TriviaAnswerView(self, channel.id, round_id)
+        round_state = TriviaRound(
+            round_id=round_id,
+            answer=normalize_trivia_guess(answer),
+            expires_at=started_at + config.TRIVIA_SECONDS,
+            started_at=started_at,
+            view=view,
         )
+        self.active_rounds[channel.id] = round_state
         header = "**Random Lore Roulette!** " if announce_prefix else ""
-        view = TriviaAnswerView(self, channel.id)
-        await channel.send(
+        message = await channel.send(
             f"{header}Guess the missing word within {format_trivia_window()} — "
             f"**faster answers pay more**, and winners can snag a **free drug**:\n\n> {prompt}\n\n"
             "_Type your answer in chat, or tap **Answer** to submit privately._",
             view=view,
         )
+        view.message = message
+        round_state.message = message
+        delay = max(0.5, round_state.expires_at - time.time())
+        round_state.end_task = asyncio.create_task(
+            self._round_timer(channel.id, round_id, delay),
+            name=f"trivia-end-{channel.id}-{round_id[:8]}",
+        )
         return True
+
+    async def _round_timer(self, channel_id: int, round_id: str, delay: float) -> None:
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+        await self._expire_round(channel_id, round_id, announce=True)
 
     async def start_via_hub(self, interaction: discord.Interaction) -> None:
         """Entry point for ChaosHubView's "Start trivia" button."""
@@ -241,16 +335,22 @@ class Trivia(commands.Cog):
             choices = [
                 index
                 for index, word in enumerate(words)
-                if len(word.strip(".,!?;:()[]{}\"'")) >= 3 and word.strip(".,!?;:()[]{}\"'").isalnum()
+                if len(word.strip(_TRIVIA_PUNCT)) >= 3 and word.strip(_TRIVIA_PUNCT).isalnum()
             ]
             if not choices:
                 continue
             index = random.choice(choices)
-            answer = words[index].strip(".,!?;:()[]{}\"'")
+            answer = words[index].strip(_TRIVIA_PUNCT)
             words[index] = "_____"
             return " ".join(words), answer
 
         return None
+
+    async def _trivia_event_mult(self, guild_id: int) -> float:
+        event = await self.bot.db.get_active_guild_event(guild_id)
+        if event is not None and str(event["event_type"]) == "trivia_fiesta":
+            return float(event["multiplier"])
+        return 1.0
 
     async def _reward_correct_answer(
         self,
@@ -267,13 +367,16 @@ class Trivia(commands.Cog):
 
         base_reward = await self.bot.db.get_config_value(guild.id, "trivia_reward")
         house_pot = await self.bot.db.get_house_pot(guild.id)
-        reward = (base_reward + house_pot * config.TRIVIA_HOUSE_POOL_SHARE) * speed_mult
-        mult = await self.bot.db.get_income_multiplier(user.id, guild.id)
-        paid = reward * mult
+        pool_share = house_pot * config.TRIVIA_HOUSE_POOL_SHARE
+        taken = await self.bot.db.debit_house_pot(guild.id, pool_share)
+        reward = (base_reward + taken) * speed_mult
+        income_mult = await self.bot.db.get_income_multiplier(user.id, guild.id)
+        fiesta_mult = await self._trivia_event_mult(guild.id)
+        paid = reward * income_mult * fiesta_mult
         await self.bot.db.credit_wallet(
             user.id,
             guild.id,
-            reward,
+            reward * fiesta_mult,
             apply_bonuses=True,
         )
 
@@ -292,11 +395,30 @@ class Trivia(commands.Cog):
             f"Prize: {fmt_amount(paid)} ({speed_mult:.2f}× speed bonus).{drug_note}"
         )
 
+    async def _claim_round(
+        self,
+        channel_id: int,
+        round_id: str | None,
+    ) -> TriviaRound | None:
+        active = self.active_rounds.get(channel_id)
+        if active is None or active.expires_at <= time.time():
+            if active is not None:
+                self.active_rounds.pop(channel_id, None)
+            return None
+        if round_id is not None and active.round_id != round_id:
+            return None
+        self.active_rounds.pop(channel_id, None)
+        if active.end_task is not None and not active.end_task.done():
+            active.end_task.cancel()
+        await self._disable_round_view(active)
+        return active
+
     async def submit_answer(
         self,
         interaction: discord.Interaction,
         channel_id: int,
         guess: str,
+        round_id: str,
     ) -> None:
         """Handle a guess submitted through :class:`TriviaAnswerModal`."""
         if interaction.guild is None:
@@ -304,21 +426,35 @@ class Trivia(commands.Cog):
             return
 
         active = self.active_rounds.get(channel_id)
-        if active is None or active[1] <= time.time():
+        if active is None or active.expires_at <= time.time():
             self.active_rounds.pop(channel_id, None)
             await interaction.response.send_message("That round already ended.", ephemeral=True)
             return
+        if active.round_id != round_id:
+            await interaction.response.send_message(
+                "That Answer button is for an older round.", ephemeral=True,
+            )
+            return
 
-        answer, expires_at, started_at = active
-        if guess.strip().lower() != answer:
+        if normalize_trivia_guess(guess) != active.answer:
             await interaction.response.send_message("Not quite — try again!", ephemeral=True)
             return
 
-        self.active_rounds.pop(channel_id, None)
+        # Defer before payout so Discord's 3s modal window cannot expire mid-DB.
+        await interaction.response.defer(ephemeral=True)
+        claimed = await self._claim_round(channel_id, round_id)
+        if claimed is None:
+            await interaction.followup.send("That round already ended.", ephemeral=True)
+            return
+
         text = await self._reward_correct_answer(
-            interaction.guild, interaction.user, answer, expires_at, started_at,
+            interaction.guild,
+            interaction.user,
+            claimed.answer,
+            claimed.expires_at,
+            claimed.started_at,
         )
-        await interaction.response.send_message(f"✅ Correct! {text}", ephemeral=True)
+        await interaction.followup.send(f"✅ Correct! {text}", ephemeral=True)
 
         channel = interaction.guild.get_channel(channel_id) or self.bot.get_channel(channel_id)
         if isinstance(channel, discord.abc.Messageable):
@@ -336,17 +472,18 @@ class Trivia(commands.Cog):
         if active is None:
             return
 
-        answer, expires_at, started_at = active
-        if expires_at <= time.time():
-            self.active_rounds.pop(message.channel.id, None)
+        if active.expires_at <= time.time():
+            await self._expire_round(message.channel.id, active.round_id, announce=True)
             return
 
-        if message.content.strip().lower() != answer:
+        if normalize_trivia_guess(message.content) != active.answer:
             return
 
-        self.active_rounds.pop(message.channel.id, None)
+        claimed = await self._claim_round(message.channel.id, active.round_id)
+        if claimed is None:
+            return
         text = await self._reward_correct_answer(
-            message.guild, message.author, answer, expires_at, started_at,
+            message.guild, message.author, claimed.answer, claimed.expires_at, claimed.started_at,
         )
         await message.channel.send(text, allowed_mentions=discord.AllowedMentions.none())
 

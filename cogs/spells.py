@@ -24,7 +24,7 @@ class Spells(commands.Cog):
     def _mana_regen_hint(self, class_id: str | None) -> str:
         if is_healer_class(class_id):
             return (
-                f"Healer regen: **+{config.MANA_HEALER_REGEN_PER_TICK}** mana / "
+                f"Aftercare regen: **+{config.MANA_HEALER_REGEN_PER_TICK}** mana / "
                 f"{config.MANA_HEALER_REGEN_INTERVAL_SECONDS}s · "
                 f"**{int(config.MANA_HEALER_ON_DAMAGE_PCT * 100)}%** of damage dealt"
             )

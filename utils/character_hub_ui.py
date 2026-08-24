@@ -15,9 +15,11 @@ from utils.classes import (
     STARTER_IDS,
     can_evolve,
     evolution_threshold,
+    format_master_roots,
     format_modifiers_summary,
     get_class,
     is_healer_class,
+    starter_display_name,
 )
 from utils.goon_theme import brand_color, branded_embed, panel_title
 from utils.helpers import guild_only_message
@@ -86,7 +88,7 @@ async def build_character_embed(
         )
         snap = await cog.bot.db.get_mana_snapshot(user_id, guild_id)
         regen_hint = (
-            "healer time regen"
+            "aftercare time regen"
             if is_healer_class(class_id)
             else f"{int(config.MANA_ON_DAMAGE_PCT * 100)}% dmg → mana"
         )
@@ -96,7 +98,7 @@ async def build_character_embed(
             inline=False,
         )
         if roots:
-            embed.add_field(name="Master roots", value=", ".join(sorted(roots)), inline=True)
+            embed.add_field(name="Master roots", value=format_master_roots(roots), inline=True)
 
     embed.add_field(
         name="Aspects",
@@ -113,12 +115,21 @@ async def build_character_embed(
 
 class StarterSelect(discord.ui.Select):
     def __init__(self) -> None:
-        options = [
-            discord.SelectOption(label=s.title(), value=s, description=f"Become a {s.title()}")
-            for s in STARTER_IDS
-        ]
+        options = []
+        for s in STARTER_IDS:
+            cls = get_class(s)
+            name = cls.name if cls is not None else starter_display_name(s)
+            desc = (cls.description[:100] if cls is not None else f"Become a {name}")
+            options.append(
+                discord.SelectOption(
+                    label=name,
+                    value=s,
+                    description=desc,
+                    emoji=cls.emoji if cls is not None else None,
+                )
+            )
         super().__init__(
-            placeholder="Choose your starter class…",
+            placeholder="Choose your persona…",
             options=options,
             row=0,
         )
@@ -156,7 +167,7 @@ class EvolveButton(discord.ui.Button):
         embed = branded_embed(
             panel_title("Evolution — pick a path"),
             description="\n".join(
-                f"`{o.class_id}` — **{o.name}** — {o.description}" for o in self._options
+                f"**{o.name}** — {o.description}" for o in self._options
             ),
         )
         await interaction.response.edit_message(embed=embed, view=choice_view)

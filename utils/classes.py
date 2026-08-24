@@ -152,8 +152,8 @@ MASTER_NAMES: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
     "broker": (("ledger", "Booker"), ("vaultkeeper", "House Bank")),
     "tycoon": (("magnate", "Circuit Lead"), ("baron", "Night Baron")),
     "cutpurse": (("filcher", "Slip"), ("blackhand", "Black Card")),
-    "saboteur": (("demolisher", "Blackout"), ("incursor", "Incursor")),
-    "phantom": (("nightshade", "Nightshade"), ("wraith", "Wraith")),
+    "saboteur": (("demolisher", "Blackout"), ("incursor", "Crash Crew")),
+    "phantom": (("nightshade", "Back-Bar"), ("wraith", "Smoke")),
 }
 
 
@@ -282,6 +282,28 @@ def _build_class_map() -> dict[str, ClassDef]:
 CLASS_MAP: dict[str, ClassDef] = _build_class_map()
 STARTER_IDS: tuple[str, ...] = tuple(STARTER_DEFS.keys())
 HYBRID_IDS: tuple[str, ...] = ("warlord", "archon")
+
+STARTER_ROOT_LABELS: dict[str, str] = {
+    "vanguard": "Talent",
+    "mogul": "Host",
+    "shade": "Fixer",
+}
+
+
+def starter_display_name(starter_id: str) -> str:
+    cls = get_class(starter_id)
+    if cls is not None:
+        return cls.name
+    return STARTER_ROOT_LABELS.get(starter_id, starter_id.title())
+
+
+def format_master_roots(roots: set[str] | list[str] | tuple[str, ...]) -> str:
+    labels = [STARTER_ROOT_LABELS.get(root, starter_display_name(root)) for root in sorted(roots)]
+    return ", ".join(labels) if labels else "—"
+
+
+def starter_names_list() -> str:
+    return ", ".join(starter_display_name(sid) for sid in STARTER_IDS)
 
 
 def get_class(class_id: str | None) -> ClassDef | None:

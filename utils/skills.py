@@ -72,17 +72,17 @@ SKILL_KITS: dict[str, dict[str, SkillDef]] = {
     "vanguard": _kit(
         "vg",
         (
-            ("strike", "Power Strike", "Next hit deals +25% damage.", 18, 0, "damage_boost", 1.25, "⚔️"),
-            ("charge", "Shield Charge", "Next hit deals +40% damage.", 38, 1, "heavy_strike", 1.40, "🛡️"),
-            ("wrath", "Battle Wrath", "Next hit deals +55% damage.", 62, 2, "heavy_strike", 1.55, "🔥"),
+            ("strike", "Stage Strike", "Next hit deals +25% damage.", 18, 0, "damage_boost", 1.25, "⚔️"),
+            ("charge", "Door Charge", "Next hit deals +40% damage.", 38, 1, "heavy_strike", 1.40, "🛡️"),
+            ("wrath", "Encore Heat", "Next hit deals +55% damage.", 62, 2, "heavy_strike", 1.55, "🔥"),
         ),
     ),
     "vanguard_bulwark": _kit(
         "vgb",
         (
-            ("bash", "Shield Bash", "Next hit +20% damage.", 16, 0, "damage_boost", 1.20, "🛡️"),
-            ("fortify", "Fortify", "Next hit taken deals -30% damage to you.", 30, 1, "fortify", 0.70, "🏰"),
-            ("stand", "Last Stand", "Heal 20% of your max HP (boss/duel).", 50, 2, "heal_self", 0.20, "❤️"),
+            ("bash", "Door Bash", "Next hit +20% damage.", 16, 0, "damage_boost", 1.20, "🛡️"),
+            ("fortify", "Hold the Door", "Next hit taken deals -30% damage to you.", 30, 1, "fortify", 0.70, "🏰"),
+            ("stand", "Last Call", "Heal 20% of your max HP (boss/duel).", 50, 2, "heal_self", 0.20, "❤️"),
         ),
     ),
     "vanguard_slayer": _kit(
@@ -96,9 +96,9 @@ SKILL_KITS: dict[str, dict[str, SkillDef]] = {
     "vanguard_warden": _kit(
         "vgw",
         (
-            ("mend", "Mend", "Restore 12% of your max HP.", 14, 0, "heal_self", 0.12, "🩹"),
-            ("bless", "Blessing", "Restore 15% HP to a downed ally.", 28, 1, "heal_ally", 0.15, "✨"),
-            ("sanctify", "Sanctify", "Restore 25% of your max HP.", 48, 2, "heal_self", 0.25, "🌟"),
+            ("mend", "Aftercare Patch", "Restore 12% of your max HP.", 14, 0, "heal_self", 0.12, "🩹"),
+            ("bless", "Kiss Better", "Restore 15% HP to a downed ally.", 28, 1, "heal_ally", 0.15, "✨"),
+            ("sanctify", "Glow Up", "Restore 25% of your max HP.", 48, 2, "heal_self", 0.25, "🌟"),
         ),
     ),
     "mogul": _kit(
@@ -112,9 +112,9 @@ SKILL_KITS: dict[str, dict[str, SkillDef]] = {
     "mogul_prospector": _kit(
         "mgp",
         (
-            ("prospect", "Vein Tap", "Next hit +18% damage.", 15, 0, "damage_boost", 1.18, "⛏️"),
+            ("prospect", "Tip Tap", "Next hit +18% damage.", 15, 0, "damage_boost", 1.18, "⛏️"),
             ("spark", "Gold Spark", "Small income spark on cast (+25 goonbux).", 25, 1, "income_spark", 25.0, "✨"),
-            ("rush", "Gold Rush", "Next hit +50% damage.", 60, 2, "heavy_strike", 1.50, "🤑"),
+            ("rush", "Tip Rush", "Next hit +50% damage.", 60, 2, "heavy_strike", 1.50, "🤑"),
         ),
     ),
     "mogul_broker": _kit(
@@ -136,15 +136,15 @@ SKILL_KITS: dict[str, dict[str, SkillDef]] = {
     "shade": _kit(
         "sh",
         (
-            ("stab", "Shadow Stab", "Next hit +22% damage.", 17, 0, "damage_boost", 1.22, "🌑"),
+            ("stab", "Slip Stab", "Next hit +22% damage.", 17, 0, "damage_boost", 1.22, "🌑"),
             ("smoke", "Smoke Bomb", "+8% heist success (next heist).", 28, 1, "heist_smoke", 0.08, "💨"),
-            ("eclipse", "Eclipse", "Next hit +50% damage.", 60, 2, "heavy_strike", 1.50, "🌘"),
+            ("eclipse", "Blackout Hit", "Next hit +50% damage.", 60, 2, "heavy_strike", 1.50, "🌘"),
         ),
     ),
     "shade_cutpurse": _kit(
         "shc",
         (
-            ("filch", "Filch", "Next hit +20% damage.", 15, 0, "damage_boost", 1.20, "🎭"),
+            ("filch", "Lift", "Next hit +20% damage.", 15, 0, "damage_boost", 1.20, "🎭"),
             ("smoke", "Pocket Smoke", "+10% heist success (next heist).", 26, 1, "heist_smoke", 0.10, "💨"),
             ("backstab", "Backstab", "Next hit +55% damage.", 58, 2, "heavy_strike", 1.55, "🗡️"),
         ),
@@ -162,30 +162,30 @@ SKILL_KITS: dict[str, dict[str, SkillDef]] = {
         (
             ("phase", "Phase Step", "Reduce next damage taken by 35%.", 16, 0, "fortify", 0.65, "👻"),
             ("veil", "Ghost Veil", "Next hit +30% damage.", 32, 1, "damage_boost", 1.30, "🌫️"),
-            ("assassinate", "Assassinate", "Next hit +62% damage.", 66, 2, "heavy_strike", 1.62, "☠️"),
+            ("assassinate", "Close Out", "Next hit +62% damage.", 66, 2, "heavy_strike", 1.62, "☠️"),
         ),
     ),
     "warlord": _kit(
         "wl",
         (
-            ("warcry", "War Cry", "Next hit +28% damage.", 22, 2, "damage_boost", 1.28, "📯"),
+            ("warcry", "Circuit Cry", "Next hit +28% damage.", 22, 2, "damage_boost", 1.28, "📯"),
             ("plunder", "Plunder", "Next hit +42% damage.", 40, 2, "heavy_strike", 1.42, "🏴"),
-            ("dominion", "Dominion", "Next hit +65% damage.", 70, 2, "heavy_strike", 1.65, "👑"),
+            ("dominion", "Floor Dominion", "Next hit +65% damage.", 70, 2, "heavy_strike", 1.65, "👑"),
         ),
     ),
     "archon": _kit(
         "ar",
         (
             ("decree", "Decree", "Next hit +26% damage.", 20, 2, "damage_boost", 1.26, "📜"),
-            ("aegis", "Royal Aegis", "Reduce next damage taken by 28%.", 34, 2, "fortify", 0.72, "🛡️"),
-            ("judgment", "Judgment", "Next hit +60% damage.", 68, 2, "heavy_strike", 1.60, "⚖️"),
+            ("aegis", "House Aegis", "Reduce next damage taken by 28%.", 34, 2, "fortify", 0.72, "🛡️"),
+            ("judgment", "House Call", "Next hit +60% damage.", 68, 2, "heavy_strike", 1.60, "⚖️"),
         ),
     ),
     "jester": _kit(
         "jest",
         (
             ("joke", "Bad Joke", "Next hit +10% damage.", 10, 2, "damage_boost", 1.10, "🃏"),
-            ("trick", "Trickster", "Chaos: next hit +35% or you lose 5 mana.", 25, 2, "chaos_card", 1.35, "🎲"),
+            ("trick", "House Trick", "Chaos: next hit +35% or you lose 5 mana.", 25, 2, "chaos_card", 1.35, "🎲"),
             ("punchline", "Punchline", "Next hit +45% damage.", 45, 2, "heavy_strike", 1.45, "🎪"),
         ),
     ),
@@ -254,7 +254,7 @@ def apply_spell_to_damage(base_damage: int, spell: SpellBuff | None) -> tuple[in
 def format_skills_list(class_id: str | None) -> str:
     skills = skills_for_class(class_id)
     if not skills:
-        return "No skills (choose a class first)."
+        return "No skills (choose a persona first)."
     lines = [
         f"{s.emoji} **{s.name}** (`{s.skill_id}`) — **{s.mana_cost}** mana — {s.description}"
         for s in sorted(skills, key=lambda x: x.mana_cost)

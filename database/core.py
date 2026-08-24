@@ -6021,7 +6021,7 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         class_id = char["class_id"] if char["class_id"] else None
         mult *= get_modifiers(class_id).income_mult
         event = await self.get_active_guild_event(guild_id)
-        if event is not None and str(event["event_type"]) in ("bonus_income", "trivia_fiesta"):
+        if event is not None and str(event["event_type"]) == "bonus_income":
             mult *= float(event["multiplier"])
         return mult
 
