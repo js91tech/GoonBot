@@ -119,7 +119,12 @@ async def resolve_main_channel(
     guild: discord.Guild,
     db: object,
 ) -> discord.abc.Messageable | None:
-    """Return the guild main channel (coin drops / random gifts), with legacy fallbacks."""
+    """Return the guild main / bot room for coin drops and public posts."""
+    from utils.bot_room import bot_room_only_enabled, resolve_bot_room
+
+    if await bot_room_only_enabled(db, guild.id):
+        return await resolve_bot_room(guild, db)
+
     get_main_channel_id = getattr(db, "get_main_channel_id", None)
     if get_main_channel_id is not None:
         channel_id = await get_main_channel_id(guild.id)
@@ -135,6 +140,11 @@ async def resolve_designated_channel(
     db: object,
 ) -> discord.abc.Messageable | None:
     """Return the guild designated bot channel, with main channel and legacy fallbacks."""
+    from utils.bot_room import bot_room_only_enabled, resolve_bot_room
+
+    if await bot_room_only_enabled(db, guild.id):
+        return await resolve_bot_room(guild, db)
+
     get_designated = getattr(db, "get_designated_channel_id", None)
     if get_designated is not None:
         channel_id = await get_designated(guild.id)
@@ -150,6 +160,11 @@ async def resolve_bot_announcement_channel(
     db: object,
 ) -> discord.abc.Messageable | None:
     """Boss and bot announcements: designated when split mode is on, else main."""
+    from utils.bot_room import bot_room_only_enabled, resolve_bot_room
+
+    if await bot_room_only_enabled(db, guild.id):
+        return await resolve_bot_room(guild, db)
+
     get_split = getattr(db, "get_split_announcement_channels", None)
     if get_split is not None and await get_split(guild.id):
         return await resolve_designated_channel(guild, db)

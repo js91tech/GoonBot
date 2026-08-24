@@ -354,9 +354,9 @@ class Admin(commands.Cog):
 
     @admin_group.command(
         name="set-designated-channel",
-        description="Set the channel for boss spawns and bot announcements.",
+        description="Set the ONLY channel GoonBot types in (NuggetIvitesBot room).",
     )
-    @app_commands.describe(channel="Text channel where the bot posts boss and system messages")
+    @app_commands.describe(channel="Text channel for all GoonBot posts and player commands")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     async def set_designated_channel(
@@ -375,10 +375,16 @@ class Admin(commands.Cog):
             return
 
         await self.bot.db.set_designated_channel_id(interaction.guild_id, channel.id)
+        # Keep main in sync so coin drops / trivia events stay in the same bot room.
+        await self.bot.db.set_main_channel_id(interaction.guild_id, channel.id)
+        await self.bot.db.set_config_value(interaction.guild_id, "bot_room_only", 1.0)
         await interaction.response.send_message(
-            f"Designated bot channel set to {channel.mention}. "
-            "Enable `/admin toggle-split-channels` so boss posts go here while coin drops stay in main.",
+            f"Bot room set to {channel.mention}. "
+            "GoonBot will **only type and accept commands** there "
+            "(NuggetIvitesBot-style single room). "
+            "Admins can still run `/admin` elsewhere for setup.",
             allowed_mentions=discord.AllowedMentions.none(),
+            ephemeral=True,
         )
 
     @admin_group.command(

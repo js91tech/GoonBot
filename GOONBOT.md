@@ -25,7 +25,11 @@
    - Optional: `GUILD_ID` for guild-scoped slash sync during testing
    - Optional: `DASHBOARD_ENABLED`, `PORT`
 5. Invite the bot only to **18+ / NSFW** servers. Mark play channels as Discord **NSFW**.
-6. Admins can set live config `nsfw_channel_only` to `0` to allow non-NSFW channels (not recommended for public servers).
+6. Set the bot room (GoonBot only types here — typically your **nuggetivitesbot** channel):
+   - `/admin set-designated-channel #nuggetivitesbot`
+   - or set env `BOT_CHANNEL_ID=<snowflake>`
+   - `bot_room_only` live setting defaults **on**
+7. Admins can set live config `nsfw_channel_only` to `0` to allow non-NSFW channels (not recommended for public servers).
 
 ## Age / NSFW gates
 

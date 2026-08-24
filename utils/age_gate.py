@@ -95,7 +95,7 @@ def channel_is_nsfw(channel: Any) -> bool:
 
 
 async def check_interaction(interaction: discord.Interaction, db: Database) -> bool:
-    """Tree interaction_check: NSFW channel + age gate. Returns False to block."""
+    """Tree interaction_check: NSFW channel + bot room + age gate. Returns False to block."""
     if interaction.guild_id is None:
         await interaction.response.send_message(
             "GoonBot only works inside a server.", ephemeral=True,
@@ -124,6 +124,31 @@ async def check_interaction(interaction: discord.Interaction, db: Database) -> b
                     NSFW_CHANNEL_REQUIRED, ephemeral=True,
                 )
                 return False
+
+    # Bot-room lock — players may only use commands in the NuggetIvitesBot room.
+    from utils.bot_room import (
+        bot_room_only_enabled,
+        bot_room_required_message,
+        channel_is_allowed_bot_room,
+        resolve_bot_room,
+    )
+
+    is_admin = bool(
+        getattr(interaction.user, "guild_permissions", None)
+        and interaction.user.guild_permissions.administrator
+    )
+    if (
+        interaction.guild is not None
+        and await bot_room_only_enabled(db, interaction.guild_id)
+        and not is_admin
+    ):
+        if not await channel_is_allowed_bot_room(interaction.guild, db, channel):
+            bot_room = await resolve_bot_room(interaction.guild, db)
+            await interaction.response.send_message(
+                bot_room_required_message(bot_room),
+                ephemeral=True,
+            )
+            return False
 
     if await is_age_verified(db, interaction.user.id, interaction.guild_id):
         return True

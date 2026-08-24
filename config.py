@@ -91,6 +91,27 @@ DM_NOTIFICATIONS_ENABLED = os.getenv("DM_NOTIFICATIONS_ENABLED", "").strip().low
     "yes",
     "on",
 }
+
+# Bot room — GoonBot only types in one channel (default: NuggetIvitesBot room).
+# Prefer BOT_CHANNEL_ID / GOONBOT_CHANNEL_ID env, else designated/main guild setting,
+# else a text channel whose name matches BOT_ROOM_NAME_HINTS.
+_bot_channel_raw = (
+    os.getenv("BOT_CHANNEL_ID") or os.getenv("GOONBOT_CHANNEL_ID") or ""
+).strip()
+BOT_CHANNEL_ID: int | None = int(_bot_channel_raw) if _bot_channel_raw.isdigit() else None
+BOT_ROOM_ONLY = os.getenv("BOT_ROOM_ONLY", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+BOT_ROOM_NAME_HINTS: tuple[str, ...] = (
+    "nuggetivitesbot",
+    "nugget-invites-bot",
+    "nuggetinvitesbot",
+    "goonbot-room",
+    "goonbot",
+)
 # Opt-in DM reminders (see utils/notify_prefs.py)
 NOTIFY_TICK_SECONDS = 90
 NOTIFY_CROPS = 1
@@ -1054,6 +1075,12 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
     "nsfw_channel_only": LiveSetting(
         1.0,
         "Require Discord NSFW channels for commands (1=on, 0=off)",
+        maximum=1.0,
+        integer=True,
+    ),
+    "bot_room_only": LiveSetting(
+        1.0 if BOT_ROOM_ONLY else 0.0,
+        "Only allow GoonBot commands/posts in the bot room (designated/main/BOT_CHANNEL_ID)",
         maximum=1.0,
         integer=True,
     ),
