@@ -495,6 +495,12 @@ class Boss(commands.Cog):
             footer_bits.insert(0, f"Defeat within **{mins} minutes** or the boss retreats!")
         embed.set_footer(text=" · ".join(footer_bits))
         art = attach_boss_art(embed, variant)
+        if art is None:
+            logging.warning(
+                "Boss spawn art missing for variant %s in guild %s",
+                variant,
+                guild.id,
+            )
         files = [art] if art is not None else None
         gate = getattr(self.bot, "outbound_gate", None)
         sent = await safe_channel_send(

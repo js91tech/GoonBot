@@ -118,11 +118,18 @@ def boss_moment_art_path(variant: str, moment: str) -> Path | None:
 
 
 def _attachment_filename(path: Path) -> str:
-    """Unique Discord attachment name so glam/armored don't collide."""
+    """Discord embed attachment:// names — avoid underscores (image won't render)."""
     parent = path.parent.name
-    if parent in {"glam", "armored"}:
-        return f"{parent}_{path.name}"
-    return path.name
+    raw = f"{parent}-{path.name}" if parent in {"glam", "armored"} else path.name
+    # Keep ASCII letters/digits/dot/dash only; Discord drops embed images when
+    # attachment filenames contain underscores (legacy CDN limitation).
+    cleaned = raw.replace("_", "-")
+    return cleaned
+
+
+def _file_for_embed(path: Path) -> discord.File:
+    filename = _attachment_filename(path)
+    return discord.File(str(path), filename=filename)
 
 
 def attach_boss_art(embed: discord.Embed, variant: str) -> discord.File | None:
@@ -133,9 +140,9 @@ def attach_boss_art(embed: discord.Embed, variant: str) -> discord.File | None:
         return None
     if path is None:
         return None
-    filename = _attachment_filename(path)
-    embed.set_image(url=f"attachment://{filename}")
-    return discord.File(str(path), filename=filename)
+    art = _file_for_embed(path)
+    embed.set_image(url=art.uri)
+    return art
 
 
 def attach_boss_moment_art(
@@ -154,6 +161,6 @@ def attach_boss_moment_art(
         return None
     if path is None:
         return None
-    filename = path.name
-    embed.set_image(url=f"attachment://{filename}")
-    return discord.File(str(path), filename=filename)
+    art = _file_for_embed(path)
+    embed.set_image(url=art.uri)
+    return art
