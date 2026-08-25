@@ -63,17 +63,33 @@ async def run_with_discord_retry(
     return None
 
 
+def _reset_outbound_files(kwargs: dict[str, Any]) -> None:
+    """Rewind attachment streams so Discord retries can re-upload."""
+    files = kwargs.get("files")
+    single = kwargs.get("file")
+    bucket: list[Any] = []
+    if files is not None:
+        bucket.extend(files)
+    if single is not None:
+        bucket.append(single)
+    for item in bucket:
+        reset = getattr(item, "reset", None)
+        if callable(reset):
+            reset(seek=True)
+
+
 async def safe_channel_send(
     channel: discord.abc.Messageable,
     *args: Any,
     gate: OutboundGate | None = None,
     **kwargs: Any,
 ) -> discord.Message | None:
+    async def _send() -> discord.Message:
+        _reset_outbound_files(kwargs)
+        return await channel.send(*args, **kwargs)
+
     try:
-        return await run_with_discord_retry(
-            lambda: channel.send(*args, **kwargs),
-            gate=gate,
-        )
+        return await run_with_discord_retry(_send, gate=gate)
     except discord.HTTPException as exc:
         if exc.status == 429:
             logging.warning("Dropped channel message after rate limit: %s", channel)

@@ -183,6 +183,8 @@ class DashboardServer:
                 if channel_id not in text_channel_ids:
                     return web.json_response({"error": "designated channel not writable"}, status=400)
                 await self.bot.db.set_designated_channel_id(guild_id, channel_id)
+                # Match /admin set-designated-channel: lock public typing to this room.
+                await self.bot.db.set_config_value(guild_id, "bot_room_only", 1.0)
 
         if "split_announcement_channels" in payload:
             await self.bot.db.set_split_announcement_channels(
