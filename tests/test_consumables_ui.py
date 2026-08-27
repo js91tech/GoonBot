@@ -94,6 +94,7 @@ class UsePanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(qty, 0)
         state = await self.db.get_goon_session(self.user_id, self.guild_id)
         self.assertGreater(state.meter, 0.0)
+        self.assertEqual(state.condom_charges, 1)
 
     async def test_send_use_panel_defers_then_edits(self) -> None:
         from unittest.mock import AsyncMock, MagicMock

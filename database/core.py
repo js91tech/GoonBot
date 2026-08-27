@@ -6829,6 +6829,10 @@ class Database(
             "drug_sales": await self.drug_sales_leaderboard(guild_id, limit=limit),
             "corp_treasury": await self.corp_treasury_leaderboard(guild_id, limit=limit),
             "district_influence": await self.district_influence_leaderboard(guild_id, limit=limit),
+            "goon_streak": await self.goon_session_leaderboard(guild_id, "streak", limit=limit),
+            "goon_finishes": await self.goon_session_leaderboard(
+                guild_id, "lifetime_finishes", limit=limit,
+            ),
         }
 
     async def business_prestige_leaderboard(

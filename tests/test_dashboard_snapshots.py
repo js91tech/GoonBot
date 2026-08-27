@@ -49,6 +49,8 @@ class DashboardSnapshotTests(unittest.IsolatedAsyncioTestCase):
     async def test_hall_of_fame_includes_duel_wins(self) -> None:
         hall = await self.db.hall_of_fame_snapshot(self.guild_id, limit=3)
         self.assertIn("duel_wins", hall)
+        self.assertIn("goon_streak", hall)
+        self.assertIn("goon_finishes", hall)
         self.assertIsInstance(hall["duel_wins"], list)
 
 

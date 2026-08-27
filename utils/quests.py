@@ -48,6 +48,8 @@ DAILY_QUEST_POOL: tuple[QuestDef, ...] = (
     QuestDef("messages", "Stay Active", "Earn from 20 chat messages.", 20, 550.0, "chat_message"),
     QuestDef("job_shifts", "Day Job", "Complete 3 instant job shifts with `/work`.", 3, 650.0, "job_work"),
     QuestDef("goon_edges", "Stay Edged", "Edge 5 times with `/goon edge`.", 5, 700.0, "goon_edge"),
+    QuestDef("goon_ruin_once", "Ruin Them", "Ruin someone with `/goon ruin`.", 1, 700.0, "goon_ruin"),
+    QuestDef("group_goon", "Group Session", "Join a group goon call.", 1, 800.0, "group_goon"),
     QuestDef("duel_win", "Duelist", "Win a `/duel`.", 1, 900.0, "duel_win"),
     QuestDef("slots_spin", "Lucky Slots", "Play `/slots` once.", 1, 550.0, "gamble_play"),
     QuestDef("dungeon_clear", "Afterparty", "Clear a `/dungeon` private-room run.", 1, 1_100.0, "dungeon_clear"),

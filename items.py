@@ -552,7 +552,7 @@ CONDOMS = ShopItem(
     "consumable",
     0,
     0,
-    "Group-session drop. /use: wrap up and push your goon meter.",
+    "Group-session drop. `/use`: meter tick + a wrap charge (blocks a ruin, holds a 100 leak, or keeps streak on finish). Join a group round late by spending one.",
     shop_listed=False,
 )
 JAIL_KEY = ShopItem(

@@ -408,6 +408,20 @@ class Progression(commands.Cog):
             inline=False,
         )
         embed.add_field(
+            name="Hottest streak",
+            value=format_rows(
+                snapshot.get("goon_streak", []), value_label="streak", value_key="score"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Most finishes",
+            value=format_rows(
+                snapshot.get("goon_finishes", []), value_label="finishes", value_key="score"
+            ),
+            inline=False,
+        )
+        embed.add_field(
             name="Business empire",
             value=format_rows(
                 snapshot.get("business_prestige", []), value_label="score", value_key="score"

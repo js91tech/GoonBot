@@ -130,9 +130,12 @@ async def execute_use(
             now=time.time(),
             cooldown=0.0,
         )
+        state = await cog.bot.db.add_condom_charges(user_id, guild_id, charges=1)
         gained = int(result.gained) if result.ok else int(config.GOON_CONDOM_METER_GAIN)
         return None, (
-            f"**Condoms** — wrapped. Meter +**{gained}**. Stay edged."
+            f"**Condoms** — wrapped. Meter +**{gained}**. "
+            f"**{state.condom_charges}** charge{'s' if state.condom_charges != 1 else ''} "
+            "(ruin shield / leak hold / safe finish)."
         )
 
     if item_id in HP_POTION_HEAL:

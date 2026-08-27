@@ -1,0 +1,224 @@
+"""Group goon call — persistent buttons, round state, main-chat ping."""
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+import discord
+
+import config
+from utils.goon_session import GROUP_GOON_PROMPT
+from utils.helpers import fmt_amount
+
+if TYPE_CHECKING:
+    from cogs.goon import Goon
+
+CALL_READY_ID = "goon:group:ready"
+ROUND_JOIN_ID = "goon:group:join"
+ROUND_LATE_ID = "goon:group:late"
+
+
+@dataclass
+class GroupCallState:
+    guild_id: int
+    channel_id: int
+    amount: float
+    condoms: int
+    prompt: str = GROUP_GOON_PROMPT
+    message_id: int = 0
+    phase: str = "call"
+    host_id: int = 0
+    call_expires_at: float = 0.0
+    round_ends_at: float = 0.0
+    free_join_until: float = 0.0
+    joiners: set[int] = field(default_factory=set)
+    edges: dict[int, float] = field(default_factory=dict)
+    leaked: dict[int, float] = field(default_factory=dict)
+    finished: dict[int, float] = field(default_factory=dict)
+    message: discord.Message | None = None
+
+    def to_payload(self) -> dict:
+        return {
+            "channel_id": self.channel_id,
+            "guild_id": self.guild_id,
+            "message_id": self.message_id,
+            "phase": self.phase,
+            "amount": self.amount,
+            "condoms": self.condoms,
+            "host_id": self.host_id,
+            "call_expires_at": self.call_expires_at,
+            "round_ends_at": self.round_ends_at,
+            "free_join_until": self.free_join_until,
+            "prompt": self.prompt,
+            "joiners": sorted(self.joiners),
+            "edges": {str(k): v for k, v in self.edges.items()},
+            "leaked": {str(k): v for k, v in self.leaked.items()},
+            "finished": {str(k): v for k, v in self.finished.items()},
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict) -> GroupCallState:
+        return cls(
+            guild_id=int(payload["guild_id"]),
+            channel_id=int(payload["channel_id"]),
+            amount=float(payload.get("amount") or 0),
+            condoms=int(payload.get("condoms") or 0),
+            prompt=str(payload.get("prompt") or GROUP_GOON_PROMPT),
+            message_id=int(payload.get("message_id") or 0),
+            phase=str(payload.get("phase") or "call"),
+            host_id=int(payload.get("host_id") or 0),
+            call_expires_at=float(payload.get("call_expires_at") or 0),
+            round_ends_at=float(payload.get("round_ends_at") or 0),
+            free_join_until=float(payload.get("free_join_until") or 0),
+            joiners=set(int(x) for x in (payload.get("joiners") or [])),
+            edges={int(k): float(v) for k, v in (payload.get("edges") or {}).items()},
+            leaked={int(k): float(v) for k, v in (payload.get("leaked") or {}).items()},
+            finished={int(k): float(v) for k, v in (payload.get("finished") or {}).items()},
+        )
+
+
+def find_gooners_role(guild: discord.Guild) -> discord.Role | None:
+    hints = tuple(h.lower() for h in config.GOON_CALL_ROLE_HINTS)
+    for role in guild.roles:
+        name = (role.name or "").lower().replace(" ", "")
+        if any(hint.replace(" ", "") in name or name in hint.replace(" ", "") for hint in hints):
+            if role.is_default():
+                continue
+            return role
+    return None
+
+
+def call_body(state: GroupCallState, *, role: discord.Role | None = None) -> str:
+    mention = f"{role.mention} " if role is not None else ""
+    return (
+        f"{mention}**{state.prompt}**\n"
+        f"First to answer (**I'm ready** or type **yes**) gets "
+        f"**{fmt_amount(state.amount)}** + **{state.condoms}× Condoms** from the house.\n"
+        "_Then the floor stays open for a group round._"
+    )
+
+
+def round_body(state: GroupCallState) -> str:
+    names = " ".join(f"<@{uid}>" for uid in list(state.joiners)[:12])
+    left = max(0, int(state.round_ends_at - time.time()))
+    free_left = max(0, int(state.free_join_until - time.time()))
+    late = (
+        f"Free join **{free_left}s**. After that, **Join late** spends 1 condom."
+        if free_left > 0
+        else "Free join closed. **Join late** spends 1 condom."
+    )
+    return (
+        f"**{state.prompt}**\n"
+        f"<@{state.host_id}> opened the floor — "
+        f"**{fmt_amount(state.amount)}** + **{state.condoms}× Condoms**.\n"
+        f"In: {names or '_nobody_'}\n"
+        f"{late} Round ends in **{left}s**. `/goon edge` now. Don't finish first."
+    )
+
+
+def resolve_round_copy(
+    state: GroupCallState,
+    *,
+    dare: str,
+    vc_count: int,
+    vc_bonus: float,
+    last_id: int | None,
+    tax: float,
+    first_break_id: int | None,
+    first_break_kind: str | None,
+) -> str:
+    n = len(state.joiners)
+    lines = [
+        f"**Group session closed.** {n} on the floor.",
+        f"Dare: **{dare}** — `/goon edge` in **{int(config.GOON_DARE_SECONDS)}s** to cash it.",
+    ]
+    if vc_count >= config.GOON_ROUND_VC_MIN and vc_bonus > 0:
+        lines.append(
+            f"**{vc_count}** in VC — house kicked in **{fmt_amount(vc_bonus)}** each."
+        )
+    if last_id is not None and tax > 0:
+        lines.append(
+            f"<@{last_id}> edged last (or never). Tax **{fmt_amount(tax)}** to the house."
+        )
+    if first_break_id is not None:
+        verb = "leaked" if first_break_kind == "leaked" else "finished"
+        lines.append(f"<@{first_break_id}> {verb} first. Get roasted.")
+    return "\n".join(lines)
+
+
+def _cog_from(interaction: discord.Interaction) -> Goon | None:
+    return interaction.client.get_cog("Goon")  # type: ignore[return-value]
+
+
+class GroupGoonCallView(discord.ui.View):
+    """Persistent first-answer button."""
+
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="I'm ready",
+        style=discord.ButtonStyle.success,
+        custom_id=CALL_READY_ID,
+    )
+    async def ready_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        cog = _cog_from(interaction)
+        if cog is None:
+            await interaction.response.send_message("Session cog is down.", ephemeral=True)
+            return
+        await cog.handle_group_ready(interaction)
+
+
+class GroupGoonRoundView(discord.ui.View):
+    """Persistent join / late-join buttons for the group round."""
+
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Join",
+        style=discord.ButtonStyle.primary,
+        custom_id=ROUND_JOIN_ID,
+    )
+    async def join_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        cog = _cog_from(interaction)
+        if cog is None:
+            await interaction.response.send_message("Session cog is down.", ephemeral=True)
+            return
+        await cog.handle_group_join(interaction, late=False)
+
+    @discord.ui.button(
+        label="Join late (condom)",
+        style=discord.ButtonStyle.secondary,
+        custom_id=ROUND_LATE_ID,
+    )
+    async def late_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        cog = _cog_from(interaction)
+        if cog is None:
+            await interaction.response.send_message("Session cog is down.", ephemeral=True)
+            return
+        await cog.handle_group_join(interaction, late=True)
+
+
+async def edit_call_message(state: GroupCallState, *, content: str, view: discord.ui.View | None) -> None:
+    if state.message is None:
+        return
+    try:
+        await state.message.edit(
+            content=content,
+            view=view,
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False),
+        )
+    except (discord.HTTPException, discord.NotFound):
+        logging.debug("Group goon: edit failed channel %s", state.channel_id)

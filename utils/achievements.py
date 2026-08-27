@@ -59,6 +59,13 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "district_dominator": Achievement(
         "district_dominator", "District Dominator", "Reach 100 district influence.", "🗺️",
     ),
+    "still_edged": Achievement("still_edged", "Still Edged", "Edge once with `/goon edge`.", "💋"),
+    "goon_marathon": Achievement("goon_marathon", "Marathon", "Edge 50 times.", "🥵"),
+    "ruin_artist": Achievement("ruin_artist", "Ruin Artist", "Get ruined (or ruin) 10 times.", "🥀"),
+    "finisher": Achievement("finisher", "Finisher", "Finish 25 sessions.", "💦"),
+    "floor_regular": Achievement(
+        "floor_regular", "Floor Regular", "Join 5 group goon sessions.", "🪩",
+    ),
 }
 
 
@@ -172,6 +179,18 @@ async def evaluate_unlocks(
         total_influence += inf
     if total_influence >= config.BUSINESS_DISTRICT_INFLUENCE_MAX:
         await grant("district_dominator")
+
+    session = await db.get_goon_session(user_id, guild_id)
+    if session.lifetime_edges >= 1:
+        await grant("still_edged")
+    if session.lifetime_edges >= 50:
+        await grant("goon_marathon")
+    if session.lifetime_ruins >= 10:
+        await grant("ruin_artist")
+    if session.lifetime_finishes >= 25:
+        await grant("finisher")
+    if session.lifetime_group_rounds >= 5:
+        await grant("floor_regular")
 
     return newly
 

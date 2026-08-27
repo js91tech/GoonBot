@@ -3,11 +3,20 @@ from __future__ import annotations
 
 import random
 import re
+import time
 from dataclasses import dataclass
 
 import config
 
 GROUP_GOON_PROMPT = "Is the chat ready for a group goon session?"
+GROUP_GOON_PROMPTS: tuple[str, ...] = (
+    "Is the chat ready for a group goon session?",
+    "Floor's open. Who's edging?",
+    "Group session. Don't finish unless you mean it.",
+    "Main chat looks bored. Ready to goon?",
+    "Velvet's watching. Group goon — first yes gets paid.",
+    "Anyone still edged? Group session starting.",
+)
 _GROUP_GOON_YES = re.compile(
     r"^\s*(yes+|yeah+|yep|yea|yup|yas+|ready|i['’]?m\s+ready|let['’]?s\s+go|down|here)\b",
     re.IGNORECASE,
@@ -101,6 +110,9 @@ class GoonSessionState:
     lifetime_edges: int = 0
     lifetime_ruins: int = 0
     lifetime_finishes: int = 0
+    condom_charges: int = 0
+    dare_expires_at: float = 0.0
+    lifetime_group_rounds: int = 0
 
 
 def session_from_row(row: object | None) -> GoonSessionState:
@@ -138,6 +150,9 @@ def session_from_row(row: object | None) -> GoonSessionState:
         lifetime_edges=_i("lifetime_edges"),
         lifetime_ruins=_i("lifetime_ruins"),
         lifetime_finishes=_i("lifetime_finishes"),
+        condom_charges=_i("condom_charges"),
+        dare_expires_at=_f("dare_expires_at"),
+        lifetime_group_rounds=_i("lifetime_group_rounds"),
     )
 
 
@@ -181,8 +196,44 @@ def finish_payout(streak: int, meter: float) -> float:
     return max(1.0, round(base * meter_mult, 2))
 
 
-def ruin_cost(target_streak: int) -> float:
-    return config.GOON_RUIN_COST_BASE + max(0, target_streak) * config.GOON_RUIN_COST_PER_STREAK
+def ruin_cost(target_streak: int, *, cost_mult: float = 1.0) -> float:
+    base = config.GOON_RUIN_COST_BASE + max(0, target_streak) * config.GOON_RUIN_COST_PER_STREAK
+    return max(1.0, round(base * max(0.1, cost_mult), 2))
+
+
+def safe_finish_streak(streak: int) -> int:
+    if streak < 2:
+        return 0
+    kept = int(streak * config.GOON_SAFE_FINISH_STREAK_KEEP)
+    return max(1, kept)
+
+
+def persona_edge_mult(class_id: str | None) -> float:
+    from utils.persona_floors import starter_root_for
+
+    if starter_root_for(class_id) == "vanguard":
+        return float(config.GOON_PERSONA_EDGE_MULT)
+    return 1.0
+
+
+def persona_tease_cost_mult(class_id: str | None) -> float:
+    from utils.persona_floors import starter_root_for
+
+    if starter_root_for(class_id) == "mogul":
+        return float(config.GOON_PERSONA_TEASE_COST_MULT)
+    return 1.0
+
+
+def persona_ruin_cost_mult(class_id: str | None) -> float:
+    from utils.persona_floors import starter_root_for
+
+    if starter_root_for(class_id) == "shade":
+        return float(config.GOON_PERSONA_RUIN_COST_MULT)
+    return 1.0
+
+
+def tease_cost_for(class_id: str | None) -> float:
+    return max(1.0, round(config.GOON_TEASE_COST * persona_tease_cost_mult(class_id), 2))
 
 
 def daily_edge_bonus_mult(streak: int) -> float:
@@ -209,6 +260,13 @@ def format_session_block(state: GoonSessionState) -> str:
     ]
     if state.ruined_by:
         lines.append(f"Last ruined by <@{state.ruined_by}>")
+    if state.condom_charges > 0:
+        lines.append(
+            f"Wrapped **{state.condom_charges}×** — blocks a ruin, holds a leak, or keeps streak on finish"
+        )
+    remaining_dare = state.dare_expires_at - time.time()
+    if remaining_dare > 0:
+        lines.append(f"Dare live **{int(remaining_dare)}s** — `/goon edge` to cash it")
     payout = finish_payout(state.streak, state.meter)
     if payout > 0:
         from utils.helpers import fmt_amount
@@ -295,3 +353,7 @@ def next_group_goon_call_minutes() -> int:
 def roll_group_goon_reward() -> float:
     lo, hi = config.GOON_CALL_REWARD
     return float(random.randint(int(lo), int(hi)))
+
+
+def pick_group_goon_prompt() -> str:
+    return random.choice(GROUP_GOON_PROMPTS)

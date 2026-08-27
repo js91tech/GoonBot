@@ -126,7 +126,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 Chat, VC, jobs, and `/daily` also fill the meter. Edging in VC with others hits harder. Daily pays extra while you're still edged.
 
-Every **~2 hours** GoonBot asks in the main chat (**#yappinmain**): **Is the chat ready for a group goon session?** First to answer (**I'm ready** or type **yes**) wins **6k–12k goonbux** and **3 condoms**.
+Every **~2 hours** (if the chat is awake) GoonBot asks in **#yappinmain**. First yes / **I'm ready** wins **house-pot** goonbux + **3 condoms**, then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
 
 ### Boss
 
