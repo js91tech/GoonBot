@@ -662,8 +662,8 @@ class EndgameDatabaseTests(unittest.IsolatedAsyncioTestCase):
 class DrugMathTests(unittest.TestCase):
     def test_catalog(self) -> None:
         self.assertEqual(len(DRUGS), 27)
-        self.assertEqual(drug_by_id("blue_dream").name, "Blue Dream")
-        self.assertEqual(drug_by_id("greenleaf").name, "Blue Dream")
+        self.assertEqual(drug_by_id("blue_dream").name, "Velvet Dream")
+        self.assertEqual(drug_by_id("greenleaf").name, "Velvet Dream")
         self.assertEqual(drug_by_id("cocaine").category, "stimulant")
         self.assertEqual(drug_by_id("addies").category, "stimulant")
         self.assertEqual(drug_by_id("wockhardt").category, "lean")
@@ -824,7 +824,7 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self._stock_product(uid, guild_id, "og_kush", 2)
         result = await self.db.consume_drug(uid, guild_id, "og_kush", max_hp=200.0)
         self.assertIsNone(result["error"])
-        self.assertEqual(result["name"], "OG Kush")
+        self.assertEqual(result["name"], "Afterhours Kush")
         self.assertGreater(float(result["heal_amount"]), 0)
         inv = await self.db.get_drug_inventory(uid, guild_id)
         self.assertEqual(inv.get("og_kush"), 1)
@@ -835,7 +835,7 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self._stock_product(uid, guild_id, "greenleaf", 1)
         result = await self.db.consume_drug(uid, guild_id, "blue_dream", max_hp=200.0)
         self.assertIsNone(result["error"])
-        self.assertEqual(result["name"], "Blue Dream")
+        self.assertEqual(result["name"], "Velvet Dream")
         inv = await self.db.get_drug_inventory(uid, guild_id)
         self.assertEqual(inv.get("blue_dream", 0), 0)
 
@@ -847,7 +847,7 @@ class DrugDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(consumed["error"])
         pending = await self.db.peek_pending_drug_buff(uid, guild_id)
         self.assertIsNotNone(pending)
-        self.assertEqual(pending["name"], "Girl Scout Cookies")
+        self.assertEqual(pending["name"], "Stage-Door Cookies")
         self.assertGreater(float(pending["boss_mult"]), 1.0)
         taken = await self.db.take_pending_drug_buff(uid, guild_id)
         self.assertIsNotNone(taken)

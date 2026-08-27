@@ -50,43 +50,43 @@ class DrugDef:
 DRUGS: tuple[DrugDef, ...] = (
     # --- Cannabis (THC strains) ---
     DrugDef(
-        "blue_dream", "Blue Dream", "🌿", "cannabis",
+        "blue_dream", "Velvet Dream", "💋", "cannabis",
         200.0, 30 * 60, 4, 8, 120.0,
         "Relaxed focus — +10 energy, heal 5% HP.",
         effect_energy=10, effect_heal_pct=0.05,
     ),
     DrugDef(
-        "og_kush", "OG Kush", "🍃", "cannabis",
+        "og_kush", "Afterhours Kush", "🌙", "cannabis",
         350.0, 45 * 60, 4, 7, 180.0,
         "Heavy indica — heal 10% HP.",
         effect_heal_pct=0.10,
     ),
     DrugDef(
-        "girl_scout_cookies", "Girl Scout Cookies", "🍪", "cannabis",
+        "girl_scout_cookies", "Stage-Door Cookies", "🍪", "cannabis",
         600.0, 60 * 60, 3, 7, 280.0,
         "Sweet hybrid — next **/attack** deals +15% boss damage.",
         effect_boss_mult=1.15,
     ),
     DrugDef(
-        "purple_haze", "Purple Haze", "💜", "cannabis",
+        "purple_haze", "Club Haze", "💜", "cannabis",
         900.0, 75 * 60, 3, 6, 420.0,
         "Psychedelic sativa — next **/duel** deals +15% strike damage.",
         effect_duel_mult=1.15,
     ),
     DrugDef(
-        "sour_diesel", "Sour Diesel", "⛽", "cannabis",
+        "sour_diesel", "Floor Diesel", "⛽", "cannabis",
         1_200.0, 90 * 60, 3, 6, 550.0,
         "Energizing diesel — +20 energy.",
         effect_energy=20,
     ),
     DrugDef(
-        "gorilla_glue", "Gorilla Glue", "🦍", "cannabis",
+        "gorilla_glue", "Booth Glue", "🖤", "cannabis",
         1_800.0, 2 * 3600, 3, 5, 750.0,
         "Sticky knockout — heal 15% HP and +10 energy.",
         effect_heal_pct=0.15, effect_energy=10,
     ),
     DrugDef(
-        "white_widow", "White Widow", "🕸️", "cannabis",
+        "white_widow", "White Heat", "🔥", "cannabis",
         2_500.0, 3 * 3600, 2, 5, 950.0,
         "Balanced classic — +5 energy, next **/attack** +10% damage.",
         effect_energy=5, effect_boss_mult=1.10,

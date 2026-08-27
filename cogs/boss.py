@@ -642,9 +642,11 @@ class Boss(commands.Cog):
             return BOSS_NAME_FREAKY_NIKKI
         if variant == "world_leviathan":
             return BOSS_NAME_LEVIATHAN
-        if fallback:
-            return fallback
-        return BOSS_NAME
+        name = (fallback or BOSS_NAME).strip()
+        lowered = name.lower()
+        if "hannah" in lowered or "nuggetbot" in lowered:
+            return BOSS_NAME
+        return name or BOSS_NAME
 
     async def _complete_boss_defeat(
         self,
@@ -1100,9 +1102,9 @@ class Boss(commands.Cog):
                 variant = "freaky_nikki"
             elif roll < ultra + nikki + tomass:
                 variant = "tomass"
-                mirrored_variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
+                mirrored_variant = random.choice(config.VELVET_SPAWN_VARIANTS)
             else:
-                variant = random.choice(config.HANNAH_SPAWN_VARIANTS)
+                variant = random.choice(config.VELVET_SPAWN_VARIANTS)
 
         if variant == "tomass":
             hp = await self._spawn_boss(
@@ -1269,8 +1271,9 @@ class Boss(commands.Cog):
         variant = str(boss_row["variant"])
         bar = hp_bar(hp, max_hp)
         pct = int(round(100 * hp / max_hp)) if max_hp > 0 else 0
+        boss_label = self._boss_display_name(variant, str(boss_row["name"]))
         embed = discord.Embed(
-            title=f"{variant.title()} {boss_row['name']}",
+            title=f"{variant.title()} {boss_label}",
             description=f"`{bar}` **{pct}%**",
             color=discord.Color.dark_red(),
         )
@@ -1639,7 +1642,7 @@ class Boss(commands.Cog):
 
         bar = hp_bar(boss_hp, boss_max)
         pct = int(round(100 * boss_hp / boss_max)) if boss_max > 0 else 0
-        active_name = str(updated["name"])
+        active_name = self._boss_display_name(str(updated["variant"]), str(updated["name"]))
         embed = discord.Embed(
             title=f"{member.display_name} → {active_name}",
             color=discord.Color.green() if attack_critical else discord.Color.blurple(),
@@ -2018,7 +2021,7 @@ class Boss(commands.Cog):
         victim_class = await self.bot.db.get_class_id(victim_id, guild_id)
         reflect = roll_jester_reflect(victim_class)
         if reflect.proc:
-            boss_name = str(boss_row["name"])
+            boss_name = self._boss_display_name(variant, str(boss_row["name"]))
             damage_rows = await self.bot.db.list_boss_damage(guild_id)
             raiders = [int(r["user_id"]) for r in damage_rows if int(r["user_id"]) != victim_id]
             steal = 0.0
@@ -2086,7 +2089,7 @@ class Boss(commands.Cog):
             armor_text = f" {loadout.armor.name} mitigates {mitigated} ({pct}%)."
         crit_text = " Critical blow!" if critical else ""
         threat = int(config.BOSS_VARIANTS[variant]["threat"])
-        boss_name = str(boss_row["name"])
+        boss_name = self._boss_display_name(variant, str(boss_row["name"]))
         if hp <= 0:
             downed_seconds = await self._downed_duration_seconds(victim_id, guild_id)
             await self.bot.db.set_downed_until(victim_id, guild_id, time.time() + downed_seconds)
@@ -2205,7 +2208,7 @@ class Boss(commands.Cog):
             lines.append(f"**{index}.** {name} — **{fmt_amount(dmg)}** ({share}%)")
 
         embed = discord.Embed(
-            title=f"Raid damage — {boss['variant'].title()} {boss['name']}",
+            title=f"Raid damage — {boss['variant'].title()} {self._boss_display_name(str(boss['variant']), str(boss['name']))}",
             description="\n".join(lines),
             color=discord.Color.orange(),
         )
