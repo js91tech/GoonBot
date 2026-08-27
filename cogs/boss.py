@@ -1936,40 +1936,14 @@ class Boss(commands.Cog):
         if not proc.note:
             return ""
 
-        cc_immune = await self.bot.db.has_active_drug_cc_immunity(victim_id, guild_id)
-        cc_blocked = cc_immune and (
-            proc.storm_stun_seconds is not None
-            or proc.frost_slow_until is not None
-            or proc.verdant_root_until is not None
-        )
-
-        if (
-            proc.frost_slow_until is not None
-            or proc.verdant_root_until is not None
-            or proc.fire_burn is not None
-        ):
-            frost = proc.frost_slow_until if not cc_blocked else None
-            root = proc.verdant_root_until if not cc_blocked else None
-            debuff_cd = proc.debuff_attack_cooldown if not cc_blocked else None
-            if frost is not None or root is not None or proc.fire_burn is not None:
-                await self.bot.db.apply_boss_element_status(
-                    guild_id,
-                    victim_id,
-                    frost_slow_until=frost,
-                    verdant_root_until=root,
-                    fire_burn=proc.fire_burn,
-                    debuff_attack_cooldown=debuff_cd,
-                )
-        if proc.storm_stun_seconds is not None and not cc_blocked:
-            await self.bot.db.set_downed_until(
-                victim_id,
+        if proc.fire_burn is not None:
+            await self.bot.db.apply_boss_element_status(
                 guild_id,
-                time.time() + proc.storm_stun_seconds,
+                victim_id,
+                fire_burn=proc.fire_burn,
             )
         if proc.void_mana_drain is not None:
             await self.bot.db.drain_mana(victim_id, guild_id, proc.void_mana_drain)
-        if cc_blocked:
-            return f"{proc.note} 🛡️ **Numb high** — stun/freeze/root ignored."
         return proc.note
 
     async def _maybe_counterattack(self, guild_id: int, boss_row: Any) -> CounterattackResult:

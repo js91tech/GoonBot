@@ -4,7 +4,6 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 import config
 from database import Database
@@ -20,7 +19,6 @@ from utils.character_attributes import (
     unspent_attribute_points,
     xp_required_for_attribute_points,
 )
-from utils.boss_element_effects import roll_element_proc
 
 
 class CharacterAttributeUtilTests(unittest.TestCase):
@@ -155,14 +153,11 @@ class CharacterAttributeDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
 
 class BossDebuffResistanceTests(unittest.TestCase):
-    @patch("utils.boss_element_effects.random.random", return_value=0.0)
-    @patch("utils.boss_element_effects.roll_debuff_duration_for_threat", return_value=20.0)
-    def test_high_agi_shortens_storm_stun(self, _duration: object, _random: object) -> None:
-        high_agi = debuff_resistance_from_attributes(CharacterAttributes(agility=15))
-        proc = roll_element_proc("storm", now=100.0, threat=6, resistance=high_agi)
-        assert proc.storm_stun_seconds is not None
-        self.assertLess(proc.storm_stun_seconds, 20.0)
-        self.assertGreaterEqual(proc.storm_stun_seconds, config.ATTR_MIN_DEBUFF_SECONDS)
+    def test_high_agi_shortens_knockdown(self) -> None:
+        high_agi = CharacterAttributes(agility=15)
+        duration = resolve_downed_duration(30.0, high_agi)
+        self.assertLess(duration, 30.0)
+        self.assertGreaterEqual(duration, config.ATTR_MIN_DEBUFF_SECONDS)
 
 
 if __name__ == "__main__":

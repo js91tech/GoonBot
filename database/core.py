@@ -5329,18 +5329,12 @@ class Database(
         *,
         at: float | None = None,
     ) -> str | None:
-        now = time.time() if at is None else at
+        _ = at  # burn status is tick-count based; leftover chill/root is not shown
         row = await self.get_boss_raider_status(guild_id, user_id)
         if row is None:
             return None
         parts: list[str] = []
-        slow_until = float(row["attack_slow_until"])
-        root_until = float(row["verdant_root_until"])
         dot_ticks = int(row["dot_ticks_remaining"])
-        if slow_until > now:
-            parts.append(f"❄️ Chilled ({int(slow_until - now)}s)")
-        if root_until > now:
-            parts.append(f"🌿 Rooted ({int(root_until - now)}s)")
         if dot_ticks > 0:
             parts.append(f"🔥 Burning ({dot_ticks} ticks)")
         return " · ".join(parts) if parts else None

@@ -270,7 +270,7 @@ def format_attributes_block(
         effect_lines.append(f"+{combat.hp_bonus} HP (VIT)")
     cc_red = int(round((1.0 - resist.cc_duration_mult) * 100))
     if cc_red > 0:
-        effect_lines.append(f"-{cc_red}% stun/root/chill duration (AGI)")
+        effect_lines.append(f"-{cc_red}% knockdown duration (AGI)")
     proc_red = int(round((1.0 - resist.cc_proc_mult) * 100))
     if proc_red > 0:
         effect_lines.append(f"-{proc_red}% debuff proc chance (AGI)")

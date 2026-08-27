@@ -265,7 +265,8 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "normal → enraged → shadow → celestial → mythic\n"
                     "Special: **TomAss**, **ZZ Wrath**, **Freaky Nikki**, **World Leviathan**",
                     "**Elements** — bosses have fire/frost/storm/void/verdant; your class element "
-                    "can boost or reduce `/attack` damage.\n"
+                    "can boost or reduce `/attack` damage. Fire counters may burn; void may drain "
+                    "mana. Bosses do not stun, freeze, or root.\n"
                     "**Loot** — less battle-worn spam; more epic/aspect/accessory/hardener odds; "
                     "top damager crate; celestial shards on mythic / ZZ / Leviathan",
                 ],

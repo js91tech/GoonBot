@@ -21,10 +21,16 @@ from utils.boss_element_effects import (
 
 class BossElementEffectUtilTests(unittest.TestCase):
     def test_element_hazard_text_known_elements(self) -> None:
-        self.assertIn("Frost", element_hazard_text("frost") or "")
-        self.assertIn("Fire", element_hazard_text("fire") or "")
-        self.assertIn("Storm", element_hazard_text("storm") or "")
-        self.assertIn("threat tier", element_hazard_text("storm") or "")
+        self.assertIsNone(element_hazard_text("frost"))
+        self.assertIsNone(element_hazard_text("storm"))
+        self.assertIsNone(element_hazard_text("verdant"))
+        fire = element_hazard_text("fire") or ""
+        void = element_hazard_text("void") or ""
+        self.assertIn("Fire", fire)
+        self.assertIn("burn", fire.lower())
+        self.assertIn("Void", void)
+        self.assertNotIn("chill", fire.lower())
+        self.assertNotIn("stun", void.lower())
 
     def test_debuff_attack_cooldown_in_range(self) -> None:
         lo, hi = config.BOSS_DEBUFF_ATTACK_COOLDOWN_SECONDS
@@ -55,39 +61,35 @@ class BossElementEffectUtilTests(unittest.TestCase):
                 self.assertGreaterEqual(duration, t_lo)
                 self.assertLessEqual(duration, t_hi)
 
-    def test_attack_cooldown_while_debuffed_uses_stored_value(self) -> None:
+    def test_attack_cooldown_while_debuffed_ignores_leftover_cc(self) -> None:
         now = 1000.0
         cd = attack_cooldown_while_debuffed(
             attack_slow_until=now + 10,
-            verdant_root_until=0.0,
+            verdant_root_until=now + 10,
             debuff_attack_cooldown=9.0,
             now=now,
         )
-        self.assertEqual(cd, 9.0)
+        self.assertIsNone(cd)
 
     @patch("utils.boss_element_effects.random.random", return_value=0.0)
-    @patch("utils.boss_element_effects.roll_debuff_duration_for_threat", return_value=12.0)
-    @patch("utils.boss_element_effects.roll_debuff_attack_cooldown", return_value=10.0)
-    def test_roll_frost_proc(
-        self,
-        _debuff_cd: object,
-        _duration: object,
-        _random: object,
-    ) -> None:
-        proc = roll_element_proc("frost", now=100.0, threat=3)
-        self.assertIn("Chilled", proc.note)
-        self.assertIsNotNone(proc.frost_slow_until)
-        self.assertEqual(proc.debuff_attack_cooldown, 10.0)
-        assert proc.frost_slow_until is not None
-        self.assertEqual(proc.frost_slow_until, 112.0)
+    def test_frost_storm_verdant_do_not_apply_cc(self, _random: object) -> None:
+        for element in ("frost", "storm", "verdant"):
+            proc = roll_element_proc(element, now=100.0, threat=6)
+            self.assertEqual(proc.note, "")
+            self.assertIsNone(proc.fire_burn)
+            self.assertIsNone(proc.void_mana_drain)
 
     @patch("utils.boss_element_effects.random.random", return_value=0.0)
-    @patch("utils.boss_element_effects.roll_debuff_duration_for_threat", return_value=14.0)
-    def test_roll_storm_stun_uses_tier_duration(self, _duration: object, _random: object) -> None:
-        proc = roll_element_proc("storm", now=100.0, threat=4)
-        self.assertIn("Stunned", proc.note)
-        assert proc.storm_stun_seconds is not None
-        self.assertEqual(proc.storm_stun_seconds, 14.0)
+    def test_roll_fire_burn_still_applies(self, _random: object) -> None:
+        proc = roll_element_proc("fire", now=100.0, threat=3)
+        self.assertIn("Burning", proc.note)
+        self.assertIsNotNone(proc.fire_burn)
+
+    @patch("utils.boss_element_effects.random.random", return_value=0.0)
+    def test_roll_void_drain_still_applies(self, _random: object) -> None:
+        proc = roll_element_proc("void", now=100.0, threat=3)
+        self.assertIn("Void", proc.note)
+        self.assertIsNotNone(proc.void_mana_drain)
 
 
 class BossElementDatabaseTests(unittest.IsolatedAsyncioTestCase):
@@ -105,23 +107,29 @@ class BossElementDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
         self.tmp.cleanup()
 
-    async def test_frost_slow_uses_debuff_attack_cooldown(self) -> None:
+    async def test_leftover_frost_does_not_extend_attack_cooldown(self) -> None:
         now = time.time()
         await self.db.record_boss_attack_time(self.guild_id, self.user_id, now)
-        await self.db.apply_boss_element_status(
-            self.guild_id,
-            self.user_id,
-            frost_slow_until=now + 30,
-            debuff_attack_cooldown=10.0,
-        )
-        remaining = await self.db.boss_attack_cooldown_remaining(
+        remaining_before = await self.db.boss_attack_cooldown_remaining(
             self.guild_id,
             self.user_id,
             at=now + 1,
         )
-        self.assertIsNotNone(remaining)
-        assert remaining is not None
-        self.assertGreater(remaining, 7.0)
+        await self.db.apply_boss_element_status(
+            self.guild_id,
+            self.user_id,
+            frost_slow_until=now + 30,
+            debuff_attack_cooldown=2.0,
+        )
+        remaining_after = await self.db.boss_attack_cooldown_remaining(
+            self.guild_id,
+            self.user_id,
+            at=now + 1,
+        )
+        self.assertIsNotNone(remaining_before)
+        self.assertIsNotNone(remaining_after)
+        assert remaining_before is not None and remaining_after is not None
+        self.assertAlmostEqual(remaining_before, remaining_after, places=2)
 
     async def test_record_boss_attack_uses_base_cooldown_range(self) -> None:
         now = time.time()
@@ -161,7 +169,7 @@ class BossElementDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ticks_left, 1)
         self.assertLess(hp, max_hp)
 
-    async def test_debuff_summary_lists_active_effects(self) -> None:
+    async def test_debuff_summary_lists_burn_not_leftover_chill(self) -> None:
         now = time.time()
         await self.db.apply_boss_element_status(
             self.guild_id,
@@ -176,7 +184,8 @@ class BossElementDatabaseTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNotNone(summary)
         assert summary is not None
-        self.assertIn("Chilled", summary)
+        self.assertNotIn("Chilled", summary)
+        self.assertNotIn("Rooted", summary)
         self.assertIn("Burning", summary)
 
 

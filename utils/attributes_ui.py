@@ -48,7 +48,7 @@ async def build_attributes_embed(
         name="Guide",
         value=(
             f"Use **+1** buttons below. Pool **{pool_cap}** total · **{stat_cap}**/stat max.\n"
-            "**AGI** cuts stun/root/chill · **DEF** cuts burn/void · **STR/DEX/VIT** boost combat."
+            "**AGI** cuts knockdown · **DEF** cuts burn/void · **STR/DEX/VIT** boost combat."
         ),
         inline=False,
     )
