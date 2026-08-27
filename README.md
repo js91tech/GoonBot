@@ -109,7 +109,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 | Command | Description |
 |---------|-------------|
-| `/hack @user` | Start the hannah hentai hanta virus; usable every 5 minutes per user |
+| `/hack @user` | Start the Velvet Vixen love virus; usable every 5 minutes per user |
 | `/transfer @user` | Pass the virus to someone else and give them the timer |
 
 ### Boss

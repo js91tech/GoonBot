@@ -232,8 +232,7 @@ async def channel_is_allowed_bot_room(
 def bot_room_required_message(bot_room: discord.abc.GuildChannel | None) -> str:
     if bot_room is not None:
         return (
-            f"GoonBot only runs in {bot_room.mention} "
-            f"(the NuggetIvitesBot / bot room). Use that channel. "
+            f"GoonBot only runs in {bot_room.mention}. Use that channel. "
             f"Lore Roulette (`/trivia`) also runs in #yappinmain."
         )
     return (

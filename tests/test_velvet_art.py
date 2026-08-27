@@ -49,6 +49,14 @@ class VelvetArtTests(unittest.TestCase):
         self.assertNotIn("_", art.filename)
         self.assertEqual(embed.to_dict()["image"]["url"], art.uri)
 
+    def test_hannah_stored_name_is_rewritten(self) -> None:
+        from cogs.boss import Boss
+
+        self.assertEqual(Boss._boss_display_name("normal", "Hannah"), "Velvet Vixen")
+        self.assertEqual(Boss._boss_display_name("enraged", "Hannah Hentai"), "Velvet Vixen")
+        self.assertEqual(Boss._boss_display_name("shadow", "Velvet Vixen"), "Velvet Vixen")
+        self.assertEqual(Boss._boss_display_name("tomass", "Hannah"), "TomAss")
+
 
 if __name__ == "__main__":
     unittest.main()

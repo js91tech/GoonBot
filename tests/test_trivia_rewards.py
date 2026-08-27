@@ -57,6 +57,15 @@ class TriviaRewardMathTests(unittest.TestCase):
         ):
             self.assertEqual(roll_trivia_drug(), "blue_dream")
 
+    def test_trivia_drug_display_is_goonbot_named(self) -> None:
+        from utils.drugs import drug_by_id
+
+        defn = drug_by_id("blue_dream")
+        assert defn is not None
+        self.assertEqual(defn.name, "Velvet Dream")
+        self.assertNotIn("nugget", defn.name.lower())
+        self.assertNotEqual(defn.name, "Blue Dream")
+
     def test_normalize_strips_punctuation(self) -> None:
         self.assertEqual(normalize_trivia_guess("Hello!"), "hello")
         self.assertEqual(normalize_trivia_guess("  goonbux. "), "goonbux")

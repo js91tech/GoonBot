@@ -59,7 +59,7 @@ class UsePanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(err)
         self.assertIsNotNone(message)
         assert message is not None
-        self.assertIn("Blue Dream", message)
+        self.assertIn("Velvet Dream", message)
 
     async def test_execute_use_energy_drink(self) -> None:
         from utils.consumables_ui import execute_use

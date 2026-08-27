@@ -116,11 +116,13 @@ def _label_bar(canvas: Image.Image, name: str, defn: object, color: tuple[int, i
 
 def render_drug_image(drug_id: str) -> bytes:
     defn = drug_by_id(drug_id)
+    canonical = defn.drug_id if defn else drug_id
     name = defn.name if defn else "Product"
-    color = _STRAIN_COLORS.get(drug_id, _STRAIN_COLORS.get(defn.drug_id if defn else "", (160, 160, 170)))
-    rng = _rng(drug_id)
+    color = _STRAIN_COLORS.get(canonical, _STRAIN_COLORS.get(drug_id, (160, 160, 170)))
+    rng = _rng(canonical)
 
-    base = _static_asset(drug_id)
+    # Prefer canonical art so leftover NuggetBot ids (greenleaf, etc.) never show.
+    base = _static_asset(canonical)
     if base is not None:
         try:
             canvas = _cover_resize(Image.open(base).convert("RGB"), WIDTH, HEIGHT)
