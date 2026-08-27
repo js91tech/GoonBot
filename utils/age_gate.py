@@ -94,6 +94,21 @@ def channel_is_nsfw(channel: Any) -> bool:
     return bool(getattr(channel, "nsfw", False) or getattr(channel, "is_nsfw", lambda: False)())
 
 
+def _interaction_command_name(interaction: discord.Interaction) -> str:
+    cmd = getattr(interaction, "command", None)
+    if cmd is not None:
+        qualified = getattr(cmd, "qualified_name", None)
+        if qualified:
+            return str(qualified)
+        name = getattr(cmd, "name", None)
+        if name:
+            return str(name)
+    data = getattr(interaction, "data", None) or {}
+    if isinstance(data, dict):
+        return str(data.get("name") or "")
+    return str(getattr(data, "name", "") or "")
+
+
 async def check_interaction(interaction: discord.Interaction, db: Database) -> bool:
     """Tree interaction_check: NSFW channel + bot room + age gate. Returns False to block."""
     if interaction.guild_id is None:
@@ -126,10 +141,12 @@ async def check_interaction(interaction: discord.Interaction, db: Database) -> b
                 return False
 
     # Bot-room lock — players may only use commands in the NuggetIvitesBot room.
+    # Exception: /trivia (Lore Roulette) is also allowed in the main channel (yappinmain).
     from utils.bot_room import (
         bot_room_only_enabled,
         bot_room_required_message,
         channel_is_allowed_bot_room,
+        channel_is_allowed_lore,
         resolve_bot_room,
     )
 
@@ -141,8 +158,13 @@ async def check_interaction(interaction: discord.Interaction, db: Database) -> b
         interaction.guild is not None
         and await bot_room_only_enabled(db, interaction.guild_id)
         and not is_admin
+        and not await channel_is_allowed_bot_room(interaction.guild, db, channel)
     ):
-        if not await channel_is_allowed_bot_room(interaction.guild, db, channel):
+        trivia_in_main = (
+            _interaction_command_name(interaction) == "trivia"
+            and await channel_is_allowed_lore(interaction.guild, db, channel)
+        )
+        if not trivia_in_main:
             bot_room = await resolve_bot_room(interaction.guild, db)
             await interaction.response.send_message(
                 bot_room_required_message(bot_room),

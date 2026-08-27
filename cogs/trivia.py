@@ -14,10 +14,13 @@ from discord.ext import commands, tasks
 
 import config
 from utils.bot_players import skip_gameplay_bot
-from utils.bot_room import message_allowed_for_gameplay, resolve_public_channel, send_bot_room_message
+from utils.bot_room import (
+    message_allowed_for_trivia,
+    resolve_lore_channel,
+    send_channel_message,
+)
 from utils.drugs import DRUGS, drug_by_id
-from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel
-
+from utils.helpers import fmt_amount, guild_only_message
 
 _TRIVIA_PUNCT = ".,!?;:()[]{}\"'"
 
@@ -147,19 +150,33 @@ class Trivia(commands.Cog):
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
-        if self._channel_has_active_round(interaction.channel_id):
-            await interaction.response.send_message("A trivia round is already active here.", ephemeral=True)
+        target = await resolve_lore_channel(interaction.guild, self.bot.db, interaction.channel)
+        if not isinstance(target, discord.TextChannel):
+            await interaction.response.send_message(
+                "I could not find the main channel (yappinmain) for Lore Roulette.",
+                ephemeral=True,
+            )
             return
 
-        await interaction.response.defer()
-        channel = interaction.channel
-        if not isinstance(channel, discord.TextChannel):
-            await interaction.followup.send("Trivia can only run in a text channel.")
+        if self._channel_has_active_round(target.id):
+            await interaction.response.send_message(
+                f"A trivia round is already active in {target.mention}.",
+                ephemeral=True,
+            )
             return
 
-        started = await self._start_round(interaction.guild, channel)
+        await interaction.response.defer(ephemeral=True)
+        started = await self._start_round(interaction.guild, target)
         if not started:
-            await interaction.followup.send("I could not find a suitable recent message for trivia.")
+            await interaction.followup.send(
+                "I could not find a suitable recent message for trivia.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"Lore Roulette is live in {target.mention}.",
+            ephemeral=True,
+        )
 
     @app_commands.command(name="chaos", description="Open the chaos hub (trivia, scourge, virus).")
     @app_commands.guild_only()
@@ -171,7 +188,7 @@ class Trivia(commands.Cog):
     @tasks.loop(hours=config.TRIVIA_EVENT_INTERVAL_HOURS)
     async def trivia_event_tick(self) -> None:
         for guild in self.bot.guilds:
-            channel = await resolve_main_channel(guild, self.bot.db)
+            channel = await resolve_lore_channel(guild, self.bot.db)
             if channel is None:
                 logging.warning("Trivia event: no channel to announce in guild %s", guild.id)
                 continue
@@ -218,13 +235,8 @@ class Trivia(commands.Cog):
         await self._disable_round_view(active)
         if not announce or active.message is None:
             return
-        guild = active.message.guild
-        if guild is None:
-            return
-        await send_bot_room_message(
+        await send_channel_message(
             self.bot,
-            guild,
-            self.bot.db,
             active.message.channel,
             content=f"⏰ Trivia timed out — the answer was `{active.answer}`.",
             allowed_mentions=discord.AllowedMentions.none(),
@@ -237,9 +249,9 @@ class Trivia(commands.Cog):
         *,
         announce_prefix: bool = False,
     ) -> bool:
-        resolved = await resolve_public_channel(guild, self.bot.db, channel)
+        resolved = await resolve_lore_channel(guild, self.bot.db, channel)
         if not isinstance(resolved, discord.TextChannel):
-            logging.warning("Trivia: no bot room to start in guild %s", guild.id)
+            logging.warning("Trivia: no lore channel to start in guild %s", guild.id)
             return False
         channel = resolved
 
@@ -260,10 +272,8 @@ class Trivia(commands.Cog):
         )
         self.active_rounds[channel.id] = round_state
         header = "**Random Lore Roulette!** " if announce_prefix else ""
-        message = await send_bot_room_message(
+        message = await send_channel_message(
             self.bot,
-            guild,
-            self.bot.db,
             channel,
             content=(
                 f"{header}Guess the missing word within {format_trivia_window()} — "
@@ -300,21 +310,26 @@ class Trivia(commands.Cog):
             await interaction.response.send_message(guild_only_message(), ephemeral=True)
             return
 
-        if self._channel_has_active_round(interaction.channel_id):
+        target = await resolve_lore_channel(interaction.guild, self.bot.db, interaction.channel)
+        if not isinstance(target, discord.TextChannel):
             await interaction.response.send_message(
-                "A trivia round is already active here.", ephemeral=True,
+                "I could not find the main channel (yappinmain) for Lore Roulette.",
+                ephemeral=True,
             )
             return
 
-        channel = interaction.channel
-        if not isinstance(channel, discord.TextChannel):
+        if self._channel_has_active_round(target.id):
             await interaction.response.send_message(
-                "Trivia can only run in a text channel.", ephemeral=True,
+                f"A trivia round is already active in {target.mention}.",
+                ephemeral=True,
             )
             return
 
-        await interaction.response.send_message("Starting a Lore Roulette round…", ephemeral=True)
-        started = await self._start_round(interaction.guild, channel)
+        await interaction.response.send_message(
+            f"Starting a Lore Roulette round in {target.mention}…",
+            ephemeral=True,
+        )
+        started = await self._start_round(interaction.guild, target)
         if not started:
             await interaction.followup.send(
                 "I could not find a suitable recent message for trivia.", ephemeral=True,
@@ -481,10 +496,8 @@ class Trivia(commands.Cog):
 
         channel = interaction.guild.get_channel(channel_id) or self.bot.get_channel(channel_id)
         if isinstance(channel, discord.abc.Messageable):
-            await send_bot_room_message(
+            await send_channel_message(
                 self.bot,
-                interaction.guild,
-                self.bot.db,
                 channel,
                 content=text,
                 allowed_mentions=discord.AllowedMentions.none(),
@@ -494,7 +507,7 @@ class Trivia(commands.Cog):
     async def on_message(self, message: discord.Message) -> None:
         if skip_gameplay_bot(message.author) or message.guild is None:
             return
-        if not await message_allowed_for_gameplay(message, self.bot.db):
+        if not await message_allowed_for_trivia(message, self.bot.db):
             return
 
         active = self.active_rounds.get(message.channel.id)
@@ -514,10 +527,8 @@ class Trivia(commands.Cog):
         text = await self._reward_correct_answer(
             message.guild, message.author, claimed.answer, claimed.expires_at, claimed.started_at,
         )
-        await send_bot_room_message(
+        await send_channel_message(
             self.bot,
-            message.guild,
-            self.bot.db,
             message.channel,
             content=text,
             allowed_mentions=discord.AllowedMentions.none(),
