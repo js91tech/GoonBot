@@ -517,13 +517,13 @@ class ChaosHubView(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label="💀 Hack virus", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="💀 Contagious goon", style=discord.ButtonStyle.secondary, row=0)
     async def hack_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
         await interaction.response.send_message(
-            f"**{config.HACK_VIRUS_NAME.title()}** — start the hot-potato with `/hack @user`, "
-            "then the holder runs `/transfer @user` to pass it along before it detonates and "
-            "docks their wallet.",
+            f"**{config.HACK_VIRUS_NAME.title()}** — start it with `/hack @user`, "
+            "then the holder runs `/transfer @user` before it pops, docks their wallet, "
+            "and ruins their goon session.",
             ephemeral=True,
         )
 
@@ -539,7 +539,8 @@ async def send_chaos_hub(interaction: discord.Interaction, cog: commands.Cog) ->
                 "Quick actions for the server's chaos modules.\n\n"
                 "🦠 **Trivia** — start a Lore Roulette round in #yappinmain\n"
                 "☣️ **Scourge Virus** — how to pass an active infection\n"
-                "💀 **Hack virus** — how the hot-potato virus works"
+                "💀 **Contagious goon** — pass it or pop (ruins their session)\n"
+                "💋 **Session** — `/goon edge` · finish · ruin · tease"
             ),
             color=danger_color(),
         )

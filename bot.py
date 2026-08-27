@@ -36,6 +36,7 @@ COGS = (
     "cogs.avatars",
     "cogs.help",
     "cogs.profile",
+    "cogs.goon",
     "cogs.loadout",
     "cogs.consumables",
     "cogs.crews",

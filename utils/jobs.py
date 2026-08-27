@@ -21,8 +21,8 @@ class JobDef:
 JOBS: tuple[JobDef, ...] = (
     JobDef(
         "miner",
-        "Lounge Grinder",
-        "Work the VIP lounge circuit for steady goonbux.",
+        "Goon Cave Shift",
+        "Scroll, edge, collect tributes. Don't finish on the clock.",
         10,
         85.0,
         130.0,
@@ -30,8 +30,8 @@ JOBS: tuple[JobDef, ...] = (
     ),
     JobDef(
         "medic",
-        "Aftercare Medic",
-        "Patch up spent raiders and keep the session going.",
+        "Aftercare",
+        "Wipe them down. Get them hard again. Keep the session going.",
         10,
         70.0,
         115.0,
@@ -39,8 +39,8 @@ JOBS: tuple[JobDef, ...] = (
     ),
     JobDef(
         "raider",
-        "Velvet Scout",
-        "Scout Velvet Vixen weak points for the war band.",
+        "Velvet Tease",
+        "Scout what she's wearing. Report back dripping.",
         12,
         60.0,
         105.0,
@@ -48,8 +48,8 @@ JOBS: tuple[JobDef, ...] = (
     ),
     JobDef(
         "courier",
-        "Stash Runner",
-        "Haul goonbux, gear, and stash across the server.",
+        "Clip Runner",
+        "Haul clips, stash, and goonbux across the floor.",
         8,
         75.0,
         120.0,
@@ -57,8 +57,8 @@ JOBS: tuple[JobDef, ...] = (
     ),
     JobDef(
         "stage_talent",
-        "Main-Stage Shift",
-        "Talent-only — own the lights while the floor tips hard.",
+        "Main-Stage Edge",
+        "Talent-only — own the lights. Stay edged until last call.",
         12,
         110.0,
         165.0,
@@ -67,8 +67,8 @@ JOBS: tuple[JobDef, ...] = (
     ),
     JobDef(
         "floor_host",
-        "Booth Host",
-        "Host-only — work the booths and keep tabs flowing.",
+        "Private Booth",
+        "Host-only — work the booths. Keep them tipping and leaking.",
         10,
         120.0,
         175.0,
@@ -77,8 +77,8 @@ JOBS: tuple[JobDef, ...] = (
     ),
     JobDef(
         "backroom_fixer",
-        "Back-Room Fix",
-        "Fixer-only — quiet jobs behind the velvet rope.",
+        "Back-Room Peek",
+        "Fixer-only — quiet jobs behind the curtain. Nobody asks what the clip is for.",
         11,
         100.0,
         160.0,

@@ -15,6 +15,7 @@ import asyncpg
 
 import config
 from database.expansion import DatabaseExpansionMixin
+from database.goon_session import DatabaseGoonSessionMixin
 from database.inventory import DatabaseInventoryMixin
 from database.types import DailyClaimResult, WalletPanelData, _spendable_cents
 from database.wallet import DatabaseWalletMixin
@@ -142,6 +143,7 @@ class PostgresConnection:
         "duel_elo": "(guild_id, user_id)",
         "player_avatar_unlocks": "(guild_id, user_id, avatar_id)",
         "equipped_aspect_slots": "(guild_id, user_id, slot)",
+        "goon_sessions": "(user_id, guild_id)",
     }
 
     @classmethod
@@ -180,7 +182,12 @@ class PostgresConnection:
         return sql
 
 
-class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMixin):
+class Database(
+    DatabaseWalletMixin,
+    DatabaseInventoryMixin,
+    DatabaseExpansionMixin,
+    DatabaseGoonSessionMixin,
+):
     def __init__(self, path: str) -> None:
         self.path = path
         self.urls = self._postgres_urls()
@@ -499,6 +506,7 @@ class Database(DatabaseWalletMixin, DatabaseInventoryMixin, DatabaseExpansionMix
         await self._migrate_gameplay_expansion()
         await self._migrate_goonbot_age_gate()
         await self._migrate_heat_status()
+        await self._migrate_goon_sessions()
 
     async def _migrate_heat_status(self) -> None:
         """Lifetime goonbux spent → VIP / heat tiers."""

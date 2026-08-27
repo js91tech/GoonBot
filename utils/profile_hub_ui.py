@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from utils.energy import energy_bar, energy_snapshot
+from utils.goon_session import format_session_block
 from utils.goon_theme import FOOTER_BRAND, branded_embed, panel_title
 from utils.helpers import fmt_amount, guild_only_message
 
@@ -32,6 +33,7 @@ async def _gather_profile_summary(db: Database, user_id: int, guild_id: int) -> 
     )
     class_id = await db.get_class_id(user_id, guild_id)
     goonbux_spent = await db.get_goonbux_spent(user_id, guild_id)
+    session = await db.get_goon_session(user_id, guild_id)
     return {
         "wallet": wallet,
         "bank": bank,
@@ -39,6 +41,7 @@ async def _gather_profile_summary(db: Database, user_id: int, guild_id: int) -> 
         "energy_cap": snap.cap,
         "class_id": class_id,
         "goonbux_spent": goonbux_spent,
+        "goon_session": session,
     }
 
 
@@ -86,6 +89,9 @@ def build_profile_hub_embed(member: discord.Member, summary: dict) -> discord.Em
         inline=False,
     )
     embed.add_field(name="Your floor", value=persona_floor_blurb(class_id if isinstance(class_id, str) else None), inline=False)
+    session = summary.get("goon_session")
+    if session is not None:
+        embed.add_field(name="Goon session", value=format_session_block(session), inline=False)
     embed.set_footer(text=f"{FOOTER_BRAND} · /stats for full combat breakdown")
     return embed
 
@@ -263,6 +269,21 @@ class ProfileHubView(discord.ui.View):
         summary = await _gather_profile_summary(self.cog.bot.db, self.user_id, self.guild_id)
         embed = build_profile_hub_embed(member, summary)
         await interaction.response.edit_message(content=None, embed=embed, view=self)
+
+    @discord.ui.button(label="Session", style=discord.ButtonStyle.primary, row=2)
+    async def session_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        from utils.goon_session_ui import GoonSessionHubView, build_goon_session_embed
+
+        embed = await build_goon_session_embed(self.cog.bot.db, member, self.guild_id)
+        view = GoonSessionHubView(self.cog, self.guild_id, self.user_id)
+        await interaction.response.edit_message(content=None, embed=embed, view=view)
 
     @discord.ui.button(label="Chaos", style=discord.ButtonStyle.danger, row=2)
     async def chaos_btn(

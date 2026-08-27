@@ -276,10 +276,9 @@ class Trivia(commands.Cog):
             self.bot,
             channel,
             content=(
-                f"{header}Guess the missing word within {format_trivia_window()} — "
-                f"**faster answers pay more**, and winners can snag a **free drug**:\n\n"
+                f"{header}Fill the blank — **faster answers pay more**, winners can snag a **stash drop**:\n\n"
                 f"> {prompt}\n\n"
-                "_Type your answer in chat, or tap **Answer** to submit privately._"
+                "_Type in chat, or tap **Answer**. Gooner lore fills in when the floor's been quiet._"
             ),
             view=view,
         )
@@ -366,7 +365,9 @@ class Trivia(commands.Cog):
                 continue
 
         if not candidates:
-            return None
+            from utils.goon_session import blank_lore_line
+
+            return blank_lore_line()
 
         for content in random.sample(candidates, k=len(candidates)):
             words = content.split()

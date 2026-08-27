@@ -87,6 +87,7 @@ class Hacker(commands.Cog):
         holder_id = int(pot["holder_id"])
         penalty = await self._penalty(guild_id, int(pot["pass_count"]), holder_id)
         removed = await self.bot.db.remove_up_to_balance(holder_id, guild_id, penalty)
+        await self.bot.db.ruin_goon_from_hack(holder_id, guild_id, now=time.time())
         await self.bot.db.clear_hacker_pot(guild_id)
 
         guild = self.bot.get_guild(guild_id)
@@ -94,9 +95,10 @@ class Hacker(commands.Cog):
             return
         preferred = self.bot.get_channel(channel_id)
         embed = discord.Embed(
-            title="Virus detonated",
+            title="Goon popped",
             description=(
-                f"<@{int(pot['holder_id'])}> took the hit for **{fmt_amount(removed)}**."
+                f"<@{int(pot['holder_id'])}> couldn't pass it. "
+                f"**{fmt_amount(removed)}** gone — session ruined."
             ),
             color=discord.Color.dark_red(),
         )
@@ -110,8 +112,8 @@ class Hacker(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @app_commands.command(name="hack", description="Start a hot-potato virus.")
-    @app_commands.describe(target="Initial virus holder")
+    @app_commands.command(name="hack", description="Start a contagious goon — they pass it or pop.")
+    @app_commands.describe(target="Who catches the goon")
     @app_commands.guild_only()
     async def hack(self, interaction: discord.Interaction, target: discord.Member) -> None:
         if interaction.guild_id is None or interaction.channel_id is None:
@@ -124,7 +126,7 @@ class Hacker(commands.Cog):
 
         existing = await self.bot.db.get_hacker_pot(interaction.guild_id)
         if existing is not None and float(existing["expires_at"]) > time.time():
-            await interaction.response.send_message("A virus is already active in this server.", ephemeral=True)
+            await interaction.response.send_message("A goon is already spreading in this server.", ephemeral=True)
             return
         if existing is not None:
             await self.bot.db.clear_hacker_pot(interaction.guild_id)
@@ -164,7 +166,7 @@ class Hacker(commands.Cog):
         self._replace_timer(interaction.guild_id, announce_id)
         penalty = await self._penalty(interaction.guild_id, 0, target.id)
         embed = self._virus_embed(
-            title="Virus deployed",
+            title="Goon deployed",
             holder=target,
             holder_id=target.id,
             seconds_left=float(timer_seconds),
@@ -185,18 +187,18 @@ class Hacker(commands.Cog):
         if posted is None:
             await self.bot.db.clear_hacker_pot(interaction.guild_id)
             await interaction.followup.send(
-                "Could not announce the virus — set the bot room with "
+                "Could not announce the goon — set the bot room with "
                 "`/admin set-designated-channel`.",
                 ephemeral=True,
             )
             return
         await interaction.followup.send(
-            f"Virus announced in {posted.channel.mention}.",
+            f"Contagious goon announced in {posted.channel.mention}.",
             ephemeral=True,
         )
 
-    @app_commands.command(name="transfer", description="Pass the virus to someone else.")
-    @app_commands.describe(target="New virus holder")
+    @app_commands.command(name="transfer", description="Pass the goon to someone else.")
+    @app_commands.describe(target="Who you're passing it to")
     @app_commands.guild_only()
     async def transfer(self, interaction: discord.Interaction, target: discord.Member) -> None:
         if interaction.guild_id is None or interaction.channel_id is None:
@@ -215,10 +217,10 @@ class Hacker(commands.Cog):
                 if announce_id is None:
                     announce_id = interaction.channel_id
                 await self._detonate(interaction.guild_id, announce_id)
-            await interaction.response.send_message("No active virus is transferable.", ephemeral=True)
+            await interaction.response.send_message("No active goon is transferable.", ephemeral=True)
             return
         if int(pot["holder_id"]) != interaction.user.id:
-            await interaction.response.send_message("Only the current holder can transfer the virus.", ephemeral=True)
+            await interaction.response.send_message("Only the current holder can pass the goon.", ephemeral=True)
             return
 
         next_pass_count = int(pot["pass_count"]) + 1
@@ -238,7 +240,7 @@ class Hacker(commands.Cog):
         seconds_left = float(pot["expires_at"]) - current
         seconds_left = min(float(timer_seconds), max(0.0, seconds_left))
         embed = self._virus_embed(
-            title="Virus transferred",
+            title="Goon passed",
             holder=target,
             holder_id=target.id,
             seconds_left=float(timer_seconds),
@@ -247,7 +249,7 @@ class Hacker(commands.Cog):
             pass_count=next_pass_count,
             color=discord.Color.orange(),
         )
-        embed.description = f"{interaction.user.mention} passed the hot potato to {target.mention}."
+        embed.description = f"{interaction.user.mention} passed the goon to {target.mention}."
         await interaction.response.defer(ephemeral=True)
         posted = await send_bot_room_message(
             self.bot,

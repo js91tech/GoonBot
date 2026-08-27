@@ -9,14 +9,15 @@ from utils.goon_theme import FOOTER_BRAND, brand_color, branded_embed, panel_tit
 ONBOARDING_TITLE = "You're on the guest list"
 ONBOARDING_BODY = (
     "Welcome to **GoonBot** — an 18+ nightlife economy. "
-    "Tonight isn't a dungeon grind. It's a **night out**.\n\n"
-    "**1.** `/daily` — tip yourself in (goonbux)\n"
+    "Tonight isn't a dungeon grind. It's a **session**.\n\n"
+    "**1.** `/daily` — another round (goonbux)\n"
     "**2.** `/class choose` — pick a **persona** "
     "(Talent / Host / Fixer) for your floor\n"
-    "**3.** `/jobs` or `/business` — make floor money "
+    "**3.** `/goon edge` — start a streak. Don't finish.\n"
+    "**4.** `/jobs` or `/business` — make floor money "
     "(persona hustles unlock)\n"
-    "**4.** `/boss` — when **Velvet Walks In**, be there\n"
-    "**5.** `/profile` — heat / VIP tables, private rooms, hustles, empire\n\n"
+    "**5.** `/boss` — when **Velvet Walks In**, be there\n"
+    "**6.** `/profile` — heat / VIP, session meter, hustles, empire\n\n"
     "Play in **NSFW channels**. Admins can toggle `nsfw_channel_only`."
 )
 
@@ -44,8 +45,8 @@ class NightLoopView(discord.ui.View):
         embed = branded_embed(
             "Doors are open",
             description=(
-                "Claim `/daily`, pick `/class choose`, then hit the floor. "
-                "When Velvet shows, `/boss` is last call."
+                "Claim `/daily`, pick `/class choose`, then `/goon edge`. "
+                "When Velvet shows, `/boss` is last call. Don't finish first."
             ),
         )
         self.stop()

@@ -41,13 +41,13 @@ STARTER_ARMOR = ShopItem(
 )
 
 WEAPONS: tuple[ShopItem, ...] = (
-    ShopItem("twig_sword", "Tease Blade", "weapon", 250, 12, "Starter steel with attitude.", ("pokes", "teases")),
-    ShopItem("rusty_dagger", "Backroom Shiv", "weapon", 750, 43, "Fast, cheap, and a little filthy.", ("stabs", "nicks"), crit_chance=0.02),
-    ShopItem("iron_sword", "Velvet Edge", "weapon", 1_800, 75, "Reliable raid steel with a crimson wrap.", ("slashes", "cleaves"), crit_chance=0.04),
-    ShopItem("ember_axe", "Heat Axe", "weapon", 4_000, 106, "Hot enough to leave a mark.", ("chops", "scorches"), crit_chance=0.05),
-    ShopItem("storm_spear", "Static Spear", "weapon", 8_500, 137, "Crackles before it lands.", ("skewers", "jolts"), crit_chance=0.07),
-    ShopItem("void_blade", "Afterdark Blade", "weapon", 16_000, 169, "Cuts where armor forgets to exist.", ("rifts", "carves"), crit_chance=0.09),
-    ShopItem("sunhammer", "Spotlight Hammer", "weapon", 30_000, 200, "Heavy stage-light punishment.", ("smashes", "craters"), crit_chance=0.11),
+    ShopItem("twig_sword", "Tease Blade", "weapon", 250, 12, "Barely a threat — just enough to edge them.", ("teases", "pokes")),
+    ShopItem("rusty_dagger", "Backroom Shiv", "weapon", 750, 43, "Fast, cheap, and a little filthy.", ("nicks", "stabs"), crit_chance=0.02),
+    ShopItem("iron_sword", "Velvet Edge", "weapon", 1_800, 75, "Keeps them on the edge. Crimson wrap.", ("edges", "teases"), crit_chance=0.04),
+    ShopItem("ember_axe", "Heat Axe", "weapon", 4_000, 106, "Hot enough to leave a mark.", ("scorches", "brands"), crit_chance=0.05),
+    ShopItem("storm_spear", "Static Spear", "weapon", 8_500, 137, "Crackles before it lands.", ("jolts", "shivers"), crit_chance=0.07),
+    ShopItem("void_blade", "Afterdark Blade", "weapon", 16_000, 169, "Cuts where they forget to hold it.", ("leaks", "carves"), crit_chance=0.09),
+    ShopItem("sunhammer", "Spotlight Hammer", "weapon", 30_000, 200, "Everyone's watching. Don't finish.", ("smashes", "exposes"), crit_chance=0.11),
     ShopItem("dragon_lance", "VIP Lance", "weapon", 52_000, 232, "Built for impossible Velvet raids.", ("impales", "pierces"), crit_chance=0.13),
     ShopItem(
         "cosmic_greatsword",

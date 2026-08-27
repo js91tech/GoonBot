@@ -24,6 +24,7 @@ class QuestDef:
 
 ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
     QuestDef("claim_daily", "Guest List", "Claim `/daily` once.", 1, 500.0, "daily_claim"),
+    QuestDef("first_edge", "Don't Finish", "Edge once with `/goon edge`.", 1, 600.0, "goon_edge"),
     QuestDef("buy_gear", "Look the Part", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
     QuestDef("raid_once", "When Velvet Walks In", "Deal damage with `/attack`.", 1, 1000.0, "boss_attack"),
     QuestDef("heal_once", "Aftercare Duty", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
@@ -46,6 +47,7 @@ DAILY_QUEST_POOL: tuple[QuestDef, ...] = (
     QuestDef("gamble_once", "Lucky Break", "Play `/coinflip` or `/blackjack`.", 1, 600.0, "gamble_play"),
     QuestDef("messages", "Stay Active", "Earn from 20 chat messages.", 20, 550.0, "chat_message"),
     QuestDef("job_shifts", "Day Job", "Complete 3 instant job shifts with `/work`.", 3, 650.0, "job_work"),
+    QuestDef("goon_edges", "Stay Edged", "Edge 5 times with `/goon edge`.", 5, 700.0, "goon_edge"),
     QuestDef("duel_win", "Duelist", "Win a `/duel`.", 1, 900.0, "duel_win"),
     QuestDef("slots_spin", "Lucky Slots", "Play `/slots` once.", 1, 550.0, "gamble_play"),
     QuestDef("dungeon_clear", "Afterparty", "Clear a `/dungeon` private-room run.", 1, 1_100.0, "dungeon_clear"),

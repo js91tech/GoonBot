@@ -41,7 +41,7 @@ class SlashCommandLimitTests(unittest.TestCase):
 
     def test_expected_groups_exist(self) -> None:
         names = set(count_top_level_slash_commands())
-        for group in ("class", "relics", "aspects", "crew", "drugs", "business", "admin"):
+        for group in ("class", "relics", "aspects", "crew", "drugs", "business", "admin", "goon"):
             self.assertIn(group, names)
 
 

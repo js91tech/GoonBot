@@ -6,9 +6,9 @@ from utils.jobs import JOBS, JobDef
 
 
 PERSONA_FLOOR_BLURBS: dict[str, str] = {
-    "vanguard": "Talent floor — stage shifts and Velvet scout work.",
-    "mogul": "Host floor — tip circuit and promoter hustles.",
-    "shade": "Fixer floor — back-room lifts and stash runs.",
+    "vanguard": "Talent floor — main-stage edges and Velvet teases.",
+    "mogul": "Host floor — private booths and tribute hustles.",
+    "shade": "Fixer floor — back-room peeks and clip runs.",
 }
 
 

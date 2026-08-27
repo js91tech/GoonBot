@@ -12,10 +12,11 @@ A chaos-driven Discord economy RPG built with **discord.py** and PostgreSQL or S
 | 1 | **The Vault** | Economy: passive chat earning, active bonus, VC earning, daily claims, payments, leaderboards |
 | 2 | **The Hit** | Bounty system: place bounties with trigger words, claim when targets slip up |
 | 3 | **The Steal** | Heist & crew system: rob users, form crews, arrest failed thieves |
-| 4 | **The Virus** | Hot potato: infect users, give every holder a timer, scaling penalties |
+| 4 | **The Virus** | Contagious goon: infect users, pass the timer, pop ruins their session |
 | 5 | **The Boss** | Boss raids: fight Velvet Vixen variants, scale HP with economy, down/heal mechanics |
-| 6 | **The AI** | Imposter webhook word sabotage + Lore Roulette trivia |
-| 7 | **Hubs** | Discord Views for profile, gear, jobs, character, casino, crime, and more |
+| 6 | **The Session** | `/goon` edging meter, streaks, finish payouts, ruin others, floor dares |
+| 7 | **The AI** | Imposter webhook word sabotage + Lore Roulette trivia |
+| 8 | **Hubs** | Discord Views for profile, gear, jobs, character, casino, crime, and more |
 
 ## Quick Start
 
@@ -109,8 +110,21 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 | Command | Description |
 |---------|-------------|
-| `/hack @user` | Start the Velvet Vixen love virus; usable every 5 minutes per user |
-| `/transfer @user` | Pass the virus to someone else and give them the timer |
+| `/hack @user` | Start a contagious goon; usable every 5 minutes per user |
+| `/transfer @user` | Pass the goon before it pops (wallet hit + session ruined) |
+
+### Session
+
+| Command | Description |
+|---------|-------------|
+| `/goon edge` | Pump the meter and streak. Don't finish. |
+| `/goon finish` | Cash the streak. Session resets. |
+| `/goon ruin [@user]` | Dump yours, or pay to ruin someone else's |
+| `/goon tease @user` | Pay to push their meter |
+| `/goon dare` | Drop a floor dare |
+| `/goon status` | Peek a session HUD |
+
+Chat, VC, jobs, and `/daily` also fill the meter. Edging in VC with others hits harder. Daily pays extra while you're still edged.
 
 ### Boss
 

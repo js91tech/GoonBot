@@ -8,7 +8,8 @@ NSFW_NOTICE = (
 HELP_PAGES: tuple[tuple[str, str], ...] = (
     (
         "Economy",
-        "**/daily** · **/balance** · **/deposit** · **/withdraw** · **/expand-bank** · **/pay** · **/leaderboard**\n"
+        "**/daily** · **/goon** · **/balance** · **/deposit** · **/withdraw** · **/expand-bank** · **/pay** · **/leaderboard**\n"
+        "**/goon edge** fills the meter · **/goon finish** cashes the streak · **/goon ruin @user** dumps theirs · **/goon tease** pushes them.\n"
         "Bank cap **100k** base — tiered vault expansions: **+10k** (10k), **+50k** (50k), **+250k** (250k), **+500k** (500k). Prestige **1–9** resets pocket only; **prestige 10** also wipes bank + expansions.\n"
         "**/jobs** · **/work** · **/energy** · **/upgrade-energy**\n"
         "Bot Discord accounts can use slash commands and be targeted in PvP (duels, heists, bounties, etc.). Passive chat/VC farming stays human-only to prevent spam.",
@@ -42,7 +43,8 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Chaos modules",
-        "**/bounty** · **/bounty-board** · **/heist** · **/bank-heist** · **/bodyguards** · **/hack** · **/transfer** · **/scourge-pass** · **/trivia** · **/chaos**\n"
+        "**/bounty** · **/bounty-board** · **/heist** · **/bank-heist** · **/bodyguards** · **/hack** · **/transfer** · **/scourge-pass** · **/trivia** · **/chaos** · **/goon**\n"
+        "**Contagious goon** (`/hack`) — pass it or pop; pop ruins their session.\n"
         "**Jail Key** (100k, guaranteed escape) · **Pick Key** (20k, 15% escape) while arrested.\n"
         "**/bodyguards** — hire up to 5 guards (3 tiers) to defend your bank from heists.\n"
         "House pot — gambling losses, scourge hits, and unclaimed drops fund random coin drops.\n"

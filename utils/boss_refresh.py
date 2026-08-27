@@ -14,21 +14,21 @@ RAID_ROLES: dict[str, dict[str, float | str]] = {
         "damage_mult": 0.85,
         "counter_taken_mult": 0.70,
         "aggro_weight": 2.5,
-        "blurb": "Hold the door (−30% counters taken), deal −15% damage.",
+        "blurb": "Hold the door (−30% counters taken), deal −15% damage. They don't get in until you say.",
     },
     "healer": {
         "label": "💋 Aftercare",
         "damage_mult": 0.90,
         "counter_taken_mult": 1.0,
         "aggro_weight": 0.8,
-        "blurb": "Deal −10% damage; 30% chance to pulse-heal after a hit.",
+        "blurb": "Deal −10% damage; 30% chance to pulse-heal after a hit. Wipe them down. Send them back in.",
     },
     "glass": {
         "label": "🎤 Main Stage",
         "damage_mult": 1.25,
         "counter_taken_mult": 1.35,
         "aggro_weight": 1.0,
-        "blurb": "Deal +25% damage; take +35% from counters.",
+        "blurb": "Deal +25% damage; take +35% from counters. Everyone's watching. Don't finish first.",
     },
 }
 

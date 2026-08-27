@@ -47,6 +47,11 @@ async def _main() -> int:
         if col not in raid_cols:
             errors.append(f"crew_bank_raid_cooldowns.{col} missing after migrations")
 
+    cursor = await db.conn.execute("PRAGMA table_info(goon_sessions)")
+    goon_cols = {row[1] for row in await cursor.fetchall()}
+    if "meter" not in goon_cols:
+        errors.append("goon_sessions.meter missing after migrations")
+
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
     bot.db = db
     for ext in COGS:

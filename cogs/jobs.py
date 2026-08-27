@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -132,6 +134,13 @@ class Jobs(commands.Cog):
             interaction.user.id,
             interaction.guild_id,
             payout,
+        )
+        await self.bot.db.tick_goon_passive(
+            interaction.user.id,
+            interaction.guild_id,
+            gain=config.GOON_JOB_GAIN,
+            now=time.time(),
+            cooldown=0.0,
         )
         await record_quest_event(
             self.bot.db,

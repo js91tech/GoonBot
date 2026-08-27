@@ -135,6 +135,13 @@ class Economy(commands.Cog):
         self.active_chatters.add((message.guild.id, message.author.id))
         bucket = self.coin_drop_typers.setdefault(message.guild.id, set())
         bucket.add(message.author.id)
+        await self.bot.db.tick_goon_passive(
+            message.author.id,
+            message.guild.id,
+            gain=config.GOON_CHAT_GAIN,
+            now=time.time(),
+            cooldown=config.GOON_CHAT_COOLDOWN_SECONDS,
+        )
 
     def _roll_coin_drop_interval(self) -> None:
         minutes = random.randint(COIN_DROP_INTERVAL_MIN_MINUTES, COIN_DROP_INTERVAL_MAX_MINUTES)
@@ -209,12 +216,24 @@ class Economy(commands.Cog):
                     await grant_activity_xp(
                         self.bot, member, guild.id, config.ACTIVITY_XP_PER_VC_TICK,
                     )
+                    humans = [
+                        m for m in voice_channel.members
+                        if not m.bot and m.id != member.id
+                    ]
+                    await self.bot.db.tick_goon_passive(
+                        member.id,
+                        guild.id,
+                        gain=config.GOON_VC_GAIN,
+                        now=time.time(),
+                        cooldown=config.GOON_VC_COOLDOWN_SECONDS,
+                        watch_mult=1.0 + min(1.0, 0.15 * len(humans)),
+                    )
 
     @vc_earning_tick.before_loop
     async def before_vc_earning_tick(self) -> None:
         await self.bot.wait_until_ready()
 
-    @app_commands.command(name="daily", description="Claim your daily goonbux.")
+    @app_commands.command(name="daily", description="Claim your daily goonbux. Stays edged? Pays extra.")
     @app_commands.guild_only()
     async def daily(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None:
@@ -254,8 +273,31 @@ class Economy(commands.Cog):
         if remaining.streak > 1:
             pct = int((remaining.streak_bonus_mult - 1.0) * 100)
             streak_note = f"\n🔥 **{remaining.streak}-day streak** (+{pct}% bonus)"
+        from utils.goon_session import daily_edge_bonus_mult
+
+        session = await self.bot.db.get_goon_session(
+            interaction.user.id, interaction.guild_id,
+        )
+        edge_mult = daily_edge_bonus_mult(session.streak)
+        edge_note = ""
+        if edge_mult > 1.0:
+            extra = remaining.reward * (edge_mult - 1.0)
+            await self.bot.db.credit_wallet(
+                interaction.user.id, interaction.guild_id, extra,
+            )
+            pct = int((edge_mult - 1.0) * 100)
+            edge_note = (
+                f"\n💋 **{session.streak}-edge session** (+{pct}% / +{fmt_amount(extra)})"
+            )
+        await self.bot.db.tick_goon_passive(
+            interaction.user.id,
+            interaction.guild_id,
+            gain=config.GOON_DAILY_GAIN,
+            now=current,
+            cooldown=0.0,
+        )
         await interaction.response.send_message(
-            f"You claimed {fmt_amount(remaining.reward)}.{bonus_note}{streak_note}",
+            f"You claimed {fmt_amount(remaining.reward)}.{bonus_note}{streak_note}{edge_note}",
             ephemeral=True,
         )
         await record_quest_event(
