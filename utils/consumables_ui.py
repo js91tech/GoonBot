@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from typing import TYPE_CHECKING
 
 import discord
@@ -118,6 +119,21 @@ async def execute_use(
             return "consume_failed", None
         new_energy = await cog.bot.db.add_energy(user_id, guild_id, 15)
         return None, f"**Energy Drink** — energy restored to **{new_energy}**."
+
+    if item_id == "condoms":
+        if not await cog.bot.db.consume_inventory_item(user_id, guild_id, item_id):
+            return "consume_failed", None
+        result = await cog.bot.db.tick_goon_passive(
+            user_id,
+            guild_id,
+            gain=config.GOON_CONDOM_METER_GAIN,
+            now=time.time(),
+            cooldown=0.0,
+        )
+        gained = int(result.gained) if result.ok else int(config.GOON_CONDOM_METER_GAIN)
+        return None, (
+            f"**Condoms** — wrapped. Meter +**{gained}**. Stay edged."
+        )
 
     if item_id in HP_POTION_HEAL:
         if not await cog.bot.db.consume_inventory_item(user_id, guild_id, item_id):

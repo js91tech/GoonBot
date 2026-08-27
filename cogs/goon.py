@@ -1,18 +1,25 @@
 """Goon session hub — /goon edge, finish, ruin, tease, dare."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 import config
-from utils.bot_players import pvp_target_error
+from utils.bot_players import pvp_target_error, skip_gameplay_bot
+from utils.bot_room import resolve_lore_channel, send_channel_message
 from utils.goon_session import (
+    GROUP_GOON_PROMPT,
     format_session_block,
+    is_group_goon_chat_claim,
+    next_group_goon_call_minutes,
     pick_dare,
     roll_edge_gain,
+    roll_group_goon_reward,
     roll_tease_gain,
     voice_watchers,
     watch_multiplier,
@@ -31,9 +38,185 @@ def session_embed(member: discord.Member, block: str, *, title: str = "Goon sess
     return embed
 
 
+class GroupGoonCallView(discord.ui.View):
+    """First click or yes-in-chat wins goonbux + condoms."""
+
+    def __init__(
+        self,
+        cog: Goon,
+        guild_id: int,
+        channel_id: int,
+        amount: float,
+        condoms: int,
+    ) -> None:
+        super().__init__(timeout=float(config.GOON_CALL_CLAIM_SECONDS))
+        self.cog = cog
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.amount = amount
+        self.condoms = condoms
+        self._claimed = False
+        self._claim_lock = asyncio.Lock()
+        self.message: discord.Message | None = None
+
+    async def on_timeout(self) -> None:
+        self.cog.active_calls.pop(self.channel_id, None)
+        for item in self.children:
+            item.disabled = True
+        if self.message is None or self._claimed:
+            return
+        try:
+            await self.message.edit(
+                content=(
+                    f"**{GROUP_GOON_PROMPT}**\n"
+                    "_Nobody answered. Session's cold._"
+                ),
+                view=self,
+            )
+        except (discord.HTTPException, discord.NotFound):
+            logging.debug("Group goon call: timeout edit failed channel %s", self.channel_id)
+
+    async def try_claim(self, member: discord.Member) -> str | None:
+        """Award the first valid answer. Returns None on success, else an error key."""
+        if member.bot and not config.ALLOW_BOT_PLAYERS:
+            return "bot"
+        async with self._claim_lock:
+            if self._claimed:
+                return "taken"
+            if await self.cog.bot.db.is_restricted(member.id, self.guild_id):
+                return "restricted"
+            await self.cog.bot.db.credit_wallet(member.id, self.guild_id, self.amount)
+            for _ in range(self.condoms):
+                await self.cog.bot.db.grant_item(member.id, self.guild_id, "condoms")
+            await self.cog.bot.db.tick_goon_passive(
+                member.id,
+                self.guild_id,
+                gain=config.GOON_CALL_METER_GAIN,
+                now=time.time(),
+                cooldown=0.0,
+            )
+            self._claimed = True
+            self.cog.active_calls.pop(self.channel_id, None)
+            for item in self.children:
+                item.disabled = True
+            self.stop()
+        if self.message is not None:
+            body = (
+                f"**{GROUP_GOON_PROMPT}**\n"
+                f"{member.mention} said yes first — "
+                f"**{fmt_amount(self.amount)}** + **{self.condoms}× Condoms**."
+            )
+            try:
+                await self.message.edit(
+                    content=body,
+                    allowed_mentions=discord.AllowedMentions(users=[member]),
+                    view=self,
+                )
+            except (discord.HTTPException, discord.NotFound):
+                logging.debug("Group goon call: claim edit failed channel %s", self.channel_id)
+        return None
+
+    @discord.ui.button(label="I'm ready", style=discord.ButtonStyle.success)
+    async def ready_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message("Wrong server.", ephemeral=True)
+            return
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        err = await self.try_claim(interaction.user)
+        if err == "taken":
+            await interaction.response.send_message("Someone already answered.", ephemeral=True)
+            return
+        if err == "restricted":
+            await interaction.response.send_message("You cannot claim rewards right now.", ephemeral=True)
+            return
+        if err == "bot":
+            await interaction.response.send_message("You cannot claim this.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"You're in. **{fmt_amount(self.amount)}** + **{self.condoms}× Condoms**.",
+            ephemeral=True,
+        )
+
+
 class Goon(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.active_calls: dict[int, GroupGoonCallView] = {}
+        self.group_goon_call_tick.start()
+
+    def cog_unload(self) -> None:
+        self.group_goon_call_tick.cancel()
+
+    def _roll_group_call_interval(self) -> None:
+        self.group_goon_call_tick.change_interval(minutes=next_group_goon_call_minutes())
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        if self.bot.user and message.author.id == self.bot.user.id:
+            return
+        if message.guild is None or skip_gameplay_bot(message.author):
+            return
+        if not isinstance(message.author, discord.Member):
+            return
+        view = self.active_calls.get(message.channel.id)
+        if view is None:
+            return
+        replied = bool(
+            message.reference
+            and message.reference.message_id
+            and view.message is not None
+            and message.reference.message_id == view.message.id
+        )
+        if not is_group_goon_chat_claim(message.content, replied_to_prompt=replied):
+            return
+        err = await view.try_claim(message.author)
+        if err is None:
+            try:
+                await message.add_reaction("💋")
+            except discord.HTTPException:
+                logging.debug("Group goon call: could not react to %s", message.id)
+
+    @tasks.loop(minutes=config.GOON_CALL_INTERVAL_MINUTES)
+    async def group_goon_call_tick(self) -> None:
+        try:
+            for guild in self.bot.guilds:
+                await self._post_group_goon_call(guild)
+        finally:
+            self._roll_group_call_interval()
+
+    @group_goon_call_tick.before_loop
+    async def before_group_goon_call_tick(self) -> None:
+        await self.bot.wait_until_ready()
+        self._roll_group_call_interval()
+
+    async def _post_group_goon_call(self, guild: discord.Guild) -> None:
+        channel = await resolve_lore_channel(guild, self.bot.db)
+        if channel is None:
+            return
+        existing = self.active_calls.get(channel.id)
+        if existing is not None and not existing._claimed:
+            return
+        amount = roll_group_goon_reward()
+        condoms = int(config.GOON_CALL_CONDOMS)
+        view = GroupGoonCallView(self, guild.id, channel.id, amount, condoms)
+        body = (
+            f"**{GROUP_GOON_PROMPT}**\n"
+            f"First to answer (**I'm ready** or type **yes**) gets "
+            f"**{fmt_amount(amount)}** + **{condoms}× Condoms**."
+        )
+        posted = await send_channel_message(
+            self.bot,
+            channel,
+            body,
+            view=view,
+        )
+        if posted is None:
+            return
+        view.message = posted
+        self.active_calls[channel.id] = view
 
     goon = app_commands.Group(
         name="goon",

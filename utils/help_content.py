@@ -35,7 +35,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
     (
         "Character",
         "**/class** — `/class view|choose|evolve|tree` — personas **Talent / Host / Fixer** · **/cast** · **/mana** · **/aspects** · **/avatar**\n"
-        "**/use** — raid potion, energy drink, **Jail Key**, **Pick Key** · **/gift-item** — chia seeds · **/drugs gift** — stash product\n"
+        "**/use** — raid potion, energy drink, **Condoms**, **Jail Key**, **Pick Key** · **/gift-item** — chia seeds · **/drugs gift** — stash product\n"
         "**/attributes** — interactive stat panel (50 pt pool +5/prestige; 15 + prestige/stat cap)\n"
         "**/profile** · **/stats** · **/inventory** · **/quests** · **/achievements** · **/fix** (unstable gear)\n"
         "**/guide** — full interactive systems + item catalog (dropdown UI)\n"
@@ -47,6 +47,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**Contagious goon** (`/hack`) — pass it or pop; pop ruins their session.\n"
         "**Jail Key** (100k, guaranteed escape) · **Pick Key** (20k, 15% escape) while arrested.\n"
         "**/bodyguards** — hire up to 5 guards (3 tiers) to defend your bank from heists.\n"
+        "**Group goon call** — every **~2 hours** in **#yappinmain**; first yes / **I'm ready** wins goonbux + condoms.\n"
         "House pot — gambling losses, scourge hits, and unclaimed drops fund random coin drops.\n"
         "Scourge Virus — every **8** hours; warning GIF, then 7 min of infections on the top 5.\n"
         "Boss auto-spawn — every **90** minutes when none is active.\n"

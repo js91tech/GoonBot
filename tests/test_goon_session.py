@@ -8,11 +8,16 @@ from pathlib import Path
 import config
 from database import Database
 from utils.goon_session import (
+    GROUP_GOON_PROMPT,
     blank_lore_line,
     daily_edge_bonus_mult,
     finish_payout,
+    is_group_goon_chat_claim,
+    is_group_goon_yes,
     meter_bar,
+    next_group_goon_call_minutes,
     pick_dare,
+    roll_group_goon_reward,
     ruin_cost,
     session_from_row,
     watch_multiplier,
@@ -58,6 +63,54 @@ class GoonSessionMathTests(unittest.TestCase):
 
     def test_dare_deck_nonempty(self) -> None:
         self.assertTrue(pick_dare())
+
+    def test_group_goon_yes_matches_answers(self) -> None:
+        self.assertTrue(is_group_goon_yes("yes"))
+        self.assertTrue(is_group_goon_yes("Yeah!"))
+        self.assertTrue(is_group_goon_yes("yep"))
+        self.assertTrue(is_group_goon_yes("I'm ready"))
+        self.assertTrue(is_group_goon_yes("lets go"))
+        self.assertTrue(is_group_goon_yes("ready"))
+        self.assertFalse(is_group_goon_yes(""))
+        self.assertFalse(is_group_goon_yes("no"))
+        self.assertFalse(is_group_goon_yes("yesterday we raided"))
+        self.assertIn("group goon session", GROUP_GOON_PROMPT.lower())
+
+    def test_group_goon_chat_claim_filters_long_unrelated(self) -> None:
+        self.assertTrue(is_group_goon_chat_claim("yes"))
+        self.assertTrue(is_group_goon_chat_claim("yeah let's goon"))
+        self.assertTrue(
+            is_group_goon_chat_claim(
+                "yeah that's a long unrelated take about the raid",
+                replied_to_prompt=True,
+            )
+        )
+        self.assertFalse(
+            is_group_goon_chat_claim(
+                "yeah that's a long unrelated take about the raid boss tonight",
+            )
+        )
+
+    def test_group_goon_interval_and_reward_bounds(self) -> None:
+        lo = config.GOON_CALL_INTERVAL_MINUTES - config.GOON_CALL_INTERVAL_JITTER_MINUTES
+        hi = config.GOON_CALL_INTERVAL_MINUTES + config.GOON_CALL_INTERVAL_JITTER_MINUTES
+        for _ in range(40):
+            mins = next_group_goon_call_minutes()
+            self.assertGreaterEqual(mins, lo)
+            self.assertLessEqual(mins, hi)
+            amount = roll_group_goon_reward()
+            self.assertGreaterEqual(amount, config.GOON_CALL_REWARD[0])
+            self.assertLessEqual(amount, config.GOON_CALL_REWARD[1])
+
+    def test_condoms_item_is_drop_only(self) -> None:
+        from items import get_item
+        from utils.consumables_ui import SHOP_USE_IDS
+
+        item = get_item("condoms")
+        assert item is not None
+        self.assertEqual(item.name, "Condoms")
+        self.assertFalse(item.shop_listed)
+        self.assertIn("condoms", SHOP_USE_IDS)
 
     def test_session_from_empty_row(self) -> None:
         state = session_from_row(None)
@@ -181,6 +234,13 @@ class GoonSessionDatabaseTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(result.leaked)
         self.assertEqual(result.state.meter, config.GOON_METER_MAX)
+
+    async def test_grant_condoms_stacks(self) -> None:
+        await self.db.ensure_user(self.user, self.guild)
+        for _ in range(config.GOON_CALL_CONDOMS):
+            await self.db.grant_item(self.user, self.guild, "condoms")
+        qty = await self.db.get_inventory_quantity(self.user, self.guild, "condoms")
+        self.assertEqual(qty, config.GOON_CALL_CONDOMS)
 
 
 class GoonLoreFallbackTests(unittest.TestCase):

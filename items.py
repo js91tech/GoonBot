@@ -546,6 +546,15 @@ CHIA_SEEDS = ShopItem(
     "Wholesome snack seeds. Buy from /shop, then gift with /gift-item.",
     shop_listed=True,
 )
+CONDOMS = ShopItem(
+    "condoms",
+    "Condoms",
+    "consumable",
+    0,
+    0,
+    "Group-session drop. /use: wrap up and push your goon meter.",
+    shop_listed=False,
+)
 JAIL_KEY = ShopItem(
     "jail_key",
     "Jail Key",
@@ -787,6 +796,7 @@ CONSUMABLES: tuple[ShopItem, ...] = (
     HP_POTION_XXL,
     ENERGY_DRINK,
     CHIA_SEEDS,
+    CONDOMS,
     JAIL_KEY,
     PICK_KEY,
     FERTILIZER,

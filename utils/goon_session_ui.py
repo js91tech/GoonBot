@@ -28,7 +28,8 @@ async def build_goon_session_embed(db: Database, member: discord.Member, guild_i
         value=(
             "`/goon edge` · `/goon finish` · `/goon ruin` · `/goon tease` · `/goon dare`\n"
             f"Tease costs **{fmt_amount(config.GOON_TEASE_COST)}**. "
-            "Chat, VC, jobs, and `/daily` also fill the meter."
+            "Chat, VC, jobs, and `/daily` also fill the meter. "
+            "Every ~2 hours the main chat asks if you're ready — first yes wins goonbux + condoms."
         ),
         inline=False,
     )

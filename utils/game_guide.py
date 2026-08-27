@@ -184,7 +184,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "6. `/boss` or `/attack` — join the raid\n"
                     "7. `/balance` — pocket vs bank vault",
                     "**Core loops**\n"
-                    "· **Session** — `/goon edge` / finish / ruin / tease; chat, VC, and jobs fill the meter\n"
+                    "· **Session** — `/goon edge` / finish / ruin / tease; chat, VC, and jobs fill the meter; ~2h group call in #yappinmain\n"
                     "· **Economy** — chat, VC, jobs, daily, pay friends\n"
                     "· **Raid** — boss panels, heals, loot, dungeons\n"
                     "· **PvP** — duels, heists, territories, crews, ruin streaks\n"
@@ -451,6 +451,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "`/scourge-pass` to pass infection; hits top wallets' banks",
                     "**Trivia** — hourly Lore Roulette in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
                     "`/trivia` to start early)\n"
+                    "**Group goon call** — every **~2 hours** in **#yappinmain**; first **yes** / **I'm ready** wins **6k–12k goonbux** + **3 condoms**\n"
                     "**Imposter** — random AI word sabotage in messages (server config)",
                     "**House pot** — gambling taxes and unclaimed drops fund random **Claim** coin drops",
                 ],

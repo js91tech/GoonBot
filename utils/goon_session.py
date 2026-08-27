@@ -7,6 +7,14 @@ from dataclasses import dataclass
 
 import config
 
+GROUP_GOON_PROMPT = "Is the chat ready for a group goon session?"
+_GROUP_GOON_YES = re.compile(
+    r"^\s*(yes+|yeah+|yep|yea|yup|yas+|ready|i['’]?m\s+ready|let['’]?s\s+go|down|here)\b",
+    re.IGNORECASE,
+)
+_GROUP_GOON_TOPIC = ("goon", "session", "ready", "condom", "goonbux", "let's go", "lets go")
+_GROUP_GOON_SHORT_YES = 40
+
 _STOP = frozenset(
     {
         "that",
@@ -254,3 +262,36 @@ def voice_watchers(member: object) -> int:
             continue
         count += 1
     return count
+
+
+def is_group_goon_yes(text: str | None) -> bool:
+    """True when a chat reply is answering the group-session call."""
+    if not text:
+        return False
+    return _GROUP_GOON_YES.search(text.strip()) is not None
+
+
+def is_group_goon_chat_claim(text: str | None, *, replied_to_prompt: bool = False) -> bool:
+    """First-answer detector that ignores long unrelated 'yeah' chatter."""
+    if not is_group_goon_yes(text):
+        return False
+    if replied_to_prompt:
+        return True
+    stripped = (text or "").strip()
+    if len(stripped) <= _GROUP_GOON_SHORT_YES:
+        return True
+    lowered = stripped.lower()
+    return any(token in lowered for token in _GROUP_GOON_TOPIC)
+
+
+def next_group_goon_call_minutes() -> int:
+    base = int(config.GOON_CALL_INTERVAL_MINUTES)
+    jitter = int(config.GOON_CALL_INTERVAL_JITTER_MINUTES)
+    lo = max(1, base - jitter)
+    hi = max(lo, base + jitter)
+    return random.randint(lo, hi)
+
+
+def roll_group_goon_reward() -> float:
+    lo, hi = config.GOON_CALL_REWARD
+    return float(random.randint(int(lo), int(hi)))

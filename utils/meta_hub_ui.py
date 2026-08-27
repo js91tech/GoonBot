@@ -540,7 +540,7 @@ async def send_chaos_hub(interaction: discord.Interaction, cog: commands.Cog) ->
                 "🦠 **Trivia** — start a Lore Roulette round in #yappinmain\n"
                 "☣️ **Scourge Virus** — how to pass an active infection\n"
                 "💀 **Contagious goon** — pass it or pop (ruins their session)\n"
-                "💋 **Session** — `/goon edge` · finish · ruin · tease"
+                "💋 **Session** — `/goon edge` · finish · ruin · tease · group call in #yappinmain"
             ),
             color=danger_color(),
         )

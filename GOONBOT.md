@@ -55,7 +55,7 @@
 
 - **Heat / VIP** — lifetime goonbux spent raises table limits; Door role softens; Booth softens Velvet counters. Buy next tier from Profile → **Buy VIP heat**.
 - **Persona floors** — Talent / Host / Fixer unlock exclusive jobs (Main-Stage Edge / Private Booth / Back-Room Peek).
-- **Session** — `/goon edge` builds a meter and streak. Finish cashes it. Ruin dumps it (yours or theirs). Chat/VC/jobs/`daily` also fill the meter.
+- **Session** — `/goon edge` builds a meter and streak. Finish cashes it. Ruin dumps it (yours or theirs). Chat/VC/jobs/`daily` also fill the meter. Every ~2 hours the main chat gets a group-session call; first answer wins goonbux + condoms.
 - **Velvet Walks In** — UTC nightlife hours (and `/event start velvet_night`) bias Velvet spawns + hotter drops.
 
 ## Player hubs (entry points)

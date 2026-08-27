@@ -76,6 +76,25 @@ class UsePanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(err)
         self.assertIn("Energy Drink", message or "")
 
+    async def test_execute_use_condoms_ticks_meter(self) -> None:
+        from utils.consumables_ui import execute_use
+
+        await self.db.ensure_user(self.user_id, self.guild_id)
+        await self.db.grant_item(self.user_id, self.guild_id, "condoms")
+
+        class FakeCog:
+            def __init__(self, bot: object) -> None:
+                self.bot = bot
+
+        cog = FakeCog(self)
+        err, message = await execute_use(cog, self.user_id, self.guild_id, "condoms")
+        self.assertIsNone(err)
+        self.assertIn("Condoms", message or "")
+        qty = await self.db.get_inventory_quantity(self.user_id, self.guild_id, "condoms")
+        self.assertEqual(qty, 0)
+        state = await self.db.get_goon_session(self.user_id, self.guild_id)
+        self.assertGreater(state.meter, 0.0)
+
     async def test_send_use_panel_defers_then_edits(self) -> None:
         from unittest.mock import AsyncMock, MagicMock
 
