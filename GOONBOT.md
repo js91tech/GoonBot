@@ -29,7 +29,11 @@
    - `/admin set-designated-channel #nuggetivitesbot`
    - or set env `BOT_CHANNEL_ID=<snowflake>`
    - `bot_room_only` live setting defaults **on**
-7. Admins can set live config `nsfw_channel_only` to `0` to allow non-NSFW channels (not recommended for public servers).
+7. Lore Roulette is the exception: it posts in the **main** channel (`#yappinmain`):
+   - `/admin set-main-channel #yappinmain`
+   - or name the channel `yappinmain` / `yappin-main` (auto-detected)
+   - or set env `MAIN_CHANNEL_ID=<snowflake>`
+8. Admins can set live config `nsfw_channel_only` to `0` to allow non-NSFW channels (not recommended for public servers).
 
 ## Age / NSFW gates
 

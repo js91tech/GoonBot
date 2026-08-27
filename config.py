@@ -112,6 +112,16 @@ BOT_ROOM_NAME_HINTS: tuple[str, ...] = (
     "goonbot-room",
     "goonbot",
 )
+# Lore Roulette exception — posts in the social main channel (yappinmain),
+# even when bot_room_only is on. Prefer MAIN_CHANNEL_ID env, else stored
+# main_channel_id (when distinct from the bot room), else a name match.
+_main_channel_raw = (os.getenv("MAIN_CHANNEL_ID") or "").strip()
+MAIN_CHANNEL_ID: int | None = int(_main_channel_raw) if _main_channel_raw.isdigit() else None
+MAIN_CHANNEL_NAME_HINTS: tuple[str, ...] = (
+    "yappinmain",
+    "yappin-main",
+    "yappin_main",
+)
 # Opt-in DM reminders (see utils/notify_prefs.py)
 NOTIFY_TICK_SECONDS = 90
 NOTIFY_CROPS = 1
@@ -1080,7 +1090,8 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
     ),
     "bot_room_only": LiveSetting(
         1.0 if BOT_ROOM_ONLY else 0.0,
-        "Only allow GoonBot commands/posts in the bot room (designated/main/BOT_CHANNEL_ID)",
+        "Only allow GoonBot commands/posts in the bot room "
+        "(Lore Roulette still uses the main channel / yappinmain)",
         maximum=1.0,
         integer=True,
     ),

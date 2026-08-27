@@ -297,7 +297,7 @@ class Admin(commands.Cog):
         embed.add_field(
             name="Channels",
             value=(
-                f"**Main** (coin drops): {main_channel}\n"
+                f"**Main** (Lore Roulette / yappinmain): {main_channel}\n"
                 f"**Designated** (bot posts): {designated_channel}\n"
                 f"**Split mode:** {split_status}"
             ),
@@ -307,9 +307,9 @@ class Admin(commands.Cog):
 
     @admin_group.command(
         name="set-main-channel",
-        description="Set the channel for random coin drops and gifts.",
+        description="Set the main chat for Lore Roulette (yappinmain).",
     )
-    @app_commands.describe(channel="Text channel for server-wide announcements")
+    @app_commands.describe(channel="Text channel for Lore Roulette (usually #yappinmain)")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     async def set_main_channel(
@@ -330,8 +330,8 @@ class Admin(commands.Cog):
         await self.bot.db.set_main_channel_id(interaction.guild_id, channel.id)
         await interaction.response.send_message(
             f"Main channel set to {channel.mention}. "
-            "Random coin drops will post there. "
-            "Use `/admin set-designated-channel` and `/admin toggle-split-channels` to route boss posts elsewhere.",
+            "Lore Roulette will post there. "
+            "Use `/admin set-designated-channel` for the bot room.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -348,7 +348,8 @@ class Admin(commands.Cog):
 
         await self.bot.db.set_main_channel_id(interaction.guild_id, None)
         await interaction.response.send_message(
-            "Main channel cleared. Coin drops will use the system channel or first writable channel.",
+            "Main channel cleared. Lore Roulette will look for #yappinmain by name, "
+            "then fall back to the bot room.",
             ephemeral=True,
         )
 
@@ -375,13 +376,12 @@ class Admin(commands.Cog):
             return
 
         await self.bot.db.set_designated_channel_id(interaction.guild_id, channel.id)
-        # Keep main in sync so coin drops / trivia events stay in the same bot room.
-        await self.bot.db.set_main_channel_id(interaction.guild_id, channel.id)
         await self.bot.db.set_config_value(interaction.guild_id, "bot_room_only", 1.0)
         await interaction.response.send_message(
             f"Bot room set to {channel.mention}. "
             "GoonBot will **only type and accept commands** there "
-            "(NuggetIvitesBot-style single room). "
+            "(NuggetIvitesBot-style single room), except **Lore Roulette** "
+            "which posts in the main channel (`#yappinmain`). "
             "Admins can still run `/admin` elsewhere for setup.",
             allowed_mentions=discord.AllowedMentions.none(),
             ephemeral=True,

@@ -95,6 +95,93 @@ class AgeGateHelpersTests(unittest.IsolatedAsyncioTestCase):
         ok = await age_gate.check_interaction(interaction, db)
         self.assertTrue(ok)
 
+    async def test_check_allows_trivia_in_yappinmain_when_bot_room_locked(self) -> None:
+        db = MagicMock()
+
+        async def _config(_gid: int, key: str) -> float:
+            return {"nsfw_channel_only": 0.0, "bot_room_only": 1.0}[key]
+
+        db.get_config_value = AsyncMock(side_effect=_config)
+        db.get_age_verified = AsyncMock(return_value=True)
+        db.get_designated_channel_id = AsyncMock(return_value=555)
+        db.get_main_channel_id = AsyncMock(return_value=555)
+
+        bot_ch = MagicMock(spec=discord.TextChannel)
+        bot_ch.id = 555
+        bot_ch.name = "nuggetivitesbot"
+        bot_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        main_ch = MagicMock(spec=discord.TextChannel)
+        main_ch.id = 777
+        main_ch.name = "yappinmain"
+        main_ch.nsfw = True
+        main_ch.parent = None
+        main_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 10
+        guild.me = MagicMock()
+        guild.get_channel.side_effect = lambda cid: {555: bot_ch, 777: main_ch}.get(cid)
+        guild.text_channels = [bot_ch, main_ch]
+
+        interaction = MagicMock()
+        interaction.guild_id = 10
+        interaction.guild = guild
+        interaction.type = discord.InteractionType.application_command
+        interaction.channel = main_ch
+        interaction.command = SimpleNamespace(name="trivia", qualified_name="trivia")
+        interaction.user = SimpleNamespace(
+            id=7,
+            guild_permissions=SimpleNamespace(administrator=False),
+        )
+        ok = await age_gate.check_interaction(interaction, db)
+        self.assertTrue(ok)
+
+    async def test_check_blocks_non_trivia_in_yappinmain_when_bot_room_locked(self) -> None:
+        db = MagicMock()
+
+        async def _config(_gid: int, key: str) -> float:
+            return {"nsfw_channel_only": 0.0, "bot_room_only": 1.0}[key]
+
+        db.get_config_value = AsyncMock(side_effect=_config)
+        db.get_age_verified = AsyncMock(return_value=True)
+        db.get_designated_channel_id = AsyncMock(return_value=555)
+        db.get_main_channel_id = AsyncMock(return_value=555)
+
+        bot_ch = MagicMock(spec=discord.TextChannel)
+        bot_ch.id = 555
+        bot_ch.name = "nuggetivitesbot"
+        bot_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        main_ch = MagicMock(spec=discord.TextChannel)
+        main_ch.id = 777
+        main_ch.name = "yappinmain"
+        main_ch.nsfw = True
+        main_ch.parent = None
+        main_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 10
+        guild.me = MagicMock()
+        guild.get_channel.side_effect = lambda cid: {555: bot_ch, 777: main_ch}.get(cid)
+        guild.text_channels = [bot_ch, main_ch]
+
+        interaction = MagicMock()
+        interaction.guild_id = 10
+        interaction.guild = guild
+        interaction.type = discord.InteractionType.application_command
+        interaction.channel = main_ch
+        interaction.command = SimpleNamespace(name="daily", qualified_name="daily")
+        interaction.user = SimpleNamespace(
+            id=7,
+            guild_permissions=SimpleNamespace(administrator=False),
+        )
+        interaction.response.send_message = AsyncMock()
+        ok = await age_gate.check_interaction(interaction, db)
+        self.assertFalse(ok)
+        msg = interaction.response.send_message.await_args.args[0]
+        self.assertIn("only runs", msg.lower())
+
     def test_theme_brand(self) -> None:
         self.assertEqual(BOT_DISPLAY_NAME, "GoonBot")
         self.assertEqual(age_gate.age_gate_embed().color, brand_color())

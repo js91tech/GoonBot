@@ -993,7 +993,7 @@ class DashboardServer:
         channel_form = f"""
           <form class="channel-form" data-guild-id="{item['id']}">
             <label>
-              <span>Main channel (coin drops)</span>
+              <span>Main channel (Lore Roulette / yappinmain)</span>
               <select name="main_channel_id">{main_options}</select>
             </label>
             <label>

@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import discord
+
 import config
 from cogs.trivia import (
     Trivia,
@@ -103,6 +105,52 @@ class TriviaPayoutTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(self.cog._round_is_active(99, "abc"))
         self.assertFalse(self.cog._round_is_active(99, "zzz"))
+
+    async def test_start_round_posts_in_yappinmain(self) -> None:
+        await self.db.set_designated_channel_id(42, 555)
+        await self.db.set_main_channel_id(42, 555)
+        await self.db.set_config_value(42, "bot_room_only", 1.0)
+
+        bot_ch = mock.MagicMock(spec=discord.TextChannel)
+        bot_ch.id = 555
+        bot_ch.name = "nuggetivitesbot"
+        bot_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        main_ch = mock.MagicMock(spec=discord.TextChannel)
+        main_ch.id = 777
+        main_ch.name = "yappinmain"
+        main_ch.permissions_for.return_value = SimpleNamespace(send_messages=True)
+
+        guild = mock.MagicMock(spec=discord.Guild)
+        guild.id = 42
+        guild.me = mock.MagicMock()
+        guild.get_channel.side_effect = lambda cid: {555: bot_ch, 777: main_ch}.get(cid)
+        guild.text_channels = [bot_ch, main_ch]
+
+        sent = mock.MagicMock(spec=discord.Message)
+        sent.guild = guild
+        with (
+            mock.patch.object(
+                self.cog,
+                "_make_puzzle",
+                new=mock.AsyncMock(return_value=("foo _____ bar", "missing")),
+            ),
+            mock.patch(
+                "cogs.trivia.send_channel_message",
+                new_callable=mock.AsyncMock,
+                return_value=sent,
+            ) as mock_send,
+        ):
+            started = await self.cog._start_round(guild, bot_ch, announce_prefix=True)
+
+        self.assertTrue(started)
+        self.assertIn(777, self.cog.active_rounds)
+        self.assertNotIn(555, self.cog.active_rounds)
+        mock_send.assert_awaited_once()
+        self.assertIs(mock_send.await_args.args[1], main_ch)
+        round_state = self.cog.active_rounds[777]
+        if round_state.end_task is not None:
+            round_state.end_task.cancel()
 
 
 if __name__ == "__main__":

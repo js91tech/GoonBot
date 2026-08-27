@@ -537,7 +537,7 @@ async def send_chaos_hub(interaction: discord.Interaction, cog: commands.Cog) ->
             panel_title("Chaos Hub"),
             description=(
                 "Quick actions for the server's chaos modules.\n\n"
-                "🦠 **Trivia** — start a Lore Roulette round right now\n"
+                "🦠 **Trivia** — start a Lore Roulette round in #yappinmain\n"
                 "☣️ **Scourge Virus** — how to pass an active infection\n"
                 "💀 **Hack virus** — how the hot-potato virus works"
             ),

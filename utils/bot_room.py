@@ -15,6 +15,8 @@ _NAME_STRIP = re.compile(r"[^a-z0-9]+")
 
 
 def _norm_name(name: str) -> str:
+    if not isinstance(name, str):
+        return ""
     return _NAME_STRIP.sub("", name.lower())
 
 
@@ -78,6 +80,43 @@ def find_bot_room_by_name(guild: discord.Guild) -> discord.TextChannel | None:
     return matches[0]
 
 
+def channel_matches_main_channel_name(channel: discord.abc.GuildChannel) -> bool:
+    """True for social main chat names like yappinmain / yappin-main."""
+    norm = _norm_name(getattr(channel, "name", "") or "")
+    if not norm:
+        return False
+    for hint in config.MAIN_CHANNEL_NAME_HINTS:
+        hint_n = _norm_name(hint)
+        if hint_n and (norm == hint_n or hint_n in norm):
+            return True
+    return False
+
+
+def find_main_channel_by_name(guild: discord.Guild) -> discord.TextChannel | None:
+    matches = [
+        ch
+        for ch in guild.text_channels
+        if channel_matches_main_channel_name(ch) and _can_send(guild, ch)
+    ]
+    if not matches:
+        return None
+    matches.sort(
+        key=lambda ch: (
+            0 if _norm_name(ch.name) == "yappinmain" else 1,
+            len(ch.name),
+        ),
+    )
+    return matches[0]
+
+
+def _distinct_from(channel: discord.TextChannel | None, other: discord.abc.GuildChannel | None) -> bool:
+    if channel is None:
+        return False
+    if other is None:
+        return True
+    return int(channel.id) != int(other.id)
+
+
 async def resolve_bot_room(
     guild: discord.Guild,
     db: object,
@@ -108,6 +147,57 @@ async def resolve_bot_room(
         return named
 
     return None
+
+
+async def resolve_lore_channel(
+    guild: discord.Guild,
+    db: object,
+    preferred: discord.abc.Messageable | None = None,
+) -> discord.TextChannel | None:
+    """Where Lore Roulette posts: social main chat (yappinmain), not the bot room.
+
+    Falls back to the bot room only when no distinct main channel exists.
+    """
+    bot_room = await resolve_bot_room(guild, db)
+
+    pinned = await _resolve_id(guild, config.MAIN_CHANNEL_ID)
+    if pinned is not None and _distinct_from(pinned, bot_room):
+        return pinned
+
+    get_main = getattr(db, "get_main_channel_id", None)
+    if get_main is not None:
+        stored = await _resolve_id(guild, await get_main(guild.id))
+        if stored is not None and _distinct_from(stored, bot_room):
+            return stored
+
+    named = find_main_channel_by_name(guild)
+    if named is not None and _distinct_from(named, bot_room):
+        return named
+
+    if (
+        isinstance(preferred, discord.TextChannel)
+        and _can_send(guild, preferred)
+        and _distinct_from(preferred, bot_room)
+    ):
+        return preferred
+
+    if bot_room is not None:
+        return bot_room
+
+    if isinstance(preferred, discord.TextChannel) and _can_send(guild, preferred):
+        return preferred
+    return None
+
+
+async def channel_is_allowed_lore(
+    guild: discord.Guild,
+    db: object,
+    channel: Any,
+) -> bool:
+    lore = await resolve_lore_channel(guild, db)
+    if lore is None:
+        return False
+    return is_bot_room_channel(channel, lore)
 
 
 def is_bot_room_channel(
@@ -143,7 +233,8 @@ def bot_room_required_message(bot_room: discord.abc.GuildChannel | None) -> str:
     if bot_room is not None:
         return (
             f"GoonBot only runs in {bot_room.mention} "
-            f"(the NuggetIvitesBot / bot room). Use that channel."
+            f"(the NuggetIvitesBot / bot room). Use that channel. "
+            f"Lore Roulette (`/trivia`) also runs in #yappinmain."
         )
     return (
         "GoonBot is locked to a single bot room, but none is set yet. "
@@ -202,6 +293,32 @@ async def message_allowed_for_gameplay(message: discord.Message, db: object) -> 
     if not await bot_room_only_enabled(db, message.guild.id):
         return True
     return await channel_is_allowed_bot_room(message.guild, db, message.channel)
+
+
+async def message_allowed_for_trivia(message: discord.Message, db: object) -> bool:
+    """Lore Roulette may be answered in the bot room or the main (yappinmain) channel."""
+    if message.guild is None:
+        return False
+    if not await bot_room_only_enabled(db, message.guild.id):
+        return True
+    if await channel_is_allowed_bot_room(message.guild, db, message.channel):
+        return True
+    return await channel_is_allowed_lore(message.guild, db, message.channel)
+
+
+async def send_channel_message(
+    bot: discord.Client,
+    channel: discord.abc.Messageable | None,
+    *args: object,
+    **kwargs: object,
+) -> discord.Message | None:
+    """Send to a specific channel with no bot-room rewrite (Lore Roulette)."""
+    from utils.discord_api import safe_channel_send
+
+    if channel is None:
+        return None
+    gate = getattr(bot, "outbound_gate", None)
+    return await safe_channel_send(channel, *args, gate=gate, **kwargs)  # type: ignore[arg-type]
 
 
 async def send_bot_room_message(
