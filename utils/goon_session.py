@@ -66,18 +66,18 @@ _STOP = frozenset(
 )
 
 GOON_DARES: tuple[str, ...] = (
-    "Don't finish. Count to sixty. Edge once. That's the round.",
-    "Caption it: Velvet has you against the booth glass.",
-    "No hands for the next song. Meter still counts.",
-    "Type what you'd let the floor do to you. Then `/goon edge`.",
-    "Last one to say **still edged** buys the next round. Honor system.",
-    "Watch someone else's session. Don't touch yours until they ruin or finish.",
-    "Put the phone closer. Stay on the edge until the next `/daily`.",
-    "One clip. One edge. No skipping to the end.",
-    "Tell the channel what ruined you last. Then start a new streak.",
-    "Private booth rules: headphones on, `/goon edge` every 45s until 80.",
-    "You don't get to finish until someone else uses `/goon tease` on you.",
-    "Edging in VC is a watch party. If you're alone, that's pathetic — get company.",
+    "Look at her. **What would you let her do to you?** Type it. Then `/goon edge`.",
+    "She's waiting. Tell the channel **what you'd let her do to you.** Then `/goon edge`.",
+    "What are you letting her do tonight? Be specific. Then `/goon edge`.",
+    "Don't finish. Tell her (and us) **what you'd let her do.** Edge once.",
+    "Caption it: her, you, the booth. **What does she get to do?** Then `/goon edge`.",
+    "Look at those hands. **What are they allowed to do to you?** Type it.",
+    "She's got you. **What do you let her do?** Then `/goon edge`.",
+    "Private booth with her. Headphones on. Type **what you'd let her do**, then `/goon edge` until 80.",
+    "One look. One answer. **What would you let her do to you?** Then `/goon edge`.",
+    "She's watching your session. **What would you let her do if she took over?** Type it.",
+    "You don't get to finish until you say **what you'd let her do to you** and someone `/goon tease`s you.",
+    "Edging with her on screen. If you're alone, say **what you'd let her do** anyway.",
 )
 
 GOON_LORE_LINES: tuple[str, ...] = (

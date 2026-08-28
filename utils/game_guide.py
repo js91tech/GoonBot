@@ -184,7 +184,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "6. `/boss` or `/attack` — join the raid\n"
                     "7. `/balance` — pocket vs bank vault",
                     "**Core loops**\n"
-                    "· **Session** — `/goon edge` / finish / ruin / tease; chat, VC, and jobs fill the meter; ~2h group round in #yappinmain\n"
+                    "· **Session** — `/goon edge` / finish / ruin / tease / dare (girl on screen — what would you let her do); chat, VC, and jobs fill the meter; ~2h group round in #yappinmain\n"
                     "· **Economy** — chat, VC, jobs, daily, pay friends\n"
                     "· **Raid** — boss panels, heals, loot, dungeons\n"
                     "· **PvP** — duels, heists, territories, crews, ruin streaks\n"
