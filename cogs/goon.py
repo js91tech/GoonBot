@@ -41,6 +41,7 @@ from utils.goon_session import (
     voice_watchers,
     watch_multiplier,
 )
+from utils.goon_dare_art import attach_dare_art
 from utils.goon_theme import branded_embed, danger_color, panel_title
 from utils.helpers import fmt_amount, guild_only_message
 from utils.quests import record_quest_event
@@ -533,6 +534,25 @@ class Goon(commands.Cog):
             first_break_kind=first_break_kind,
         )
         await edit_call_message(state, content=copy, view=None)
+        channel = None
+        if guild is not None:
+            found = guild.get_channel(state.channel_id)
+            if isinstance(found, discord.TextChannel):
+                channel = found
+        if channel is not None:
+            embed = branded_embed(
+                "Dare",
+                description=(
+                    f"**{dare}**\n\n"
+                    f"`/goon edge` within **{int(config.GOON_DARE_SECONDS)}s** "
+                    f"cashes **{fmt_amount(config.GOON_DARE_PAYOUT)}**."
+                ),
+            )
+            art = attach_dare_art(embed)
+            kwargs: dict = {"embed": embed}
+            if art is not None:
+                kwargs["file"] = art
+            await send_channel_message(self.bot, channel, **kwargs)
         await self._drop_call(state.channel_id)
 
     goon = app_commands.Group(
@@ -553,7 +573,7 @@ class Goon(commands.Cog):
                 "`/goon finish` — cash the streak (condom keeps half)\n"
                 "`/goon ruin @user` — ruin them (or yourself)\n"
                 f"`/goon tease @user` — **{fmt_amount(tease)}** to push their meter\n"
-                "`/goon dare` — timed floor dare"
+                "`/goon dare` — girl on screen; say what you'd let her do"
             ),
             inline=False,
         )
@@ -848,16 +868,20 @@ class Goon(commands.Cog):
             cooldown=0.0,
         )
         embed = branded_embed(
-            panel_title("Floor dare", member_name=member.display_name),
+            panel_title("Dare", member_name=member.display_name),
             description=(
                 f"{member.mention} dropped a dare:\n\n**{dare}**\n\n"
                 f"`/goon edge` within **{int(config.GOON_DARE_SECONDS)}s** "
                 f"cashes **{fmt_amount(config.GOON_DARE_PAYOUT)}**."
             ),
         )
-        await interaction.response.send_message(embed=embed)
+        art = attach_dare_art(embed)
+        kwargs: dict = {"embed": embed}
+        if art is not None:
+            kwargs["file"] = art
+        await interaction.response.send_message(**kwargs)
 
-    @goon.command(name="dare", description="Drop a floor dare in the channel.")
+    @goon.command(name="dare", description="Drop a dare — a girl and what you'd let her do.")
     async def dare(self, interaction: discord.Interaction) -> None:
         await self.run_dare(interaction)
 
