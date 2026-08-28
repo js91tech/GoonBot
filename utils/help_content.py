@@ -47,7 +47,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**Contagious goon** (`/hack`) — pass it or pop; pop ruins their session.\n"
         "**Jail Key** (100k, guaranteed escape) · **Pick Key** (20k, 15% escape) while arrested.\n"
         "**/bodyguards** — hire up to 5 guards (3 tiers) to defend your bank from heists.\n"
-        "**Group goon call** — every **~2 hours** in **#yappinmain** (house pot); first yes starts a group round. Condoms: ruin shield / leak hold / safe finish.\n"
+        "**Group goon call** — every **~2 hours** in **#yappinmain** when people are typing; first yes starts a group round. Condoms: ruin shield / leak hold / safe finish.\n"
         "House pot — gambling losses, scourge hits, and unclaimed drops fund random coin drops.\n"
         "Scourge Virus — every **8** hours; warning GIF, then 7 min of infections on the top 5.\n"
         "Boss auto-spawn — every **90** minutes when none is active.\n"

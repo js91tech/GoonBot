@@ -20,6 +20,9 @@ from utils.goon_group import (
     call_body,
     edit_call_message,
     find_gooners_role,
+    group_call_skip_reason,
+    prune_chatter_stamps,
+    recent_channel_author_stamps,
     resolve_round_copy,
     round_body,
 )
@@ -56,7 +59,8 @@ class Goon(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.active_calls: dict[int, GroupCallState] = {}
-        self.recent_chatters: dict[int, set[int]] = {}
+        self.recent_chatters: dict[int, dict[int, float]] = {}
+        self._call_due_at: dict[int, float] = {}
         self._call_locks: dict[int, asyncio.Lock] = {}
         self.call_view = GroupGoonCallView()
         self.round_view = GroupGoonRoundView()
@@ -67,8 +71,25 @@ class Goon(commands.Cog):
         self.group_goon_call_tick.cancel()
         self.group_goon_expire_tick.cancel()
 
-    def _roll_group_call_interval(self) -> None:
-        self.group_goon_call_tick.change_interval(minutes=next_group_goon_call_minutes())
+    def _schedule_next_group_call(
+        self, guild_id: int, *, now: float | None = None, startup: bool = False,
+    ) -> None:
+        ts = time.time() if now is None else now
+        if startup:
+            delay = float(config.GOON_CALL_STARTUP_DELAY_MINUTES) * 60.0
+        else:
+            delay = float(next_group_goon_call_minutes()) * 60.0
+        self._call_due_at[guild_id] = ts + delay
+
+    def _note_chatter(self, guild_id: int, user_id: int, *, now: float | None = None) -> None:
+        ts = time.time() if now is None else now
+        self.recent_chatters.setdefault(guild_id, {})[user_id] = ts
+
+    def _live_chatters(self, guild_id: int, now: float) -> set[int]:
+        window = float(config.GOON_CALL_CHAT_WINDOW_MINUTES) * 60.0
+        stamps = prune_chatter_stamps(self.recent_chatters.get(guild_id, {}), now, window)
+        self.recent_chatters[guild_id] = stamps
+        return set(stamps)
 
     def _lock_for(self, channel_id: int) -> asyncio.Lock:
         return self._call_locks.setdefault(channel_id, asyncio.Lock())
@@ -145,7 +166,7 @@ class Goon(commands.Cog):
             return
         if not isinstance(message.author, discord.Member):
             return
-        self.recent_chatters.setdefault(message.guild.id, set()).add(message.author.id)
+        self._note_chatter(message.guild.id, message.author.id)
         state = self.active_calls.get(message.channel.id)
         if state is None:
             return
@@ -174,19 +195,23 @@ class Goon(commands.Cog):
                 except discord.HTTPException:
                     logging.debug("Group goon round: could not react to %s", message.id)
 
-    @tasks.loop(minutes=config.GOON_CALL_INTERVAL_MINUTES)
+    @tasks.loop(seconds=config.GOON_CALL_POLL_SECONDS)
     async def group_goon_call_tick(self) -> None:
-        try:
-            for guild in self.bot.guilds:
-                await self._post_group_goon_call(guild)
-        finally:
-            self._roll_group_call_interval()
+        now = time.time()
+        for guild in self.bot.guilds:
+            try:
+                await self._maybe_post_group_goon_call(guild, now=now)
+            except Exception:
+                logging.exception("Group goon call tick failed guild %s", guild.id)
 
     @group_goon_call_tick.before_loop
     async def before_group_goon_call_tick(self) -> None:
         await self.bot.wait_until_ready()
         await self._restore_calls()
-        self._roll_group_call_interval()
+        now = time.time()
+        for guild in self.bot.guilds:
+            if guild.id not in self._call_due_at:
+                self._schedule_next_group_call(guild.id, now=now, startup=True)
 
     @tasks.loop(seconds=20)
     async def group_goon_expire_tick(self) -> None:
@@ -201,24 +226,50 @@ class Goon(commands.Cog):
     async def before_group_goon_expire_tick(self) -> None:
         await self.bot.wait_until_ready()
 
-    async def _post_group_goon_call(self, guild: discord.Guild) -> None:
+    async def _maybe_post_group_goon_call(self, guild: discord.Guild, *, now: float) -> None:
+        if guild.id not in self._call_due_at:
+            self._schedule_next_group_call(guild.id, now=now, startup=True)
+        due = now >= self._call_due_at[guild.id]
         channel = await resolve_lore_channel(guild, self.bot.db)
-        if channel is None:
+        existing = self.active_calls.get(channel.id) if channel is not None else None
+        chatters = self._live_chatters(guild.id, now)
+        if channel is not None and due:
+            window = float(config.GOON_CALL_CHAT_WINDOW_MINUTES) * 60.0
+            history = await recent_channel_author_stamps(
+                channel,
+                after_ts=now - window,
+                limit=int(config.GOON_CALL_HISTORY_LIMIT),
+            )
+            if history:
+                bucket = self.recent_chatters.setdefault(guild.id, {})
+                for uid, ts in history.items():
+                    bucket[uid] = max(bucket.get(uid, 0.0), ts)
+                chatters = self._live_chatters(guild.id, now)
+        reason = group_call_skip_reason(
+            channel_ok=channel is not None,
+            active=existing is not None,
+            due=due,
+            chatter_count=len(chatters),
+            min_chatters=int(config.GOON_CALL_MIN_CHATTERS),
+        )
+        if reason is not None:
+            logging.debug("Group goon call skip guild %s: %s", guild.id, reason)
             return
-        existing = self.active_calls.get(channel.id)
-        if existing is not None:
-            return
-        chatters = self.recent_chatters.pop(guild.id, set())
-        if len(chatters) < config.GOON_CALL_MIN_CHATTERS:
-            return
+        assert channel is not None
+        await self._post_group_goon_call(guild, channel, now=now)
+
+    async def _post_group_goon_call(
+        self, guild: discord.Guild, channel: discord.TextChannel, *, now: float,
+    ) -> None:
         desired = roll_group_goon_reward()
-        amount = await self.bot.db.debit_house_pot(guild.id, desired)
-        if amount < config.GOON_CALL_MIN_POT:
-            if amount > 0:
-                await self.bot.db.credit_house_pot(guild.id, amount)
-            return
+        taken = await self.bot.db.debit_house_pot(guild.id, desired)
+        if taken < config.GOON_CALL_MIN_POT:
+            if taken > 0:
+                await self.bot.db.credit_house_pot(guild.id, taken)
+            amount = 0.0
+        else:
+            amount = taken
         condoms = int(config.GOON_CALL_CONDOMS)
-        now = time.time()
         state = GroupCallState(
             guild_id=guild.id,
             channel_id=channel.id,
@@ -240,12 +291,22 @@ class Goon(commands.Cog):
             ),
         )
         if posted is None:
-            await self.bot.db.credit_house_pot(guild.id, amount)
+            if amount > 0:
+                await self.bot.db.credit_house_pot(guild.id, amount)
+            logging.warning("Group goon call: send failed guild %s channel %s", guild.id, channel.id)
             return
         state.message = posted
         state.message_id = posted.id
         self.active_calls[channel.id] = state
+        self._schedule_next_group_call(guild.id, now=now)
         await self._persist(state)
+        logging.info(
+            "Group goon call posted guild %s channel %s prize %s chatters %s",
+            guild.id,
+            channel.id,
+            amount,
+            len(self.recent_chatters.get(guild.id, {})),
+        )
 
     async def handle_group_ready(self, interaction: discord.Interaction) -> None:
         if interaction.guild_id is None or interaction.channel_id is None:

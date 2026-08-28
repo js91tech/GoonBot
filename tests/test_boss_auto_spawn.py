@@ -37,6 +37,7 @@ class BossAutoSpawnTests(unittest.IsolatedAsyncioTestCase):
     async def test_zz_wrath_spawn_succeeds(self) -> None:
         with (
             patch("cogs.boss.random.random", return_value=0.0),
+            patch("utils.velvet_night.velvet_night_active_now", return_value=False),
             patch(
                 "cogs.boss.resolve_bot_announcement_channel",
                 new_callable=AsyncMock,
@@ -53,6 +54,7 @@ class BossAutoSpawnTests(unittest.IsolatedAsyncioTestCase):
     async def test_freaky_nikki_spawn_partition(self) -> None:
         with (
             patch("cogs.boss.random.random", return_value=0.20),
+            patch("utils.velvet_night.velvet_night_active_now", return_value=False),
             patch(
                 "cogs.boss.resolve_bot_announcement_channel",
                 new_callable=AsyncMock,

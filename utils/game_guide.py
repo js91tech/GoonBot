@@ -451,7 +451,11 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "`/scourge-pass` to pass infection; hits top wallets' banks",
                     "**Trivia** — hourly Lore Roulette in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
                     "`/trivia` to start early)\n"
-                    "**Group goon call** — every **~2 hours** in **#yappinmain** when chat is live; first **yes** / **I'm ready** wins house-pot goonbux + **3 condoms**, then a group round (late join spends a condom). Talent edges harder, Host teases cheaper, Fixer ruins cheaper.\n"
+                    "**Group goon call** — every **~2 hours** in **#yappinmain** when chat is live "
+                    "(retries every minute until two people have typed recently — quiet ticks do not "
+                    "reset the timer); first **yes** / **I'm ready** wins house-pot goonbux + **3 condoms**, "
+                    "then a group round (late join spends a condom). Talent edges harder, Host teases cheaper, "
+                    "Fixer ruins cheaper.\n"
                     "**Imposter** — random AI word sabotage in messages (server config)",
                     "**House pot** — gambling taxes and unclaimed drops fund random **Claim** coin drops",
                 ],

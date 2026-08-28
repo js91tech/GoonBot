@@ -1,6 +1,7 @@
 """Group goon call — persistent buttons, round state, main-chat ping."""
 from __future__ import annotations
 
+import datetime
 import logging
 import time
 from dataclasses import dataclass, field
@@ -79,6 +80,72 @@ class GroupCallState:
         )
 
 
+def prune_chatter_stamps(
+    stamps: dict[int, float],
+    now: float,
+    window_seconds: float,
+) -> dict[int, float]:
+    """Drop typer timestamps outside the live-chat window."""
+    if window_seconds <= 0:
+        return dict(stamps)
+    cutoff = now - window_seconds
+    return {uid: ts for uid, ts in stamps.items() if ts >= cutoff}
+
+
+def group_call_skip_reason(
+    *,
+    channel_ok: bool,
+    active: bool,
+    due: bool,
+    chatter_count: int,
+    min_chatters: int,
+) -> str | None:
+    """Why a poll should not post. None means post. Quiet/no-channel must not reschedule."""
+    if not channel_ok:
+        return "no_channel"
+    if active:
+        return "active_call"
+    if not due:
+        return "not_due"
+    if chatter_count < min_chatters:
+        return "quiet"
+    return None
+
+
+async def recent_channel_author_stamps(
+    channel: object,
+    *,
+    after_ts: float,
+    limit: int = 40,
+) -> dict[int, float]:
+    """Unique human authors from recent channel history (survives bot restarts)."""
+    history = getattr(channel, "history", None)
+    if history is None:
+        return {}
+    after = datetime.datetime.fromtimestamp(after_ts, tz=datetime.timezone.utc)
+    found: dict[int, float] = {}
+    try:
+        async for msg in history(limit=limit, after=after):
+            author = getattr(msg, "author", None)
+            if author is None or getattr(author, "bot", False):
+                continue
+            uid = getattr(author, "id", None)
+            if uid is None:
+                continue
+            created = getattr(msg, "created_at", None)
+            if created is None:
+                ts = after_ts
+            elif getattr(created, "timestamp", None) is not None:
+                ts = float(created.timestamp())
+            else:
+                ts = after_ts
+            uid_i = int(uid)
+            found[uid_i] = max(found.get(uid_i, 0.0), ts)
+    except Exception:
+        logging.debug("Group goon: history scan failed", exc_info=True)
+    return found
+
+
 def find_gooners_role(guild: discord.Guild) -> discord.Role | None:
     hints = tuple(h.lower() for h in config.GOON_CALL_ROLE_HINTS)
     for role in guild.roles:
@@ -92,10 +159,13 @@ def find_gooners_role(guild: discord.Guild) -> discord.Role | None:
 
 def call_body(state: GroupCallState, *, role: discord.Role | None = None) -> str:
     mention = f"{role.mention} " if role is not None else ""
+    if state.amount > 0:
+        prize = f"**{fmt_amount(state.amount)}** + **{state.condoms}× Condoms** from the house"
+    else:
+        prize = f"**{state.condoms}× Condoms** from the house"
     return (
         f"{mention}**{state.prompt}**\n"
-        f"First to answer (**I'm ready** or type **yes**) gets "
-        f"**{fmt_amount(state.amount)}** + **{state.condoms}× Condoms** from the house.\n"
+        f"First to answer (**I'm ready** or type **yes**) gets {prize}.\n"
         "_Then the floor stays open for a group round._"
     )
 
