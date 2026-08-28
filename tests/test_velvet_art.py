@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import hashlib
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import discord
@@ -16,6 +16,20 @@ class VelvetArtTests(unittest.TestCase):
             name = f"velvet_vixen_{variant}.png"
             self.assertTrue((boss_art.GLAM_ROOT / name).is_file(), name)
             self.assertTrue((boss_art.ARMORED_ROOT / name).is_file(), name)
+
+    def test_glam_and_armored_pixels_differ(self) -> None:
+        """Guard against copying one pack over the other (NuggetBot Hannah regression)."""
+        for variant in ("normal", "enraged", "shadow", "celestial", "mythic"):
+            name = f"velvet_vixen_{variant}.png"
+            glam = hashlib.md5((boss_art.GLAM_ROOT / name).read_bytes()).digest()
+            armored = hashlib.md5((boss_art.ARMORED_ROOT / name).read_bytes()).digest()
+            self.assertNotEqual(glam, armored, name)
+
+    def test_named_boss_portraits_exist(self) -> None:
+        for filename in ("tomass.png", "zz_wrath.png"):
+            path = boss_art.ASSETS_ROOT / filename
+            self.assertTrue(path.is_file(), filename)
+            self.assertGreater(path.stat().st_size, 50_000, filename)
 
     def test_resolve_respects_style(self) -> None:
         with mock.patch.object(config, "VELVET_VIXEN_ART_STYLE", "glam"):

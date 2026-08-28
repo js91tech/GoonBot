@@ -518,7 +518,7 @@ FREAKY_NIKKI_ART_URLS: dict[str, str] = {}
 BOSS_AUTO_SPAWN_TOMASS_CHANCE = 0.03
 BOSS_DISPLAY_NAME = "Velvet Vixen"
 VELVET_SPAWN_VARIANTS: tuple[str, ...] = ("normal", "enraged", "shadow", "celestial", "mythic")
-# Velvet Vixen portrait pack: "glam" (seductive), "armored" (warrior), or "both" (random each attach).
+# Velvet Vixen portrait pack: "glam" (red-velvet nightlife), "armored" (leather club), or "both".
 VELVET_VIXEN_ART_STYLE = os.getenv("VELVET_VIXEN_ART_STYLE", "both").strip().lower() or "both"
 # Dashboard summon dropdown — special bosses first, then Velvet Vixen tiers.
 BOSS_DASHBOARD_VARIANT_ORDER: tuple[str, ...] = (
