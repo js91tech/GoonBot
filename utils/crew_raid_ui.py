@@ -67,8 +67,8 @@ COMMON_ERROR_MESSAGES = {
     "same_crew": "You cannot raid your own crew.",
     "invalid_defender": "That crew does not exist.",
     "duplicate_fighters": "Pick two different backup members — you cannot reuse the same fighter.",
-    "fighter_not_in_crew": "Every raider must be a member of your crew.",
-    "fighter_restricted": "One of your raiders is arrested or downed and cannot fight.",
+    "fighter_not_in_crew": "Every fighter must be a member of your crew.",
+    "fighter_restricted": "One of your fighters is arrested or downed and cannot fight.",
     "attacker_cooldown": "Your crew raided recently. Wait for the attack cooldown to expire.",
     "defender_cooldown": "That crew was raided recently and is still on defense cooldown.",
 }
@@ -145,7 +145,7 @@ class BackupSelect(discord.ui.Select):
     ) -> None:
         self.slot = slot
         super().__init__(
-            placeholder=f"Backup raider #{slot}",
+            placeholder=f"Backup fighter #{slot}",
             min_values=1,
             max_values=1,
             options=options,
@@ -181,7 +181,7 @@ class LaunchRaidButton(discord.ui.Button):
             return
         if view.backups[0] is None or view.backups[1] is None:
             await interaction.response.send_message(
-                "Pick **two backup raiders** before launching.", ephemeral=True,
+                "Pick **two backup fighters** before launching.", ephemeral=True,
             )
             return
         await interaction.response.defer(ephemeral=True)

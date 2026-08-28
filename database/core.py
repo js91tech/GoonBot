@@ -507,6 +507,22 @@ class Database(
         await self._migrate_goonbot_age_gate()
         await self._migrate_heat_status()
         await self._migrate_goon_sessions()
+        await self._migrate_nightlife_business_tier_ids()
+
+    async def _migrate_nightlife_business_tier_ids(self) -> None:
+        """Rename leftover NuggetBot tycoon tier ids to nightlife catalog ids."""
+        from utils.businesses import LEGACY_TIER_IDS
+
+        for old_id, new_id in LEGACY_TIER_IDS.items():
+            await self.conn.execute(
+                "UPDATE user_businesses SET tier_id = ? WHERE tier_id = ?",
+                (new_id, old_id),
+            )
+        if self.is_postgres:
+            await self.conn.execute(
+                "ALTER TABLE user_businesses ALTER COLUMN tier_id SET DEFAULT 'tip_jar_cam'",
+            )
+        await self.conn.commit()
 
     async def _migrate_heat_status(self) -> None:
         """Lifetime goonbux spent → VIP / heat tiers."""
@@ -1333,7 +1349,7 @@ class Database(
                 user_id BIGINT NOT NULL,
                 guild_id BIGINT NOT NULL,
                 tier INTEGER NOT NULL DEFAULT 1 CHECK (tier >= 1),
-                tier_id TEXT NOT NULL DEFAULT 'lemon_stand',
+                tier_id TEXT NOT NULL DEFAULT 'tip_jar_cam',
                 district_id TEXT,
                 security INTEGER NOT NULL DEFAULT 0 CHECK (security >= 0),
                 reputation INTEGER NOT NULL DEFAULT 0 CHECK (reputation >= 0),
@@ -4954,6 +4970,8 @@ class Database(
         *,
         at: float | None = None,
     ) -> float | None:
+        if config.BOSS_ATTACK_COOLDOWN_MAX_SECONDS <= 0:
+            return None
         from utils.boss_element_effects import attack_cooldown_while_debuffed
 
         now = time.time() if at is None else at
@@ -9624,7 +9642,7 @@ class Database(
                     branch_production = 0
                 WHERE user_id = ? AND guild_id = ?
                 """,
-                (tier1.tier_id if tier1 else "lemon_stand", new_prestige, user_id, guild_id),
+                (tier1.tier_id if tier1 else "tip_jar_cam", new_prestige, user_id, guild_id),
             )
             await self.conn.commit()
         return None, new_prestige

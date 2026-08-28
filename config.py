@@ -92,7 +92,7 @@ DM_NOTIFICATIONS_ENABLED = os.getenv("DM_NOTIFICATIONS_ENABLED", "").strip().low
     "on",
 }
 
-# Bot room — GoonBot only types in one channel (default: NuggetIvitesBot room).
+# Bot room — GoonBot only types in one designated channel.
 # Prefer BOT_CHANNEL_ID / GOONBOT_CHANNEL_ID env, else designated/main guild setting,
 # else a text channel whose name matches BOT_ROOM_NAME_HINTS.
 _bot_channel_raw = (
@@ -327,8 +327,8 @@ BOSS_MYTHIC_DESPAWN_SECONDS = 12 * 60
 BOSS_ULTRA_DESPAWN_SECONDS = 12 * 60
 BOSS_ULTRA_SPAWN_CHANCE = 0.12
 BOSS_AUTO_SPAWN_FREAKY_NIKKI_CHANCE = 0.15
-BOSS_ATTACK_COOLDOWN_MIN_SECONDS = 2
-BOSS_ATTACK_COOLDOWN_MAX_SECONDS = 3
+BOSS_ATTACK_COOLDOWN_MIN_SECONDS = 0
+BOSS_ATTACK_COOLDOWN_MAX_SECONDS = 0
 # Warn the guild this many seconds before an auto-spawn is due.
 BOSS_SPAWN_WARN_SECONDS = 10 * 60
 # Participation floor: anyone with at least this much damage gets a purse + scrap.
@@ -351,8 +351,8 @@ BOSS_MOOD_FRANTIC_COUNTER_MULT = 1.10
 BOSS_CREW_MVP_BONUS = 10_000.0
 # During world_boss_week, this fraction of auto-spawns become the world leviathan.
 BOSS_WORLD_EVENT_SPAWN_CHANCE = 0.55
-# Legacy default when a row has no stored per-attack cooldown.
-BOSS_ATTACK_COOLDOWN_SECONDS = BOSS_ATTACK_COOLDOWN_MAX_SECONDS
+# Boss strikes have no per-attack cooldown.
+BOSS_ATTACK_COOLDOWN_SECONDS = 0
 BOSS_RAIDER_DAMAGE_MULT: dict[int, float] = {1: 0.65, 2: 0.80, 3: 0.95}
 # Extra raid damage vs high-threat bosses so mythics can die before despawn.
 BOSS_RAID_DAMAGE_BONUS_BY_THREAT: dict[int, float] = {
@@ -971,20 +971,20 @@ MEGA_PROJECT_INCOME_BONUS_CAP = 1.0
 # Post-mega acquisition targets with unique passive perks.
 EMPIRE_ACQUISITIONS: dict[str, dict[str, float | str]] = {
     "media_conglomerate": {
-        "name": "Media Conglomerate",
+        "name": "Studio Network",
         "emoji": "📺",
         "cost": 50_000_000_000.0,
         "reputation_bonus_factor": 0.10,
     },
     "private_security": {
-        "name": "Private Security Firm",
+        "name": "Door Crew",
         "emoji": "🛡️",
         "cost": 75_000_000_000.0,
         "security_bonus": 15.0,
         "attack_duration_reduction": 0.10,
     },
     "pharma_lab": {
-        "name": "Pharma Lab",
+        "name": "Aftercare Lab",
         "emoji": "💊",
         "cost": 100_000_000_000.0,
         "drug_grow_time_reduction": 0.25,

@@ -592,7 +592,7 @@ class Boss(commands.Cog):
             avatar_id = await self.bot.db.get_equipped_avatar_id(killer_user_id, guild.id)
             defn = get_avatar(avatar_id)
             killer_name = self._display_name(guild, killer_user_id)
-            pose_label = defn.name if defn else "Raider"
+            pose_label = defn.name if defn else "Gooner"
             embed.add_field(
                 name="Killing blow",
                 value=f"**{killer_name}** — {pose_label} victory pose",
@@ -1400,20 +1400,6 @@ class Boss(commands.Cog):
                 buff_lines.append("💨 " + " · ".join(drug_bits))
             if buff_lines:
                 embed.add_field(name="Active buffs", value="\n".join(buff_lines), inline=False)
-            cooldown = await self.bot.db.boss_attack_cooldown_remaining(guild_id, member.id)
-            if cooldown is not None and cooldown > 0:
-                secs = int(cooldown)
-                embed.add_field(
-                    name="Strike cooldown",
-                    value=f"**{secs // 60}m {secs % 60}s** until your next attack",
-                    inline=True,
-                )
-            else:
-                embed.add_field(
-                    name="Strike cooldown",
-                    value="**Ready**",
-                    inline=True,
-                )
         embed.set_footer(
             text="⚔️ Attack · 👹 Attack Add · ✨ Cast · 💊 Items · ❤️ Heal · 🧪 Auto-heal · Refresh · Raid LB",
         )
@@ -1466,12 +1452,6 @@ class Boss(commands.Cog):
                     time.time() + downed_seconds,
                 )
                 return BossAttackResult(error=f"{dot_note} You are **downed**!")
-
-        cooldown = await self.bot.db.boss_attack_cooldown_remaining(guild_id, member.id)
-        if cooldown is not None and cooldown > 0:
-            return BossAttackResult(
-                error=f"Recovering — **{cooldown:.1f}s** until your next strike.",
-            )
 
         loadout = await self._loadout(member.id, guild_id)
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
@@ -1752,12 +1732,6 @@ class Boss(commands.Cog):
                 if int(row["add_id"]) == add_id:
                     target = row
                     break
-
-        cooldown = await self.bot.db.boss_attack_cooldown_remaining(guild_id, member.id)
-        if cooldown is not None and cooldown > 0:
-            return BossAttackResult(
-                error=f"Recovering — **{cooldown:.1f}s** until your next strike.",
-            )
 
         loadout = await self._loadout(member.id, guild_id)
         set_bonus = detect_set_bonus(loadout.primary, loadout.armor)
@@ -2223,7 +2197,7 @@ class Boss(commands.Cog):
             title = "Self revive"
         else:
             description = f"{healer.mention} revived {target.mention}."
-            title = "Field medic"
+            title = "Aftercare"
         embed = discord.Embed(
             title=title,
             description=description,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Slice NuggetBot shop sprite sheets into per-item PNGs.
+"""Slice shop sprite sheets into per-item PNGs.
 
 Expects source sheets at:
   assets/sprites/shop_sheet.png
@@ -236,7 +236,7 @@ def battle_worn_name(item_id: str) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Slice NuggetBot shop sprite sheets.")
+    parser = argparse.ArgumentParser(description="Slice shop sprite sheets.")
     parser.add_argument(
         "shop_sheet",
         nargs="?",

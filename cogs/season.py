@@ -24,7 +24,7 @@ class Season(commands.Cog):
             app_commands.Choice(name="Reset ELO (admin)", value="reset"),
         ],
         reward=[
-            app_commands.Choice(name="Raider Title (50)", value="title_raider"),
+            app_commands.Choice(name="Gooner Title (50)", value="title_raider"),
             app_commands.Choice(name="Season Gold Avatar (120)", value="avatar_season_gold"),
             app_commands.Choice(name="Plunder Aspect (200)", value="aspect_season_plunder"),
             app_commands.Choice(name="Plunderer's Seal Relic (300)", value="relic_plunder_seal"),
@@ -90,7 +90,7 @@ class Season(commands.Cog):
                 )
             else:
                 await interaction.response.send_message(
-                    "Redeemed **Raider** title! Show it off in duels.", ephemeral=True,
+                    "Redeemed **Gooner** title! Show it off in duels.", ephemeral=True,
                 )
             return
 

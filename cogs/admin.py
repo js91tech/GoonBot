@@ -355,7 +355,7 @@ class Admin(commands.Cog):
 
     @admin_group.command(
         name="set-designated-channel",
-        description="Set the ONLY channel GoonBot types in (NuggetIvitesBot room).",
+        description="Set the ONLY channel GoonBot types in (bot room).",
     )
     @app_commands.describe(channel="Text channel for all GoonBot posts and player commands")
     @app_commands.guild_only()
@@ -380,7 +380,7 @@ class Admin(commands.Cog):
         await interaction.response.send_message(
             f"Bot room set to {channel.mention}. "
             "GoonBot will **only type and accept commands** there "
-            "(NuggetIvitesBot-style single room), except **Lore Roulette** "
+            "(single bot room), except **Lore Roulette** "
             "which posts in the main channel (`#yappinmain`). "
             "Admins can still run `/admin` elsewhere for setup.",
             allowed_mentions=discord.AllowedMentions.none(),

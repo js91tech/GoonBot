@@ -15,7 +15,7 @@ def scourge_warning_embed(*, seconds_until_active: int) -> discord.Embed:
             f"**{config.SCOURGE_VIRUS_NAME}** is breaking containment in "
             f"**{seconds_until_active}s**.\n\n"
             f"For **{config.SCOURGE_ACTIVE_SECONDS // 60} minutes**, the top "
-            f"**{config.SCOURGE_TOP_TARGETS}** raiders will be at risk — "
+            f"**{config.SCOURGE_TOP_TARGETS}** gooners will be at risk — "
             f"**{config.SCOURGE_INFECTIONS_PER_EVENT}** infections, one per minute.\n\n"
             f"Infected players have **{config.SCOURGE_PASS_SECONDS}s** to "
             f"**`/scourge-pass`** the virus or lose "

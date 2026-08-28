@@ -60,7 +60,7 @@ async def build_dungeon_lobby_embed(
     )
     embed.add_field(
         name=f"{VAULT_TIER.emoji} Party — {VAULT_TIER.name}",
-        value=f"{vault_status} · needs **{VAULT_TIER.min_party_size}+** raiders",
+        value=f"{vault_status} · needs **{VAULT_TIER.min_party_size}+** gooners",
         inline=False,
     )
     embed.add_field(name="Your energy", value=energy_text, inline=False)

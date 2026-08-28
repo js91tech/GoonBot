@@ -77,7 +77,7 @@ class UniqueDefaultAvatarTests(unittest.TestCase):
         self.assertIsNotNone(defn)
         assert defn is not None
         self.assertEqual(defn.price, 0.0)
-        self.assertEqual(defn.name, "Raid Mascot")
+        self.assertEqual(defn.name, "Floor Portrait")
 
 
 class UniqueDefaultDatabaseTests(unittest.IsolatedAsyncioTestCase):

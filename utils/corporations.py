@@ -55,19 +55,19 @@ class CorporateProjectDef:
 
 CORPORATE_PROJECTS: tuple[CorporateProjectDef, ...] = (
     CorporateProjectDef(
-        "mega_mall", "Mega Mall", "🏬", 2_000_000.0,
+        "mega_mall", "Flagship Club", "🏬", 2_000_000.0,
         "Treasury windfall + bragging rights", 500_000.0,
     ),
     CorporateProjectDef(
-        "theme_park", "Theme Park", "🎢", 5_000_000.0,
+        "theme_park", "Afterhours Festival", "🪩", 5_000_000.0,
         "Treasury windfall + tourism prestige", 1_250_000.0,
     ),
     CorporateProjectDef(
-        "ai_research_center", "AI Research Center", "🤖", 10_000_000.0,
+        "ai_research_center", "Booking AI Desk", "🤖", 10_000_000.0,
         "Treasury windfall + automation edge", 2_500_000.0,
     ),
     CorporateProjectDef(
-        "space_program", "Space Program", "🚀", 25_000_000.0,
+        "space_program", "Global Cam Circuit", "📡", 25_000_000.0,
         "Massive treasury windfall + legendary status", 6_000_000.0,
     ),
 )

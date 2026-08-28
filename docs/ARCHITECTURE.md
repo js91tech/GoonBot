@@ -1,8 +1,8 @@
-# NuggetBot Architecture Documentation
+# GoonBot Architecture Documentation
 
 ## Overview
 
-NuggetBot is a Discord economy bot built on **discord.py 2.x** with a
+GoonBot is a Discord economy RPG built on **discord.py 2.x** with a
 PostgreSQL backend on Railway and a SQLite fallback for local development. Each
 game system is implemented as a separate cog, and all tunable values live in
 `config.py`.
@@ -73,7 +73,7 @@ sessions after deployment issues.
 
 The shop cog exposes `/shop`, `/buy`, `/inventory`, and `/equip`. The item
 catalog lives in `items.py` and currently contains 10 weapons plus 10 armor
-pieces. Prices scale up to 120,000 nuggets for top-tier gear to keep the best
+pieces. Prices scale up to 120,000 goonbux for top-tier gear to keep the best
 items as long-term goals for active players.
 
 ### Boss Gear Combat (`cogs/boss.py`)
@@ -82,7 +82,7 @@ Weapons define base boss damage (plus a small 1–5 roll) and per-tier crit chan
 unarmed attacks roll 1–15. Player crits deal 2.0× damage. Boss variants carry
 threat metadata for counterattack damage and crit chance. Armor mitigates counters
 via `damage × (1 - power/(power+100))` and adds max HP. Counter chance and
-multi-target hits (up to 3 raiders) scale up as boss HP drops. Boss HP scales from
+multi-target hits (up to 3 gooners) scale up as boss HP drops. Boss HP scales from
 circulation × `boss_health_scale_factor` (default 0.02), capped at 15,000 before
 variant multipliers.
 

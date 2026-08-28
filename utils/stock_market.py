@@ -35,9 +35,9 @@ def event_multiplier(event_type: str | None) -> float:
 
 def event_label(event_type: str | None) -> str:
     labels = {
-        "tech_boom": "📈 Tech Boom (+25%)",
-        "economic_crash": "📉 Economic Crash (−30%)",
-        "tourism_surge": "🏖️ Tourism Surge (+12%)",
-        "supply_shortage": "📦 Supply Shortage (−15%)",
+        "tech_boom": "📈 Cam Boom (+25%)",
+        "economic_crash": "📉 Dry Spell Crash (−30%)",
+        "tourism_surge": "🏖️ Afterhours Surge (+12%)",
+        "supply_shortage": "📦 Bottle Shortage (−15%)",
     }
     return labels.get(event_type or "", "—")

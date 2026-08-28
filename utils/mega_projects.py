@@ -16,19 +16,19 @@ class MegaProjectDef:
 
 MEGA_PROJECTS: tuple[MegaProjectDef, ...] = (
     MegaProjectDef(
-        "space_program", "Space Program", "🚀", 1_000_000_000.0, 0.05,
+        "space_program", "Satellite Cam Grid", "📡", 1_000_000_000.0, 0.05,
         "Exclusive prestige cosmetic + permanent +5% business income",
     ),
     MegaProjectDef(
-        "global_logistics", "Global Logistics Network", "🚚", 5_000_000_000.0, 0.10,
+        "global_logistics", "Bottle Pipeline", "🍾", 5_000_000_000.0, 0.10,
         "Permanent +10% business income",
     ),
     MegaProjectDef(
-        "ai_research", "AI Research Initiative", "🧠", 10_000_000_000.0, 0.15,
+        "ai_research", "Creator AI Desk", "🧠", 10_000_000_000.0, 0.15,
         "Automation multiplier: permanent +15% business income",
     ),
     MegaProjectDef(
-        "world_expo", "World Expo", "🌍", 25_000_000_000.0, 0.20,
+        "world_expo", "World Afterparty", "🌍", 25_000_000_000.0, 0.20,
         "Unique server-wide benefit + permanent +20% business income",
     ),
 )

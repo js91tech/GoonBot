@@ -27,7 +27,7 @@ ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
     QuestDef("first_edge", "Don't Finish", "Edge once with `/goon edge`.", 1, 600.0, "goon_edge"),
     QuestDef("buy_gear", "Look the Part", "Buy any item from `/shop`.", 1, 750.0, "shop_buy"),
     QuestDef("raid_once", "When Velvet Walks In", "Deal damage with `/attack`.", 1, 1000.0, "boss_attack"),
-    QuestDef("heal_once", "Aftercare Duty", "Heal a raider with `/heal`.", 1, 750.0, "boss_heal"),
+    QuestDef("heal_once", "Aftercare Duty", "Heal a gooner with `/heal`.", 1, 750.0, "boss_heal"),
     QuestDef("pay_friend", "Buy Someone In", "Send goonbux with `/pay`.", 1, 500.0, "wallet_pay"),
     QuestDef(
         "gift_once",
@@ -42,7 +42,7 @@ ONBOARDING_QUESTS: tuple[QuestDef, ...] = (
 DAILY_QUEST_POOL: tuple[QuestDef, ...] = (
     QuestDef("daily_claim", "Daily Check-in", "Claim `/daily`.", 1, 400.0, "daily_claim"),
     QuestDef("boss_hits", "Raid Pressure", "Land 5 boss attacks.", 5, 800.0, "boss_attack"),
-    QuestDef("heal_allies", "Triage Run", "Heal raiders 3 times.", 3, 700.0, "boss_heal"),
+    QuestDef("heal_allies", "Triage Run", "Heal gooners 3 times.", 3, 700.0, "boss_heal"),
     QuestDef("craft_item", "Workshop Shift", "Craft an upgrade with `/craft`.", 1, 900.0, "craft_done"),
     QuestDef("gamble_once", "Lucky Break", "Play `/coinflip` or `/blackjack`.", 1, 600.0, "gamble_play"),
     QuestDef("messages", "Stay Active", "Earn from 20 chat messages.", 20, 550.0, "chat_message"),

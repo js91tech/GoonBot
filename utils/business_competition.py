@@ -28,7 +28,7 @@ class CompetitiveAction:
 COMPETITIVE_ACTIONS: tuple[CompetitiveAction, ...] = (
     CompetitiveAction(
         "marketing_campaign",
-        "Marketing Campaign",
+        "Floor Promo",
         "📣",
         f"+{int(config.BUSINESS_ACTION_MARKETING_BONUS * 100)}% your revenue "
         f"for {int(config.BUSINESS_ACTION_MARKETING_DURATION // 3600)}h.",
@@ -52,7 +52,7 @@ COMPETITIVE_ACTIONS: tuple[CompetitiveAction, ...] = (
     ),
     CompetitiveAction(
         "price_war",
-        "Price War",
+        "Cover Charge War",
         "💸",
         f"-{int(config.BUSINESS_ACTION_PRICE_WAR_PENALTY * 100)}% a rival's revenue "
         f"for {int(config.BUSINESS_ACTION_PRICE_WAR_DURATION // 3600)}h.",
@@ -64,7 +64,7 @@ COMPETITIVE_ACTIONS: tuple[CompetitiveAction, ...] = (
     ),
     CompetitiveAction(
         "reputation_attack",
-        "Reputation Attack",
+        "Smear Drop",
         "📰",
         f"-{int(config.BUSINESS_ACTION_REPUTATION_PENALTY * 100)}% a rival's revenue "
         f"for {int(config.BUSINESS_ACTION_REPUTATION_DURATION // 3600)}h.",
@@ -76,7 +76,7 @@ COMPETITIVE_ACTIONS: tuple[CompetitiveAction, ...] = (
     ),
     CompetitiveAction(
         "market_expansion",
-        "Market Expansion",
+        "Strip Expansion",
         "🗺️",
         f"+{config.BUSINESS_ACTION_MARKET_EXPANSION_INFLUENCE} influence in your "
         "current district (instant).",

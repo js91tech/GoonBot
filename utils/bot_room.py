@@ -1,4 +1,4 @@
-"""GoonBot bot-room gate — public typing stays in one channel (NuggetIvitesBot room)."""
+"""GoonBot bot-room gate — public typing stays in one designated channel."""
 from __future__ import annotations
 
 import logging
@@ -61,7 +61,7 @@ async def _resolve_id(
 
 
 def find_bot_room_by_name(guild: discord.Guild) -> discord.TextChannel | None:
-    """Prefer channels named like NuggetIvitesBot / goonbot-room."""
+    """Prefer channels named like the bot room / goonbot-room."""
     matches = [
         ch
         for ch in guild.text_channels
@@ -141,7 +141,7 @@ async def resolve_bot_room(
         if channel is not None:
             return channel
 
-    # 4) Name match (NuggetIvitesBot room, etc.)
+    # 4) Name match (bot-room name hints, etc.)
     named = find_bot_room_by_name(guild)
     if named is not None:
         return named
@@ -238,7 +238,7 @@ def bot_room_required_message(bot_room: discord.abc.GuildChannel | None) -> str:
     return (
         "GoonBot is locked to a single bot room, but none is set yet. "
         "Ask an admin to run `/admin set-designated-channel` on the "
-        "**nuggetivitesbot** room (or set `BOT_CHANNEL_ID`)."
+        "bot room (or set `BOT_CHANNEL_ID`)."
     )
 
 

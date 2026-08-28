@@ -26,34 +26,45 @@ class BusinessTierDef:
 # Ordered by tier. Costs/income mirror the design document.
 BUSINESS_TIERS: tuple[BusinessTierDef, ...] = (
     BusinessTierDef(
-        1, "lemon_stand", "Tip Jar Cam", 500.0, 20.0, "📸",
+        1, "tip_jar_cam", "Tip Jar Cam", 500.0, 20.0, "📸",
         "A shaky phone stand and a tip jar. Everyone starts somewhere.",
     ),
     BusinessTierDef(
-        2, "food_cart", "Afterparty Cart", 2_500.0, 100.0, "🍸",
+        2, "afterparty_cart", "Afterparty Cart", 2_500.0, 100.0, "🍸",
         "Wheels, drinks, and foot traffic from the clubs.",
     ),
     BusinessTierDef(
-        3, "coffee_shop", "Late-Night Lounge", 10_000.0, 350.0, "🥂",
+        3, "late_night_lounge", "Late-Night Lounge", 10_000.0, 350.0, "🥂",
         "Low lights, long nights, and loyal regulars.",
     ),
     BusinessTierDef(
-        4, "restaurant", "VIP Booth Club", 50_000.0, 1_500.0, "💃",
+        4, "vip_booth_club", "VIP Booth Club", 50_000.0, 1_500.0, "💃",
         "Private booths, bottle service, and real cover charges.",
     ),
     BusinessTierDef(
-        5, "chain_restaurant", "Franchise Clubs", 250_000.0, 8_000.0, "🏙️",
+        5, "franchise_clubs", "Franchise Clubs", 250_000.0, 8_000.0, "🏙️",
         "Stamp the brand across the server's nightlife map.",
     ),
     BusinessTierDef(
-        6, "factory", "Content Studio", 1_000_000.0, 30_000.0, "🎥",
-        "Sets, lights, and industrial-scale goonbux output.",
+        6, "content_studio", "Content Studio", 1_000_000.0, 30_000.0, "🎥",
+        "Sets, lights, and studio-scale goonbux output.",
     ),
     BusinessTierDef(
-        7, "corporation", "Adult Empire HQ", 5_000_000.0, 250_000.0, "👑",
+        7, "adult_empire_hq", "Adult Empire HQ", 5_000_000.0, 250_000.0, "👑",
         "The tower at the top of the ladder. Own the night.",
     ),
 )
+
+# Old NuggetBot tycoon ids still stored on existing rows.
+LEGACY_TIER_IDS: dict[str, str] = {
+    "lemon_stand": "tip_jar_cam",
+    "food_cart": "afterparty_cart",
+    "coffee_shop": "late_night_lounge",
+    "restaurant": "vip_booth_club",
+    "chain_restaurant": "franchise_clubs",
+    "factory": "content_studio",
+    "corporation": "adult_empire_hq",
+}
 
 BUSINESS_TIERS_BY_ID: dict[str, BusinessTierDef] = {
     defn.tier_id: defn for defn in BUSINESS_TIERS
@@ -95,8 +106,13 @@ def tier_def(tier: int) -> BusinessTierDef | None:
     return BUSINESS_TIERS_BY_NUMBER.get(int(tier))
 
 
+def normalize_tier_id(tier_id: str) -> str:
+    raw = tier_id.strip().lower()
+    return LEGACY_TIER_IDS.get(raw, raw)
+
+
 def tier_def_by_id(tier_id: str) -> BusinessTierDef | None:
-    return BUSINESS_TIERS_BY_ID.get(tier_id.strip().lower())
+    return BUSINESS_TIERS_BY_ID.get(normalize_tier_id(tier_id))
 
 
 def next_tier_def(tier: int) -> BusinessTierDef | None:
@@ -187,8 +203,8 @@ def hourly_income(
     Attribute/branch effects:
     - Efficiency: +output per level (production)
     - Reputation: +customer traffic per level
-    - Production branch: +output per level (Better Equipment .. AI Management)
-    - Growth branch: +customer traffic per level (Flyers .. National Branding)
+    - Production branch: +output per level (Better Lights .. AI Scheduling)
+    - Growth branch: +customer traffic per level (Flyer Runs .. National Branding)
     - Employee satisfaction: -/+ swing around a neutral 50
     - Business prestige: permanent global business income bonus
     - District: placement bonus (Phase 3)

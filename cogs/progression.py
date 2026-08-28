@@ -20,10 +20,10 @@ EVENT_LABELS: dict[str, tuple[str, float]] = {
     "trivia_fiesta": ("Double trivia rewards", 2.0),
     "world_boss_week": ("World Leviathan week (unique boss + loot)", 1.5),
     "velvet_night": ("Velvet Walks In (Velvet bias + drop boost)", 1.5),
-    "summer_festival": ("Summer Festival (business +15%)", 1.15),
-    "holiday_rush": ("Holiday Rush (business +25%)", 1.25),
-    "economic_crisis": ("Economic Crisis (business -10%)", 0.90),
-    "tech_boom": ("Tech Boom (business +20%)", 1.20),
+    "summer_festival": ("Heatwave Weekend (business +15%)", 1.15),
+    "holiday_rush": ("New Year's Afterparty (business +25%)", 1.25),
+    "economic_crisis": ("Dry Spell (business -10%)", 0.90),
+    "tech_boom": ("Cam Boom (business +20%)", 1.20),
 }
 
 
