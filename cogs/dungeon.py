@@ -103,11 +103,11 @@ class Dungeon(commands.Cog):
         if tier.unlock_cost <= 0:
             access = "Free · solo"
         elif unlocked:
-            access = f"Unlocked · party (**{tier.min_party_size}+** raiders)"
+            access = f"Unlocked · party (**{tier.min_party_size}+** gooners)"
         else:
             access = (
                 f"Unlock: **{fmt_amount(tier.unlock_cost)}** · "
-                f"party (**{tier.min_party_size}+** raiders)"
+                f"party (**{tier.min_party_size}+** gooners)"
             )
         mode = "Party raid" if tier.party_only else "Solo · tougher foes"
         room_pay = format_room_reward_range(tier, party_split=tier.party_only)
@@ -457,7 +457,7 @@ class Dungeon(commands.Cog):
             guild_id, user_id, max_hp, max_hp, enemy_hp, tier=tier.tier_id,
         )
         recruit = (
-            f"Need **{tier.min_party_size}** raiders before fighting."
+            f"Need **{tier.min_party_size}** gooners before fighting."
             if tier.min_party_size > 1
             else "Others can join before you fight."
         )
@@ -489,7 +489,7 @@ class Dungeon(commands.Cog):
         if len(members) < tier.min_party_size:
             return DungeonActionResult(
                 error=(
-                    f"**{tier.name}** needs at least **{tier.min_party_size}** raiders "
+                    f"**{tier.name}** needs at least **{tier.min_party_size}** gooners "
                     f"(you have **{len(members)}**)."
                 ),
             )
@@ -662,7 +662,7 @@ class Dungeon(commands.Cog):
             )
             msgs = {
                 "no_party": "That player has no active party run.",
-                "full": "Party is full (4 raiders).",
+                "full": "Party is full (4 gooners).",
                 "already_in": "You are already in that party.",
                 "in_other_party": "Leave your other party first.",
             }
@@ -715,7 +715,7 @@ class Dungeon(commands.Cog):
             await interaction.response.send_message(
                 f"{tier.emoji} **{tier.name}** · leader <@{lid}> · "
                 f"Room **{int(party['room'])}/{config.DUNGEON_ROOMS}** · "
-                f"Raiders **{len(members)}/{tier.min_party_size}+** · "
+                f"Party **{len(members)}/{tier.min_party_size}+** · "
                 f"Enemy **{int(float(party['enemy_hp']))}** HP\n"
                 + "\n".join(names),
                 ephemeral=True,

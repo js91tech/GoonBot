@@ -126,26 +126,19 @@ class BossElementDatabaseTests(unittest.IsolatedAsyncioTestCase):
             self.user_id,
             at=now + 1,
         )
-        self.assertIsNotNone(remaining_before)
-        self.assertIsNotNone(remaining_after)
-        assert remaining_before is not None and remaining_after is not None
-        self.assertAlmostEqual(remaining_before, remaining_after, places=2)
+        self.assertIsNone(remaining_before)
+        self.assertIsNone(remaining_after)
 
-    async def test_record_boss_attack_uses_base_cooldown_range(self) -> None:
+    async def test_record_boss_attack_has_no_cooldown(self) -> None:
         now = time.time()
         await self.db.record_boss_attack_time(self.guild_id, self.user_id, now)
         remaining = await self.db.boss_attack_cooldown_remaining(
             self.guild_id,
             self.user_id,
-            at=now + 1,
+            at=now,
         )
-        self.assertIsNotNone(remaining)
-        assert remaining is not None
-        self.assertLessEqual(
-            remaining,
-            config.BOSS_ATTACK_COOLDOWN_MAX_SECONDS - 1 + 0.01,
-        )
-        self.assertGreater(remaining, 0.0)
+        self.assertIsNone(remaining)
+        self.assertEqual(config.BOSS_ATTACK_COOLDOWN_MAX_SECONDS, 0)
 
     async def test_fire_dot_ticks_damage(self) -> None:
         max_hp = 200.0

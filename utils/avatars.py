@@ -109,8 +109,8 @@ def get_avatar(avatar_id: str | None) -> AvatarDef | None:
     if is_unique_default_avatar_id(avatar_id):
         return AvatarDef(
             avatar_id,
-            "Raid Mascot",
-            "Your unique starter raider — generated just for you.",
+            "Floor Portrait",
+            "Your unique floor portrait — generated just for you.",
             0.0,
             "⚔️",
         )

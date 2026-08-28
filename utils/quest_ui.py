@@ -186,7 +186,7 @@ async def build_quest_embeds(
         rows = await db.list_user_quests(guild_id, user_id, TRACK_ONBOARDING)
         done = await db.count_completed_quests(guild_id, user_id, TRACK_ONBOARDING)
         embed = discord.Embed(
-            title="New raider onboarding",
+            title="New gooner onboarding",
             description="\n".join(format_quest_lines(rows, track=TRACK_ONBOARDING)),
             color=discord.Color.green(),
         )

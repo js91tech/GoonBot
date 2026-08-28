@@ -494,7 +494,7 @@ class PrestigeConfirmView(discord.ui.View):
         err, new_prestige = await self.cog.bot.db.prestige_business(self.user_id, self.guild_id)
         messages = {
             "no_business": "You don't own a business.",
-            "not_max_tier": "You must reach the Corporation tier first.",
+            "not_max_tier": "You must reach Adult Empire HQ first.",
             "max_prestige": "You've already reached max business prestige.",
         }
         if err:

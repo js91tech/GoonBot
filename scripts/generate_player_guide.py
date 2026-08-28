@@ -8,7 +8,7 @@ from pathlib import Path
 from fpdf import FPDF
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "NuggetBot_Player_Guide.pdf"
+OUTPUT = ROOT / "docs" / "GoonBot_Player_Guide.pdf"
 
 
 class GuidePDF(FPDF):
@@ -144,7 +144,7 @@ def build() -> None:
     pdf.bullet("/boss - HP bar and threat level")
     pdf.bullet("/attack - hit Velvet Vixen (need gear equipped for best damage)")
     pdf.bullet("/raid-leaderboard - who is contributing most")
-    pdf.bullet("/heal @user - revive downed raiders (+1000 goonbux; +100 if you revive yourself)")
+    pdf.bullet("/heal @user - revive downed gooners (+1000 goonbux; +100 if you revive yourself)")
     pdf.ln(2)
     pdf.body("Boss variants (weakest to strongest): normal, enraged, shadow, celestial, mythic.")
     pdf.body("TomAss: rare enraged mirror boss with regen every 3 hits (admin /summon).")

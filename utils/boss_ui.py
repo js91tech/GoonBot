@@ -147,21 +147,14 @@ class BossFightView(discord.ui.View):
         self.user_id = user_id
 
     async def sync_strike_cooldown(self) -> None:
-        remaining = await self.cog.bot.db.boss_attack_cooldown_remaining(
-            self.guild_id, self.user_id,
-        )
+        """Boss strikes are not gated by a cooldown; keep the Attack button ready."""
         for item in self.children:
             if not isinstance(item, discord.ui.Button):
                 continue
             label = item.label or ""
             if label.startswith("⚔️ Attack") and "Add" not in label:
-                if remaining is not None and remaining > 0:
-                    secs = int(remaining)
-                    item.disabled = True
-                    item.label = f"⚔️ Attack ({secs}s)"
-                else:
-                    item.disabled = False
-                    item.label = "⚔️ Attack"
+                item.disabled = False
+                item.label = "⚔️ Attack"
                 break
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -443,7 +436,7 @@ class BossFightView(discord.ui.View):
             member = interaction.guild.get_member(uid)
             label = member.display_name if member is not None else f"User {uid}"
             options.append(discord.SelectOption(label=label[:100], value=str(uid)))
-        select = discord.ui.Select(placeholder="Revive a downed raider", options=options)
+        select = discord.ui.Select(placeholder="Revive a downed gooner", options=options)
 
         async def heal_callback(sel_interaction: discord.Interaction) -> None:
             if sel_interaction.user.id != self.user_id:

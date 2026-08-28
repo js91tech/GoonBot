@@ -1,4 +1,4 @@
-# NuggetBot Patch Notes — 18 May 2026
+# Patch Notes — 18 May 2026 (inherited from the NuggetBot fork)
 
 ## Overview
 
@@ -8,7 +8,7 @@ Today’s update adds social progression, server legends, regulated gambling, an
 
 ## Quests
 
-**Onboarding** guides new raiders through their first steps (daily claim, shop purchase, boss attack, heal, pay). Completing each step pays a nugget reward.
+**Onboarding** guides new gooners through their first steps (daily claim, shop purchase, boss attack, heal, pay). Completing each step pays a goonbux reward.
 
 **Daily goals** give veterans three random objectives each UTC day (raid hits, heals, crafting, casino play, and more).
 
@@ -34,7 +34,7 @@ The web dashboard also displays a **Hall of Fame** snapshot per server.
 
 ## Casino mini-games
 
-Gamble nuggets with a house tax on winnings (tunable per server).
+Gamble goonbux with a house tax on winnings (tunable per server).
 
 | Command | What it does |
 |---------|----------------|

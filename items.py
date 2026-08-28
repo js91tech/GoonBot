@@ -765,7 +765,7 @@ ACCESSORIES: tuple[ShopItem, ...] = (
         "accessory",
         0,
         0,
-        "Flat protection from fallen raiders.",
+        "Flat protection from fallen gooners.",
         flat_hp=40,
         flat_mitigation=0.02,
         shop_listed=False,

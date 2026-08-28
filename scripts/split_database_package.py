@@ -197,7 +197,7 @@ class DatabaseInventoryMixin:
 
     (PKG / "core.py").write_text(core_body)
 
-    init_py = '''"""NuggetBot database layer."""
+    init_py = '''"""GoonBot database layer."""
 from database.core import Database
 from database.types import DailyClaimResult, WalletPanelData
 

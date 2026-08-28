@@ -56,7 +56,7 @@ class DistrictDeedDatabaseTests(unittest.IsolatedAsyncioTestCase):
             await self.db.conn.execute(
                 """
                 UPDATE user_businesses
-                SET tier = 7, tier_id = 'corporation', district_id = 'industrial'
+                SET tier = 7, tier_id = 'adult_empire_hq', district_id = 'industrial'
                 WHERE user_id = ? AND guild_id = ?
                 """,
                 (uid, self.guild_id),

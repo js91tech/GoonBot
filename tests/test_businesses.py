@@ -41,8 +41,9 @@ class BusinessMathTests(unittest.TestCase):
         self.assertEqual(incomes, sorted(incomes))
 
     def test_tier_lookup(self) -> None:
-        self.assertEqual(tier_def(1).tier_id, "lemon_stand")
+        self.assertEqual(tier_def(1).tier_id, "tip_jar_cam")
         self.assertEqual(tier_def_by_id("corporation").tier, 7)
+        self.assertEqual(tier_def_by_id("adult_empire_hq").tier, 7)
         self.assertIsNone(tier_def(99))
         self.assertIsNone(next_tier_def(7))
         self.assertEqual(next_tier_def(1).tier, 2)
@@ -124,6 +125,7 @@ class BusinessDatabaseTests(unittest.IsolatedAsyncioTestCase):
         row = await self.db.get_business(uid, guild_id)
         self.assertIsNotNone(row)
         self.assertEqual(int(row["tier"]), 1)
+        self.assertEqual(str(row["tier_id"]), "tip_jar_cam")
 
     async def test_create_twice_blocked(self) -> None:
         guild_id, uid = 1, 100
@@ -173,7 +175,20 @@ class BusinessDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(err)
         self.assertEqual(new_tier, 2)
         row = await self.db.get_business(uid, guild_id)
-        self.assertEqual(str(row["tier_id"]), "food_cart")
+        self.assertEqual(str(row["tier_id"]), "afterparty_cart")
+
+    async def test_legacy_tycoon_ids_migrate_to_nightlife(self) -> None:
+        guild_id, uid = 1, 404
+        await self.db.credit_wallet(uid, guild_id, 1_000.0, apply_bonuses=False)
+        await self.db.create_business(uid, guild_id)
+        await self.db.conn.execute(
+            "UPDATE user_businesses SET tier_id = 'lemon_stand' WHERE user_id = ? AND guild_id = ?",
+            (uid, guild_id),
+        )
+        await self.db.conn.commit()
+        await self.db._migrate_nightlife_business_tier_ids()
+        row = await self.db.get_business(uid, guild_id)
+        self.assertEqual(str(row["tier_id"]), "tip_jar_cam")
 
     async def test_tier_up_insufficient(self) -> None:
         guild_id, uid = 1, 100

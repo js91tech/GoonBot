@@ -49,6 +49,7 @@ class BossFightEmbedTests(unittest.IsolatedAsyncioTestCase):
         assert embed is not None
         loadout_field = next(f for f in embed.fields if f.name == "Your loadout")
         self.assertIn("Tease Blade", loadout_field.value)
+        self.assertFalse(any(f.name == "Strike cooldown" for f in embed.fields))
 
     async def test_build_embed_no_boss_returns_error(self) -> None:
         await self.db.clear_boss(self.guild_id)

@@ -53,7 +53,7 @@ class DistrictInfluenceOpsDatabaseTests(unittest.IsolatedAsyncioTestCase):
             await self.db.conn.execute(
                 """
                 UPDATE user_businesses
-                SET tier = 7, tier_id = 'corporation', district_id = 'downtown'
+                SET tier = 7, tier_id = 'adult_empire_hq', district_id = 'downtown'
                 WHERE user_id = ? AND guild_id = ?
                 """,
                 (uid, self.guild_id),

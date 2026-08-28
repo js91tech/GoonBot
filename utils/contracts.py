@@ -39,7 +39,7 @@ CONTRACT_POOL: tuple[ContractDefinition, ...] = (
         1500.0, reward_item_id="dungeon_essence", reward_qty=2,
     ),
     ContractDefinition(
-        "contract_heal", "Triage", "Heal raiders 4 times.", 4, "boss_heal",
+        "contract_heal", "Triage", "Heal gooners 4 times.", 4, "boss_heal",
         700.0, reward_tokens=2,
     ),
     ContractDefinition(
@@ -71,7 +71,7 @@ CONTRACT_POOL: tuple[ContractDefinition, ...] = (
         1000.0, reward_tokens=4,
     ),
     ContractDefinition(
-        "contract_frost_boss", "Frost Raider", "Deal 3,000 frost boss damage.", 3000, "boss_frost_damage",
+        "contract_frost_boss", "Frost Gooner", "Deal 3,000 frost boss damage.", 3000, "boss_frost_damage",
         1300.0, reward_item_id="void_hardener",
     ),
     ContractDefinition(

@@ -22,7 +22,7 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     "raid_veteran": Achievement("raid_veteran", "Raid Veteran", "Help defeat 25 bosses.", "⚔️"),
     "mythic_slayer": Achievement("mythic_slayer", "Mythic Slayer", "Help defeat a mythic Velvet Vixen.", "🌌"),
     "heist_king": Achievement("heist_king", "Heist King", "Succeed at 10 heists.", "🎭"),
-    "field_medic": Achievement("field_medic", "Aftercare Ace", "Revive 25 downed raiders.", "💋"),
+    "field_medic": Achievement("field_medic", "Aftercare Ace", "Revive 25 downed gooners.", "💋"),
     "wealthy": Achievement("wealthy", "Goon Baron", "Hold 200,000 goonbux at once.", "💰"),
     "excalibur_owner": Achievement(
         "excalibur_owner",
@@ -51,7 +51,7 @@ ACHIEVEMENTS: dict[str, Achievement] = {
     ),
     "first_harvest": Achievement("first_harvest", "First Harvest", "Harvest your first lab crop.", "🌿"),
     "corporation_owner": Achievement(
-        "corporation_owner", "Corporation Owner", "Reach the Corporation business tier.", "🏢",
+        "corporation_owner", "Empire Owner", "Reach Adult Empire HQ.", "👑",
     ),
     "cartel_king": Achievement(
         "cartel_king", "Cartel King", "Reach dealer rank 10.", "🕶️",

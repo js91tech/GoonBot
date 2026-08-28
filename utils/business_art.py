@@ -24,8 +24,14 @@ ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "businesses"
 
 
 def _static_asset(tier_id: str) -> Path | None:
-    path = ASSET_DIR / f"{tier_id}.png"
-    return path if path.is_file() else None
+    from utils.businesses import normalize_tier_id
+
+    canonical = normalize_tier_id(tier_id)
+    for candidate in (canonical, tier_id.strip().lower()):
+        path = ASSET_DIR / f"{candidate}.png"
+        if path.is_file():
+            return path
+    return None
 
 
 def _cover_resize(img: Image.Image, width: int, height: int) -> Image.Image:
@@ -125,26 +131,22 @@ def _draw_building(
     cx = WIDTH // 2
 
     if tier <= 1:
-        # Lemon stand: small booth with awning.
-        draw.rectangle([cx - 70, GROUND_Y - 70, cx + 70, GROUND_Y], fill=(150, 110, 70))
-        draw.rectangle([cx - 78, GROUND_Y - 92, cx + 78, GROUND_Y - 70], fill=accent)
-        for i, sx in enumerate(range(cx - 78, cx + 78, 22)):
-            stripe = (250, 250, 250) if i % 2 == 0 else accent
-            draw.rectangle([sx, GROUND_Y - 92, sx + 22, GROUND_Y - 70], fill=stripe)
-        draw.rectangle([cx - 70, GROUND_Y - 70, cx + 70, GROUND_Y - 40], fill=(120, 88, 56))
+        # Tip-jar cam: desk, ring light, and a phone tripod.
+        draw.rectangle([cx - 80, GROUND_Y - 48, cx + 80, GROUND_Y - 8], fill=(42, 34, 48))
+        draw.rectangle([cx - 18, GROUND_Y - 36, cx + 18, GROUND_Y - 16], fill=(90, 70, 50))
+        draw.ellipse([cx - 36, GROUND_Y - 118, cx + 36, GROUND_Y - 46], outline=accent, width=8)
+        draw.rectangle([cx - 4, GROUND_Y - 70, cx + 4, GROUND_Y - 20], fill=(70, 70, 78))
+        draw.rectangle([cx + 40, GROUND_Y - 40, cx + 62, GROUND_Y - 16], fill=(200, 180, 90))
     elif tier == 2:
-        # Food cart: body on wheels with parasol.
-        draw.rectangle([cx - 64, GROUND_Y - 64, cx + 64, GROUND_Y - 18], fill=wall_light)
-        draw.rectangle([cx - 64, GROUND_Y - 64, cx + 64, GROUND_Y - 48], fill=accent)
+        # Afterparty cart: bottle cart on wheels.
+        draw.rectangle([cx - 64, GROUND_Y - 70, cx + 64, GROUND_Y - 18], fill=wall_light)
+        draw.rectangle([cx - 64, GROUND_Y - 70, cx + 64, GROUND_Y - 52], fill=accent)
+        for bx in (cx - 40, cx - 10, cx + 20):
+            draw.rectangle([bx, GROUND_Y - 96, bx + 14, GROUND_Y - 70], fill=accent)
         draw.ellipse([cx - 56, GROUND_Y - 26, cx - 30, GROUND_Y], fill=(30, 30, 34))
         draw.ellipse([cx + 30, GROUND_Y - 26, cx + 56, GROUND_Y], fill=(30, 30, 34))
-        draw.line([cx, GROUND_Y - 64, cx, GROUND_Y - 120], fill=(90, 90, 96), width=4)
-        draw.polygon(
-            [(cx - 60, GROUND_Y - 120), (cx + 60, GROUND_Y - 120), (cx, GROUND_Y - 150)],
-            fill=accent,
-        )
     elif tier == 3:
-        # Coffee shop: single storefront with a sign.
+        # Late-night lounge: neon storefront.
         draw.rectangle([cx - 90, GROUND_Y - 120, cx + 90, GROUND_Y], fill=wall)
         draw.rectangle([cx - 90, GROUND_Y - 150, cx + 90, GROUND_Y - 120], fill=accent)
         _lit_windows(
@@ -152,7 +154,7 @@ def _draw_building(
             cols=3, rows=1, glass=glass, lit=lit,
         )
     elif tier == 4:
-        # Restaurant: wider two-floor building.
+        # VIP booth club: two-floor velvet club.
         draw.rectangle([cx - 110, GROUND_Y - 160, cx + 110, GROUND_Y], fill=wall)
         draw.rectangle([cx - 118, GROUND_Y - 178, cx + 118, GROUND_Y - 160], fill=accent)
         _lit_windows(
@@ -160,7 +162,7 @@ def _draw_building(
             cols=4, rows=2, glass=glass, lit=lit,
         )
     elif tier == 5:
-        # Chain restaurant: building plus a tall pylon sign.
+        # Franchise clubs: matching storefront plus a neon pylon.
         draw.rectangle([cx - 120, GROUND_Y - 150, cx + 80, GROUND_Y], fill=wall)
         _lit_windows(
             draw, rng, (cx - 120, GROUND_Y - 140, cx + 80, GROUND_Y - 20),
@@ -169,22 +171,20 @@ def _draw_building(
         draw.rectangle([cx + 92, GROUND_Y - 210, cx + 104, GROUND_Y], fill=(90, 90, 96))
         draw.ellipse([cx + 74, GROUND_Y - 244, cx + 122, GROUND_Y - 196], fill=accent)
     elif tier == 6:
-        # Factory: long hall with sawtooth roof and smokestacks.
-        draw.rectangle([cx - 140, GROUND_Y - 120, cx + 140, GROUND_Y], fill=wall)
-        for sx in range(cx - 140, cx + 140, 40):
+        # Content studio: soundstage box with cinema lights.
+        draw.rectangle([cx - 140, GROUND_Y - 140, cx + 140, GROUND_Y], fill=wall)
+        draw.rectangle([cx - 140, GROUND_Y - 158, cx + 140, GROUND_Y - 140], fill=wall_light)
+        for sx in (cx - 90, cx, cx + 70):
             draw.polygon(
-                [(sx, GROUND_Y - 120), (sx + 40, GROUND_Y - 120), (sx + 40, GROUND_Y - 150)],
-                fill=wall_light,
+                [(sx, GROUND_Y - 200), (sx + 22, GROUND_Y - 158), (sx - 22, GROUND_Y - 158)],
+                fill=accent,
             )
-        for sx in (cx - 110, cx - 70):
-            draw.rectangle([sx, GROUND_Y - 200, sx + 22, GROUND_Y - 120], fill=(70, 72, 80))
-            draw.rectangle([sx, GROUND_Y - 210, sx + 22, GROUND_Y - 200], fill=accent)
         _lit_windows(
-            draw, rng, (cx - 40, GROUND_Y - 110, cx + 140, GROUND_Y - 20),
+            draw, rng, (cx - 80, GROUND_Y - 120, cx + 130, GROUND_Y - 20),
             cols=4, rows=2, glass=glass, lit=lit,
         )
     else:
-        # Corporation: skyscraper trio.
+        # Adult empire HQ: neon-crowned skyscraper trio.
         for offset, h, w in ((-130, 230, 70), (-30, 280, 80), (80, 200, 60)):
             x0 = cx + offset
             draw.rectangle([x0, GROUND_Y - h, x0 + w, GROUND_Y], fill=wall)
@@ -240,8 +240,8 @@ def render_business_image(user_id: int, guild_id: int, tier_id: str) -> bytes:
     canvas = Image.new("RGB", (WIDTH, HEIGHT), (24, 26, 32))
     draw = ImageDraw.Draw(canvas)
 
-    sky_top = (28 + tier * 4, 32 + tier * 3, 60 + tier * 6)
-    sky_bottom = (90, 96, 120)
+    sky_top = (18, 12, 36)
+    sky_bottom = (70, 28, 68)
     _sky_gradient(draw, sky_top, sky_bottom)
 
     # Distant skyline silhouette for depth.

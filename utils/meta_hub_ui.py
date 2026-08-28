@@ -410,7 +410,7 @@ class SeasonRedeemSelect(discord.ui.Select):
             await view.cog.bot.db.unlock_avatar(uid, guild_id, "season_gold")
             msg = "Unlocked **Season Gold** avatar!"
         else:
-            msg = "Redeemed **Raider** title! Show it off in duels."
+            msg = "Redeemed **Gooner** title! Show it off in duels."
         view.tokens = await view.cog.bot.db.get_season_tokens(uid, guild_id, season_num)
         embed = await view.build_embed()
         embed.description = f"✅ {msg}\n\n{embed.description}"

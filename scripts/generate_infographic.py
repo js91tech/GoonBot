@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "NuggetBot_How_To_Play.png"
+OUTPUT = ROOT / "docs" / "GoonBot_How_To_Play.png"
 
 W, H = 1536, 1280
 BG = (12, 16, 28)

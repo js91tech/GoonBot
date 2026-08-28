@@ -283,7 +283,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "`/dungeon` — interactive panel\n"
                     f"· **Afterparty Crawl** — solo, **{config.DUNGEON_ENERGY_COST}** energy per run\n"
                     f"· **Velvet Vault** — unlock **{fmt_amount(config.DUNGEON_VAULT_UNLOCK_COST)}**, "
-                    f"party of **{config.DUNGEON_VAULT_MIN_PARTY_SIZE}**+ raiders",
+                    f"party of **{config.DUNGEON_VAULT_MIN_PARTY_SIZE}**+ gooners",
                     "**Rewards** — room goonbux, clear bonus, **alchemy scrap** for `/alchemy` and **enhancement**\n"
                     f"· Accessory drop chance on clear (~{int(config.DUNGEON_ACCESSORY_DROP_CHANCE * 100)}% standard, "
                     f"~{int(config.DUNGEON_VAULT_ACCESSORY_DROP_CHANCE * 100)}% vault)\n"
@@ -493,10 +493,10 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "Fortify temp influence, and deed-owner Suppress:\n"
                     + "\n".join(district_lines),
                     "**Competition & defense** (`/business action`, `/business defend`)\n"
-                    "· 📣 Marketing & 🧑\u200d💼 Talent — buff your own revenue\n"
-                    "· 💸 Price War & 📰 Reputation Attack — debuff a rival (mitigated by their "
+                    "· 📣 Floor Promo & 🧑\u200d💼 Talent — buff your own revenue\n"
+                    "· 💸 Cover Charge War & 📰 Smear Drop — debuff a rival (mitigated by their "
                     "security; they get 15 min to **/business defend**)\n"
-                    "· 🗺️ Market Expansion — instant district influence\n"
+                    "· 🗺️ Strip Expansion — instant district influence\n"
                     "_No attack ever permanently destroys a business._",
                     "**Corporations** (`/crew panel`) — crews double as corporations:\n"
                     + "\n".join(corp_upgrade_lines)
@@ -504,22 +504,22 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     + "\n**Corporate War** — weekly; top corp by vault + territory wins a treasury bonus.",
                     "**Stock market** (`/business market`) — buy/sell corporation shares; "
                     "prices track treasury + headcount and swing with market events "
-                    "(tech boom, crash, tourism surge, supply shortage). Shareholders earn "
+                    "(tech boom, crash, afterhours surge, bottle shortage). Shareholders earn "
                     "hourly dividends from the corporate vault.",
                     "**Prestige & endgame**\n"
-                    f"· `/business prestige` at the Corporation tier — reset for a permanent "
+                    f"· `/business prestige` at **Adult Empire HQ** — reset for a permanent "
                     f"+{int(config.BUSINESS_PRESTIGE_INCOME_BONUS_PER_LEVEL * 100)}%/level income bonus\n"
                     "· **Mega projects** (`/business megaprojects`):\n"
                     + "\n".join(mega_lines)
                     + "\n· **Acquisitions** (`/business acquisitions`) after all megas: "
-                    "Media Conglomerate, Private Security, Pharma Lab\n"
+                    "Studio Network, Door Crew, Aftercare Lab\n"
                     "· **Supply chain** (`/business supplychain`) at tier 5+: auto-fund lab "
                     "plants from stored revenue\n"
                     "· **Legacy perks** at prestige 10+: Automation, Diversification, or "
                     "Hostile Takeover\n"
                     "· **District wars** — dominant crew in a district earns +5% member income\n"
-                    "· Seasonal events (admin `/event`): Summer Festival, Holiday Rush, "
-                    "Economic Crisis, Tech Boom.",
+                    "· Seasonal events (admin `/event`): Heatwave Weekend, New Year's Afterparty, "
+                    "Dry Spell, Cam Boom.",
                 ],
             ),
         ),
@@ -549,7 +549,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "· **Black market** (`/drugs market`) — list product for other players or buy "
                     f"theirs ({int(config.DRUG_MARKET_TAX * 100)}% sale tax)",
                     "**Tips**\n"
-                    "· Owning a business in the **Industrial Zone** boosts harvest yield by "
+                    "· Owning a business in **Studio Row** boosts harvest yield by "
                     f"+{int(config.DRUG_INDUSTRIAL_YIELD_BONUS * 100)}%\n"
                     "· Higher-tier strains take longer but pay far more per unit\n"
                     "· **Use** product from your stash for energy, healing, or combat buffs\n"

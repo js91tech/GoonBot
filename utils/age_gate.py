@@ -140,7 +140,7 @@ async def check_interaction(interaction: discord.Interaction, db: Database) -> b
                 )
                 return False
 
-    # Bot-room lock — players may only use commands in the NuggetIvitesBot room.
+    # Bot-room lock — players may only use commands in the designated bot room.
     # Exception: /trivia (Lore Roulette) is also allowed in the main channel (yappinmain).
     from utils.bot_room import (
         bot_room_only_enabled,
