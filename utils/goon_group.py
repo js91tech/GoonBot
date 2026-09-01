@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import datetime
 import logging
+import random
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import discord
@@ -19,6 +21,17 @@ if TYPE_CHECKING:
 CALL_READY_ID = "goon:group:ready"
 ROUND_JOIN_ID = "goon:group:join"
 ROUND_LATE_ID = "goon:group:late"
+
+VELVET_FAVORS: tuple[str, ...] = ("kisses", "head")
+_FAVOR_ROOT = Path(__file__).resolve().parent.parent / "assets" / "events" / "velvet_favors"
+_FAVOR_VARIANTS: dict[str, tuple[str, ...]] = {
+    "kisses": ("normal", "celestial"),
+    "head": ("enraged", "mythic", "shadow"),
+}
+_FAVOR_TITLES: dict[str, str] = {
+    "kisses": "Velvet kissed you",
+    "head": "Velvet went down on you",
+}
 
 
 @dataclass
@@ -157,12 +170,117 @@ def find_gooners_role(guild: discord.Guild) -> discord.Role | None:
     return None
 
 
+def _velvet_call_art_paths() -> list[Path]:
+    """Velvet portraits and any matching GIF/WebP drops for group-session calls."""
+    from utils.boss_art import ARMORED_ROOT, ASSETS_ROOT, GLAM_ROOT
+
+    found: list[Path] = []
+    for root in (GLAM_ROOT, ARMORED_ROOT, ASSETS_ROOT):
+        if not root.is_dir():
+            continue
+        for path in root.iterdir():
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".gif", ".png", ".webp"}:
+                continue
+            if "velvet" in path.name.lower():
+                found.append(path)
+    return found
+
+
+def group_goon_call_media() -> tuple[discord.Embed, discord.File | None]:
+    """Embed + Velvet image (or GIF when present) sent with the group-goon prompt."""
+    from utils.boss_art import VELVET_VARIANTS, attach_boss_art
+    from utils.goon_theme import branded_embed, panel_title
+
+    embed = branded_embed(
+        panel_title("Group goon"),
+        description="Velvet walked in. First yes gets her kisses — or her mouth.",
+    )
+    art = _attach_path(embed, _pick_media_path(_velvet_call_art_paths()))
+    if art is not None:
+        return embed, art
+    return embed, attach_boss_art(embed, random.choice(tuple(VELVET_VARIANTS)))
+
+
+def pick_velvet_favor() -> str:
+    return random.choice(VELVET_FAVORS)
+
+
+def velvet_favor_prize_text() -> str:
+    return "**kisses from Velvet** — or she'll **go down on you**"
+
+
+def velvet_favor_claim_copy(kind: str, user_id: int, amount: float) -> str:
+    mention = f"<@{user_id}>"
+    if kind == "head":
+        lines = [
+            f"💋 **Velvet** dropped to her knees for {mention}.",
+            "First yes gets **head from Velvet herself**.",
+        ]
+    else:
+        lines = [
+            f"💋 **Velvet** pulled {mention} in and kissed them. Slow. Everyone saw.",
+            "First yes gets **kisses from Velvet herself**.",
+        ]
+    if amount > 0:
+        lines.append(f"House also kicked in **{fmt_amount(amount)}**.")
+    return "\n".join(lines)
+
+
+def group_goon_favor_media(kind: str) -> tuple[discord.Embed, discord.File | None]:
+    """GIF/image posted after the first yes — kisses or head from Velvet."""
+    from utils.boss_art import attach_boss_art
+    from utils.goon_theme import branded_embed, panel_title
+
+    title = _FAVOR_TITLES.get(kind, _FAVOR_TITLES["kisses"])
+    embed = branded_embed(panel_title(title))
+    dedicated = _favor_art_paths(kind)
+    art = _attach_path(embed, _pick_media_path(dedicated))
+    if art is not None:
+        return embed, art
+    variants = _FAVOR_VARIANTS.get(kind, _FAVOR_VARIANTS["kisses"])
+    return embed, attach_boss_art(embed, random.choice(variants))
+
+
+def _favor_art_paths(kind: str) -> list[Path]:
+    found: list[Path] = []
+    if _FAVOR_ROOT.is_dir():
+        for path in _FAVOR_ROOT.iterdir():
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".gif", ".png", ".webp"}:
+                continue
+            if kind in path.stem.lower():
+                found.append(path)
+    return found
+
+
+def _pick_media_path(candidates: list[Path]) -> Path | None:
+    if not candidates:
+        return None
+    gifs = [path for path in candidates if path.suffix.lower() == ".gif"]
+    return random.choice(gifs or candidates)
+
+
+def _attach_path(embed: discord.Embed, path: Path | None) -> discord.File | None:
+    if path is None:
+        return None
+    parent = path.parent.name
+    filename = f"{parent}-{path.name}" if parent in {"glam", "armored"} else path.name
+    filename = filename.replace("_", "-")
+    art = discord.File(str(path), filename=filename)
+    embed.set_image(url=f"attachment://{filename}")
+    return art
+
+
 def call_body(state: GroupCallState, *, role: discord.Role | None = None) -> str:
     mention = f"{role.mention} " if role is not None else ""
+    favor = velvet_favor_prize_text()
     if state.amount > 0:
-        prize = f"**{fmt_amount(state.amount)}** + **{state.condoms}× Condoms** from the house"
+        prize = f"**{fmt_amount(state.amount)}** plus {favor}"
     else:
-        prize = f"**{state.condoms}× Condoms** from the house"
+        prize = favor
     return (
         f"{mention}**{state.prompt}**\n"
         f"First to answer (**I'm ready** or type **yes**) gets {prize}.\n"
@@ -179,10 +297,10 @@ def round_body(state: GroupCallState) -> str:
         if free_left > 0
         else "Free join closed. **Join late** spends 1 condom."
     )
+    pot = f"**{fmt_amount(state.amount)}** from the house. " if state.amount > 0 else ""
     return (
         f"**{state.prompt}**\n"
-        f"<@{state.host_id}> opened the floor — "
-        f"**{fmt_amount(state.amount)}** + **{state.condoms}× Condoms**.\n"
+        f"<@{state.host_id}> opened the floor — Velvet took care of them first. {pot}\n"
         f"In: {names or '_nobody_'}\n"
         f"{late} Round ends in **{left}s**. `/goon edge` now. Don't finish first."
     )

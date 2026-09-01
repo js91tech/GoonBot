@@ -146,6 +146,16 @@ class BankTests(unittest.IsolatedAsyncioTestCase):
     async def test_is_restricted_without_user_row(self) -> None:
         self.assertFalse(await self.db.is_restricted(99_999, 100))
 
+    async def test_debit_bank_up_to(self) -> None:
+        uid, gid = 11, 100
+        await self.db.ensure_user(uid, gid)
+        await self.db.credit_wallet(uid, gid, 5000.0)
+        self.assertTrue(await self.db.deposit_to_bank(uid, gid, 5000.0))
+        removed = await self.db.debit_bank_up_to(uid, gid, 2500.0)
+        self.assertEqual(removed, 2500.0)
+        self.assertEqual(await self.db.get_bank(uid, gid), 2500.0)
+        self.assertEqual(await self.db.get_balance(uid, gid), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

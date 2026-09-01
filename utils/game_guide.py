@@ -441,20 +441,19 @@ def _build_sections() -> tuple[GuideSection, ...]:
             section_id="chaos",
             label="Chaos events",
             emoji="🦠",
-            description="Bounties, viruses, scourge",
+            description="Bounties, viruses, group sessions",
             pages=_static_pages(
                 "Chaos modules",
                 [
                     "**Bounty** — `/bounty @user amount word` · `/bounties` — claim when target says the trigger word",
                     "**Hot potato** — `/hack @user` starts the virus; `/transfer` passes it; "
                     "scaling wallet penalties",
-                    "**Scourge Virus** — world event every **8** hours; warning GIF, then **7** min outbreak; "
-                    "`/scourge-pass` to pass infection; hits top wallets' banks",
                     "**Trivia** — hourly Lore Roulette in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
                     "`/trivia` to start early)\n"
-                    "**Group goon call** — every **~2 hours** in **#yappinmain** when chat is live "
-                    "(retries every minute until two people have typed recently — quiet ticks do not "
-                    "reset the timer); first **yes** / **I'm ready** wins house-pot goonbux + **3 condoms**, "
+                    "**Group goon call** — every **145 minutes** in **#yappinmain** when chat is live "
+                    "(retries until two people have typed recently — quiet ticks do not "
+                    "reset the timer); posts Velvet art with the prompt; first **yes** / **I'm ready** "
+                    "gets **kisses** or **head from Velvet** (follow-up GIF/image) plus house-pot goonbux when the pot can cover it, "
                     "then a group round (late join spends a condom). Talent edges harder, Host teases cheaper, "
                     "Fixer ruins cheaper.\n"
                     "**Imposter** — random AI word sabotage in messages (server config)",

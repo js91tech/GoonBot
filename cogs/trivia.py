@@ -178,7 +178,7 @@ class Trivia(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="chaos", description="Open the chaos hub (trivia, scourge, virus).")
+    @app_commands.command(name="chaos", description="Open the chaos hub (trivia, virus).")
     @app_commands.guild_only()
     async def chaos(self, interaction: discord.Interaction) -> None:
         from utils.meta_hub_ui import send_chaos_hub
