@@ -185,7 +185,7 @@ class Trivia(commands.Cog):
 
         await send_chaos_hub(interaction, self)
 
-    @tasks.loop(hours=config.TRIVIA_EVENT_INTERVAL_HOURS)
+    @tasks.loop(minutes=config.TRIVIA_EVENT_INTERVAL_MINUTES)
     async def trivia_event_tick(self) -> None:
         for guild in self.bot.guilds:
             channel = await resolve_lore_channel(guild, self.bot.db)

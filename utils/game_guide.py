@@ -448,7 +448,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "**Bounty** — `/bounty @user amount word` · `/bounties` — claim when target says the trigger word",
                     "**Hot potato** — `/hack @user` starts the virus; `/transfer` passes it; "
                     "scaling wallet penalties",
-                    "**Trivia** — hourly Lore Roulette in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
+                    "**Trivia** — Lore Roulette every **210 minutes** in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
                     "`/trivia` to start early)\n"
                     "**Group goon call** — every **145 minutes** in **#yappinmain** when chat is live "
                     "(retries until two people have typed recently — quiet ticks do not "

@@ -27,6 +27,10 @@ class TriviaRewardMathTests(unittest.TestCase):
         self.assertEqual(config.TRIVIA_SECONDS, 180)
         self.assertEqual(format_trivia_window(), "3 minutes")
 
+    def test_auto_event_is_every_210_minutes(self) -> None:
+        self.assertEqual(config.TRIVIA_EVENT_INTERVAL_MINUTES, 210)
+        self.assertEqual(Trivia.trivia_event_tick.minutes, config.TRIVIA_EVENT_INTERVAL_MINUTES)
+
     def test_faster_answers_pay_more(self) -> None:
         instant = trivia_speed_multiplier(config.TRIVIA_SECONDS)
         mid = trivia_speed_multiplier(config.TRIVIA_SECONDS / 2)

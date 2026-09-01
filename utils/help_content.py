@@ -47,6 +47,7 @@ HELP_PAGES: tuple[tuple[str, str], ...] = (
         "**Contagious goon** (`/hack`) — pass it or pop; pop ruins their session.\n"
         "**Jail Key** (100k, guaranteed escape) · **Pick Key** (20k, 15% escape) while arrested.\n"
         "**/bodyguards** — hire up to 5 guards (3 tiers) to defend your bank from heists.\n"
+        "**Trivia** — Lore Roulette every **210 minutes** in **#yappinmain** (`/trivia` to start early).\n"
         "**Group goon call** — every **145 minutes** in **#yappinmain** when people are typing; first yes gets kisses or head from Velvet (image attached), then a group round. Condoms: ruin shield / leak hold / safe finish / late join.\n"
         "House pot — gambling losses and unclaimed drops fund random coin drops.\n"
         "Boss auto-spawn — every **90** minutes when none is active.\n"
