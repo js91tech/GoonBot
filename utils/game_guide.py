@@ -453,7 +453,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "**Group goon call** — every **145 minutes** in **#yappinmain** when chat is live "
                     "(retries until two people have typed recently — quiet ticks do not "
                     "reset the timer); posts Velvet art with the prompt; first **yes** / **I'm ready** "
-                    "wins house-pot goonbux + **3 condoms**, "
+                    "gets **kisses** or **head from Velvet** (follow-up GIF/image) plus house-pot goonbux when the pot can cover it, "
                     "then a group round (late join spends a condom). Talent edges harder, Host teases cheaper, "
                     "Fixer ruins cheaper.\n"
                     "**Imposter** — random AI word sabotage in messages (server config)",

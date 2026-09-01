@@ -126,7 +126,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 Chat, VC, jobs, and `/daily` also fill the meter. Edging in VC with others hits harder. Daily pays extra while you're still edged.
 
-Every **145 minutes** (if the chat is awake) GoonBot asks in **#yappinmain** and attaches a Velvet image. First yes / **I'm ready** wins **house-pot** goonbux + **3 condoms**, then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
+Every **145 minutes** (if the chat is awake) GoonBot asks in **#yappinmain** and attaches a Velvet image. First yes / **I'm ready** gets **kisses from Velvet** or **head from Velvet** (plus a follow-up GIF/image), and **house-pot** goonbux when the pot can cover it. Then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
 
 ### Boss
 

@@ -22,10 +22,13 @@ from utils.goon_group import (
     find_gooners_role,
     group_call_skip_reason,
     group_goon_call_media,
+    group_goon_favor_media,
+    pick_velvet_favor,
     prune_chatter_stamps,
     recent_channel_author_stamps,
     resolve_round_copy,
     round_body,
+    velvet_favor_claim_copy,
 )
 from utils.goon_session import (
     format_session_block,
@@ -270,7 +273,7 @@ class Goon(commands.Cog):
             amount = 0.0
         else:
             amount = taken
-        condoms = int(config.GOON_CALL_CONDOMS)
+        condoms = 0
         state = GroupCallState(
             guild_id=guild.id,
             channel_id=channel.id,
@@ -340,9 +343,9 @@ class Goon(commands.Cog):
         if err == "bot":
             await interaction.response.send_message("You cannot claim this.", ephemeral=True)
             return
+        extra = f"**{fmt_amount(state.amount)}** hit your pocket. " if state.amount > 0 else ""
         await interaction.response.send_message(
-            f"You're in. **{fmt_amount(state.amount)}** + **{state.condoms}× Condoms**. "
-            "Floor's open — others can join.",
+            f"You're in. {extra}Velvet's coming to you first. Floor's open — others can join.",
             ephemeral=True,
         )
 
@@ -406,8 +409,6 @@ class Goon(commands.Cog):
         state.free_join_until = now + float(config.GOON_ROUND_FREE_JOIN_SECONDS)
         state.joiners.add(member.id)
         await self.bot.db.credit_wallet(member.id, state.guild_id, state.amount)
-        for _ in range(state.condoms):
-            await self.bot.db.grant_item(member.id, state.guild_id, "condoms")
         await self.bot.db.tick_goon_passive(
             member.id,
             state.guild_id,
@@ -421,7 +422,33 @@ class Goon(commands.Cog):
         )
         await self._persist(state)
         await edit_call_message(state, content=round_body(state), view=self.round_view)
+        await self._send_velvet_favor(member, state)
         return None
+
+    async def _send_velvet_favor(self, member: discord.Member, state: GroupCallState) -> None:
+        kind = pick_velvet_favor()
+        embed, art = group_goon_favor_media(kind)
+        content = velvet_favor_claim_copy(kind, member.id, state.amount)
+        channel = None
+        if state.message is not None:
+            channel = state.message.channel
+        if channel is None:
+            guild = getattr(member, "guild", None)
+            getter = getattr(guild, "get_channel", None) if guild is not None else None
+            channel = getter(state.channel_id) if getter is not None else None
+        send_kwargs: dict[str, object] = {
+            "embed": embed,
+            "allowed_mentions": discord.AllowedMentions(users=True, roles=False),
+        }
+        if art is not None:
+            send_kwargs["file"] = art
+        posted = await send_channel_message(self.bot, channel, content, **send_kwargs)
+        if posted is None:
+            logging.warning(
+                "Group goon favor: send failed guild %s channel %s",
+                state.guild_id,
+                state.channel_id,
+            )
 
     async def _join_round(
         self, member: discord.Member, state: GroupCallState, *, late: bool,
