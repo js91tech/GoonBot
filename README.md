@@ -69,7 +69,7 @@ python bot.py
 | `/leaderboard` | Top 10 by net worth (pocket + bank) |
 | `/pay @user amount` | Send goonbux from your pocket to another user |
 
-**House pot** — gambling losses/taxes, scourge bank hits, and expired coin drops feed a guild pool that funds random **Claim** drops in the main channel (no minting when the pot is empty).
+**House pot** — gambling losses/taxes and expired coin drops feed a guild pool that funds random **Claim** drops in the main channel (no minting when the pot is empty).
 
 **Bank vault** — personal bank holds up to **100k** goonbux by default. **/expand-bank** offers four expansion tiers: **+10k**, **+50k**, **+250k**, and **+500k** capacity (each tier costs the same amount as its cap gain). Use `/balance` → **Vault expansions** for the tier picker. Prestiges **1–9** reset your pocket only; reaching **prestige 10** also resets your bank balance and vault expansions.
 
@@ -126,7 +126,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 Chat, VC, jobs, and `/daily` also fill the meter. Edging in VC with others hits harder. Daily pays extra while you're still edged.
 
-Every **~2 hours** (if the chat is awake) GoonBot asks in **#yappinmain**. First yes / **I'm ready** wins **house-pot** goonbux + **3 condoms**, then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
+Every **145 minutes** (if the chat is awake) GoonBot asks in **#yappinmain** and attaches a Velvet image. First yes / **I'm ready** wins **house-pot** goonbux + **3 condoms**, then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
 
 ### Boss
 

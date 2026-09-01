@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import datetime
 import logging
+import random
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import discord
@@ -155,6 +157,48 @@ def find_gooners_role(guild: discord.Guild) -> discord.Role | None:
                 continue
             return role
     return None
+
+
+def _velvet_call_art_paths() -> list[Path]:
+    """Velvet portraits and any matching GIF/WebP drops for group-session calls."""
+    from utils.boss_art import ARMORED_ROOT, ASSETS_ROOT, GLAM_ROOT
+
+    found: list[Path] = []
+    for root in (GLAM_ROOT, ARMORED_ROOT, ASSETS_ROOT):
+        if not root.is_dir():
+            continue
+        for path in root.iterdir():
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".gif", ".png", ".webp"}:
+                continue
+            if "velvet" in path.name.lower():
+                found.append(path)
+    return found
+
+
+def group_goon_call_media() -> tuple[discord.Embed, discord.File | None]:
+    """Embed + Velvet image (or GIF when present) sent with the group-goon prompt."""
+    from utils.boss_art import VELVET_VARIANTS, attach_boss_art
+    from utils.goon_theme import branded_embed, panel_title
+
+    embed = branded_embed(
+        panel_title("Group goon"),
+        description="Velvet walked in. First yes opens the floor.",
+    )
+    candidates = _velvet_call_art_paths()
+    gifs = [path for path in candidates if path.suffix.lower() == ".gif"]
+    pool = gifs or candidates
+    if pool:
+        path = random.choice(pool)
+        parent = path.parent.name
+        filename = f"{parent}-{path.name}" if parent in {"glam", "armored"} else path.name
+        filename = filename.replace("_", "-")
+        art = discord.File(str(path), filename=filename)
+        embed.set_image(url=f"attachment://{filename}")
+        return embed, art
+    art = attach_boss_art(embed, random.choice(tuple(VELVET_VARIANTS)))
+    return embed, art
 
 
 def call_body(state: GroupCallState, *, role: discord.Role | None = None) -> str:

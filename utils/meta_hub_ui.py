@@ -478,7 +478,7 @@ async def send_season_hub(
 
 
 # ---------------------------------------------------------------------------
-# Chaos hub — quick actions for virus / scourge / trivia
+# Chaos hub — quick actions for trivia / contagious goon
 # ---------------------------------------------------------------------------
 
 
@@ -507,16 +507,6 @@ class ChaosHubView(discord.ui.View):
             return
         await start_via_hub(interaction)
 
-    @discord.ui.button(label="☣️ Scourge Virus", style=discord.ButtonStyle.secondary, row=0)
-    async def scourge_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        del button
-        await interaction.response.send_message(
-            f"**{config.SCOURGE_VIRUS_NAME}** infects the server's top wallets on a world timer "
-            f"(warning GIF, then a **{config.SCOURGE_ACTIVE_SECONDS // 60}-minute** outbreak). "
-            "Infected? Use `/scourge-pass @user` before the timer pops to dodge the bank penalty.",
-            ephemeral=True,
-        )
-
     @discord.ui.button(label="💀 Contagious goon", style=discord.ButtonStyle.secondary, row=0)
     async def hack_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         del button
@@ -538,7 +528,6 @@ async def send_chaos_hub(interaction: discord.Interaction, cog: commands.Cog) ->
             description=(
                 "Quick actions for the server's chaos modules.\n\n"
                 "🦠 **Trivia** — start a Lore Roulette round in #yappinmain\n"
-                "☣️ **Scourge Virus** — how to pass an active infection\n"
                 "💀 **Contagious goon** — pass it or pop (ruins their session)\n"
                 "💋 **Session** — `/goon edge` · finish · ruin · tease · group round in #yappinmain"
             ),

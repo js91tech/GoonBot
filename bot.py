@@ -19,7 +19,6 @@ COGS = (
     "cogs.bounty",
     "cogs.heist",
     "cogs.hacker",
-    "cogs.scourge",
     "cogs.boss",
     "cogs.shop",
     "cogs.aspects",

@@ -21,6 +21,7 @@ from utils.goon_group import (
     edit_call_message,
     find_gooners_role,
     group_call_skip_reason,
+    group_goon_call_media,
     prune_chatter_stamps,
     recent_channel_author_stamps,
     resolve_round_copy,
@@ -280,15 +281,22 @@ class Goon(commands.Cog):
         )
         role = find_gooners_role(guild)
         body = call_body(state, role=role)
+        embed, art = group_goon_call_media()
+        send_kwargs: dict[str, object] = {
+            "embed": embed,
+            "view": self.call_view,
+            "allowed_mentions": discord.AllowedMentions(
+                roles=[role] if role is not None else False,
+                users=False,
+            ),
+        }
+        if art is not None:
+            send_kwargs["file"] = art
         posted = await send_channel_message(
             self.bot,
             channel,
             body,
-            view=self.call_view,
-            allowed_mentions=discord.AllowedMentions(
-                roles=[role] if role is not None else False,
-                users=False,
-            ),
+            **send_kwargs,
         )
         if posted is None:
             if amount > 0:

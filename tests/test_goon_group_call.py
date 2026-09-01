@@ -1,4 +1,4 @@
-"""Group goon call scheduling — poll, live chatters, no silent 2h skip."""
+"""Group goon call scheduling — poll, live chatters, Velvet art, no silent skip."""
 from __future__ import annotations
 
 import tempfile
@@ -15,6 +15,7 @@ from utils.goon_group import (
     GroupCallState,
     call_body,
     group_call_skip_reason,
+    group_goon_call_media,
     prune_chatter_stamps,
     recent_channel_author_stamps,
 )
@@ -66,7 +67,23 @@ class GroupCallHelperTests(unittest.TestCase):
 
     def test_poll_is_far_shorter_than_interval(self) -> None:
         self.assertLess(config.GOON_CALL_POLL_SECONDS, 120)
-        self.assertGreaterEqual(config.GOON_CALL_INTERVAL_MINUTES, 60)
+        self.assertEqual(config.GOON_CALL_INTERVAL_MINUTES, 145)
+        self.assertEqual(config.GOON_CALL_INTERVAL_JITTER_MINUTES, 0)
+
+    def test_call_media_attaches_velvet_image(self) -> None:
+        embed, art = group_goon_call_media()
+        self.assertIsNotNone(embed)
+        self.assertIsNotNone(art)
+        assert art is not None
+        self.assertNotIn("_", art.filename)
+        self.assertTrue(
+            art.filename.endswith((".png", ".gif", ".webp")),
+            art.filename,
+        )
+        self.assertIn("velvet", art.filename.lower())
+        image = embed.to_dict().get("image") or {}
+        self.assertEqual(image.get("url"), f"attachment://{art.filename}")
+        art.close()
 
 
 class GroupCallHistoryTests(unittest.IsolatedAsyncioTestCase):
@@ -155,6 +172,11 @@ class GroupCallPostTests(unittest.IsolatedAsyncioTestCase):
         body = send.call_args.args[2]
         self.assertIn("I'm ready", body)
         self.assertIn("Condoms", body)
+        self.assertIn("embed", send.call_args.kwargs)
+        self.assertIn("file", send.call_args.kwargs)
+        art = send.call_args.kwargs["file"]
+        self.assertIn("velvet", art.filename.lower())
+        art.close()
 
     async def test_history_typers_can_satisfy_min_chatters(self) -> None:
         now = 10_000.0
@@ -170,6 +192,9 @@ class GroupCallPostTests(unittest.IsolatedAsyncioTestCase):
         ):
             await self.cog._maybe_post_group_goon_call(self.guild, now=now)
         send.assert_called_once()
+        art = send.call_args.kwargs.get("file")
+        if art is not None:
+            art.close()
 
     async def test_empty_pot_still_posts(self) -> None:
         now = 10_000.0
@@ -188,6 +213,8 @@ class GroupCallPostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.cog.active_calls[self.channel_id].amount, 0.0)
         body = send.call_args.args[2]
         self.assertIn("Condoms", body)
+        self.assertIn("file", send.call_args.kwargs)
+        send.call_args.kwargs["file"].close()
 
     async def test_startup_delay_skips_immediate_boot_tick(self) -> None:
         now = 10_000.0

@@ -109,10 +109,13 @@ class GoonSessionMathTests(unittest.TestCase):
         )
 
     def test_group_goon_interval_and_reward_bounds(self) -> None:
+        self.assertEqual(config.GOON_CALL_INTERVAL_MINUTES, 145)
+        self.assertEqual(config.GOON_CALL_INTERVAL_JITTER_MINUTES, 0)
         lo = config.GOON_CALL_INTERVAL_MINUTES - config.GOON_CALL_INTERVAL_JITTER_MINUTES
         hi = config.GOON_CALL_INTERVAL_MINUTES + config.GOON_CALL_INTERVAL_JITTER_MINUTES
         for _ in range(40):
             mins = next_group_goon_call_minutes()
+            self.assertEqual(mins, 145)
             self.assertGreaterEqual(mins, lo)
             self.assertLessEqual(mins, hi)
             amount = roll_group_goon_reward()
