@@ -85,11 +85,14 @@ async def try_generate_ai_portrait(card: CardDefinition, dest: Path | None = Non
 
 
 async def maybe_backfill_missing_portrait(card_id: str) -> bool:
-    """Generate AI art for a missing portrait when a key is configured."""
+    """Write a missing portrait with the unique local compositor (AI is opt-in via the generator)."""
     card = CARD_DEFINITIONS.get(card_id)
     if card is None:
         return False
     path = portrait_path(card_id)
     if path.is_file():
         return True
-    return await try_generate_ai_portrait(card, path)
+    from utils.card_canvas import write_procedural_portrait
+
+    write_procedural_portrait(card, path)
+    return path.is_file()
