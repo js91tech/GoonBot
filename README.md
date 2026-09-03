@@ -160,7 +160,9 @@ Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `p
 | `/cards` | Binder, booster packs, free pull, player market, collection dex |
 | `/trade` | Escrow goonbux, gear, drugs, **and GoonCards** |
 
-**148 cards** across 16 sets: the original six (Velvet Court, Floor Staff, Personas, Hustle, Lounge, Reliquary) plus ten lust sets of 10 (The Edge, Private Booth, Floor Heat, Kink Cabinet, Aftercare Suite, Cabaret Bodies, Voyeur Gallery, Sweet Denial, Altar of Worship, Midnight Encore). Each copy has a print number. Buy packs, pull on a cooldown, list prints on the market, sell extras to the house, or trade copies through `/trade`. Portraits are unique plates in `assets/cards/` (house-style compositor, not cropped raid art); refresh missing files with `python3 scripts/generate_card_portraits.py` (skips existing plates; `--force` overwrites).
+**148 cards** across 16 sets: the original six (Velvet Court, Floor Staff, Personas, Hustle, Lounge, Reliquary) plus ten lust sets of 10 (The Edge, Private Booth, Floor Heat, Kink Cabinet, Aftercare Suite, Cabaret Bodies, Voyeur Gallery, Sweet Denial, Altar of Worship, Midnight Encore). Each copy has a print number. Buy packs, pull on a cooldown, list prints on the market, sell extras to the house, or trade copies through `/trade`.
+
+**Portraits:** the original 48 are illustrated 512×512 PNGs in `assets/cards/card_*.png` (painterly glam-velvet, not ellipse busts and not cropped raid/brand art). The 100 lust-set plates from the #21 expansion stay compositor-style. The binder loads those files. The Pillow compositor in `utils/card_art.py` is only a missing-file fallback. Optional refresh: `python3 scripts/generate_card_portraits.py` (skips existing plates; `--force` overwrites).
 
 ### QoL & DLC commands
 
