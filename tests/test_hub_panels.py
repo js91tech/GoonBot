@@ -166,5 +166,31 @@ class DrugsExtraHubTests(unittest.IsolatedAsyncioTestCase):
         _assert_respects_discord_row_limits(self, view)
 
 
+class CardsHubTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp.name) / "test.sqlite3"
+        self.db = Database(str(self.db_path))
+        await self.db.connect()
+        await self.db.init_schema()
+        self.guild_id = 77
+        self.user_id = 88
+        await self.db.ensure_user(self.user_id, self.guild_id)
+        await self.db.grant_card(self.user_id, self.guild_id, "card_velvet_vixen")
+        self.cog = SimpleNamespace(bot=SimpleNamespace(db=self.db))
+
+    async def asyncTearDown(self) -> None:
+        await self.db.close()
+        self.tmp.cleanup()
+
+    async def test_binder_and_tabs_respect_row_limits(self) -> None:
+        from utils.cards_hub_ui import CardsHubView
+
+        for tab in ("binder", "packs", "market", "collection"):
+            view = CardsHubView(self.cog, self.guild_id, self.user_id, tab=tab)
+            await view.build_payload()
+            _assert_respects_discord_row_limits(self, view)
+
+
 if __name__ == "__main__":
     unittest.main()

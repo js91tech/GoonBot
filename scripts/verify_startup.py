@@ -52,6 +52,12 @@ async def _main() -> int:
     if "meter" not in goon_cols:
         errors.append("goon_sessions.meter missing after migrations")
 
+    cursor = await db.conn.execute("PRAGMA table_info(card_instances)")
+    card_cols = {row[1] for row in await cursor.fetchall()}
+    for col in ("card_id", "print_number", "escrow_trade_id"):
+        if col not in card_cols:
+            errors.append(f"card_instances.{col} missing after migrations")
+
     bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
     bot.db = db
     for ext in COGS:

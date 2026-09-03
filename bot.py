@@ -53,6 +53,7 @@ COGS = (
     "cogs.expeditions",
     "cogs.enhancement",
     "cogs.trade",
+    "cogs.cards",
     "cogs.retention",
     "cogs.admin",
 )

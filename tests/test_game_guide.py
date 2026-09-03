@@ -28,6 +28,9 @@ class GameGuideTests(unittest.TestCase):
             "armor",
             "consumables",
             "chaos",
+            "business",
+            "drugs",
+            "cards",
             "progression",
             "aspects",
         }

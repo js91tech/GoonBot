@@ -14,6 +14,7 @@ import aiosqlite
 import asyncpg
 
 import config
+from database.cards import DatabaseCardsMixin
 from database.expansion import DatabaseExpansionMixin
 from database.goon_session import DatabaseGoonSessionMixin
 from database.inventory import DatabaseInventoryMixin
@@ -187,6 +188,7 @@ class Database(
     DatabaseInventoryMixin,
     DatabaseExpansionMixin,
     DatabaseGoonSessionMixin,
+    DatabaseCardsMixin,
 ):
     def __init__(self, path: str) -> None:
         self.path = path
@@ -504,6 +506,7 @@ class Database(
         await self._migrate_tier1_retention()
         await self._migrate_loadout_preset_accessories()
         await self._migrate_gameplay_expansion()
+        await self._migrate_cards()
         await self._migrate_goonbot_age_gate()
         await self._migrate_heat_status()
         await self._migrate_goon_sessions()
@@ -13447,17 +13450,21 @@ class Database(
         nuggets: float,
         drugs: dict[str, int],
         gear_instance_ids: list[int],
+        card_instance_ids: list[int] | None = None,
     ) -> tuple[int | None, str | None]:
         if initiator_id == receiver_id:
             return None, "self_trade"
         nuggets = max(0.0, float(nuggets))
         drugs = {k: max(0, int(v)) for k, v in drugs.items() if int(v) > 0}
         gear_instance_ids = [int(i) for i in gear_instance_ids]
+        card_instance_ids = [int(i) for i in (card_instance_ids or [])]
         if len(drugs) > config.TRADE_MAX_DRUG_TYPES:
             return None, "too_many_drugs"
         if len(gear_instance_ids) > config.TRADE_MAX_GEAR_INSTANCES:
             return None, "too_many_gear"
-        if nuggets <= 0 and not drugs and not gear_instance_ids:
+        if len(card_instance_ids) > config.TRADE_MAX_CARD_INSTANCES:
+            return None, "too_many_cards"
+        if nuggets <= 0 and not drugs and not gear_instance_ids and not card_instance_ids:
             return None, "empty_offer"
 
         now = time.time()
@@ -13511,6 +13518,20 @@ class Database(
                     await self.conn.commit()
                     return None, "invalid_gear"
 
+            for instance_id in card_instance_ids:
+                card_cursor = await self.conn.execute(
+                    """
+                    SELECT * FROM card_instances
+                    WHERE instance_id = ? AND guild_id = ? AND user_id = ?
+                      AND (escrow_trade_id IS NULL OR escrow_trade_id = 0)
+                      AND (market_listing_id IS NULL OR market_listing_id = 0)
+                    """,
+                    (instance_id, guild_id, initiator_id),
+                )
+                if await card_cursor.fetchone() is None:
+                    await self.conn.commit()
+                    return None, "invalid_card"
+
             if nuggets > 0:
                 await self.conn.execute(
                     "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
@@ -13531,12 +13552,13 @@ class Database(
                 """
                 INSERT INTO pending_trades (
                     guild_id, initiator_id, receiver_id, offer_nuggets, offer_drugs,
-                    offer_gear, status, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                    offer_gear, offer_cards, status, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                 """,
                 (
                     guild_id, initiator_id, receiver_id, nuggets,
                     json.dumps(drugs), json.dumps(gear_instance_ids),
+                    json.dumps(card_instance_ids),
                     now, expires_at,
                 ),
             )
@@ -13545,6 +13567,14 @@ class Database(
                 await self.conn.execute(
                     """
                     UPDATE gear_instances SET escrow_trade_id = ?
+                    WHERE instance_id = ? AND guild_id = ?
+                    """,
+                    (trade_id, instance_id, guild_id),
+                )
+            for instance_id in card_instance_ids:
+                await self.conn.execute(
+                    """
+                    UPDATE card_instances SET escrow_trade_id = ?
                     WHERE instance_id = ? AND guild_id = ?
                     """,
                     (trade_id, instance_id, guild_id),
@@ -13559,6 +13589,10 @@ class Database(
         nuggets = float(trade["offer_nuggets"])
         drugs = json.loads(str(trade["offer_drugs"] or "{}"))
         gear_ids = json.loads(str(trade["offer_gear"] or "[]"))
+        try:
+            card_ids = json.loads(str(trade["offer_cards"] or "[]"))
+        except (KeyError, IndexError, TypeError):
+            card_ids = []
 
         if nuggets > 0:
             await self.conn.execute(
@@ -13586,6 +13620,14 @@ class Database(
                 """,
                 (int(instance_id), guild_id, trade_id),
             )
+        for instance_id in card_ids:
+            await self.conn.execute(
+                """
+                UPDATE card_instances SET escrow_trade_id = NULL
+                WHERE instance_id = ? AND guild_id = ? AND escrow_trade_id = ?
+                """,
+                (int(instance_id), guild_id, trade_id),
+            )
 
     async def _complete_trade_offer(self, trade: aiosqlite.Row) -> None:
         receiver_id = int(trade["receiver_id"])
@@ -13594,6 +13636,10 @@ class Database(
         nuggets = float(trade["offer_nuggets"])
         drugs = json.loads(str(trade["offer_drugs"] or "{}"))
         gear_ids = json.loads(str(trade["offer_gear"] or "[]"))
+        try:
+            card_ids = json.loads(str(trade["offer_cards"] or "[]"))
+        except (KeyError, IndexError, TypeError):
+            card_ids = []
 
         if nuggets > 0:
             await self.conn.execute(
@@ -13625,6 +13671,20 @@ class Database(
                 """,
                 (receiver_id, int(instance_id), guild_id, trade_id),
             )
+        unique_before = 0
+        if card_ids:
+            unique_before = await self._unique_card_count_no_lock(receiver_id, guild_id)
+        for instance_id in card_ids:
+            await self.conn.execute(
+                """
+                UPDATE card_instances
+                SET user_id = ?, escrow_trade_id = NULL, market_listing_id = NULL
+                WHERE instance_id = ? AND guild_id = ? AND escrow_trade_id = ?
+                """,
+                (receiver_id, int(instance_id), guild_id, trade_id),
+            )
+        if card_ids:
+            await self._bump_cards_museum_no_lock(guild_id, receiver_id, unique_before)
 
     async def resolve_trade(
         self, trade_id: int, guild_id: int, actor_id: int, action: str,

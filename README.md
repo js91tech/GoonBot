@@ -153,6 +153,15 @@ Bosses auto-spawn every **40 minutes** when none is active.
 
 Five avatars ship with the bot (`nugget_raider` is free). Regenerate art with `python3 scripts/generate_avatar_assets.py`.
 
+### GoonCards
+
+| Command | Description |
+|---------|-------------|
+| `/cards` | Binder, booster packs, free pull, player market, collection dex |
+| `/trade` | Escrow goonbux, gear, drugs, **and GoonCards** |
+
+**48 cards** in six sets (Velvet Court, Floor Staff, Personas, Hustle, Lounge, Reliquary). Each copy has a print number. Buy packs, pull on a cooldown, list prints on the market, sell extras to the house, or trade copies through `/trade`. Portraits live in `assets/cards/`; refresh with `python3 scripts/generate_card_portraits.py`.
+
 ### QoL & DLC commands
 
 | Command | Description |
