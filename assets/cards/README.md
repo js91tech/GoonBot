@@ -1,12 +1,12 @@
 # GoonCards portraits
 
 One square PNG per catalog id (`card_*.png`). Each plate is an original
-composition from the seeded painterly compositor in `utils/card_art.py` —
-inspired by GoonBot palettes and mood (crimson/gold velvet, neon lounge,
-pixel city, grow lab) but not cropped from boss portraits, Nikki GIFs, or
-brand banners. No wordmarks, no "18+" copy.
+composition inspired by GoonBot palettes and mood (painterly glam velvet,
+crimson/gold, neon lounge, pixel city, grow lab) — not cropped from boss
+portraits, Nikki GIFs, or brand banners. No wordmarks, no "18+" copy.
 
-Generate or refresh from the repo root:
+`utils/card_art.py` is a seeded unique compositor used as the offline
+fallback (no API key). Refresh compositor plates from the repo root:
 
 ```bash
 python3 scripts/generate_card_portraits.py
