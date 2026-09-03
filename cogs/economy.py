@@ -296,8 +296,24 @@ class Economy(commands.Cog):
             now=current,
             cooldown=0.0,
         )
+        card_note = ""
+        drop_chance = await self.bot.db.get_config_value(
+            interaction.guild_id, "card_daily_drop_chance",
+        )
+        granted = await self.bot.db.try_card_drop(
+            interaction.user.id, interaction.guild_id, drop_chance,
+        )
+        if granted is not None:
+            from utils.cards import card_by_id
+
+            defn = card_by_id(str(granted["card_id"]))
+            name = defn.name if defn else granted["card_id"]
+            emoji = defn.emoji if defn else "🃏"
+            card_note = (
+                f"\n{emoji} GoonCard drop: **{name}** #{int(granted['print_number']):04d}"
+            )
         await interaction.response.send_message(
-            f"You claimed {fmt_amount(remaining.reward)}.{bonus_note}{streak_note}{edge_note}",
+            f"You claimed {fmt_amount(remaining.reward)}.{bonus_note}{streak_note}{edge_note}{card_note}",
             ephemeral=True,
         )
         await record_quest_event(

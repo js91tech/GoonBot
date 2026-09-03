@@ -8,6 +8,7 @@ import discord
 
 import config
 from items import get_item
+from utils.cards import card_by_id
 from utils.drugs import drug_by_id
 from utils.helpers import fmt_amount
 
@@ -24,6 +25,13 @@ def _gear_label(instance_id: int, item_id: str, level: int, broken: bool) -> str
     return f"{name}{suffix} [#{instance_id}]"
 
 
+def _card_label(instance_id: int, card_id: str, print_number: int) -> str:
+    defn = card_by_id(card_id)
+    name = defn.name if defn else card_id
+    emoji = defn.emoji if defn else "🃏"
+    return f"{emoji} {name} #{print_number:04d} [#{instance_id}]"
+
+
 def build_trade_embed(
     *,
     initiator: discord.Member,
@@ -32,6 +40,8 @@ def build_trade_embed(
     drugs: dict[str, int],
     gear_ids: list[int],
     gear_rows: list[object],
+    card_ids: list[int] | None = None,
+    card_rows: list[object] | None = None,
     pending: bool = False,
 ) -> discord.Embed:
     embed = discord.Embed(
@@ -56,6 +66,13 @@ def build_trade_embed(
         lines.append(
             _gear_label(gid, str(row["item_id"]), int(row["enhancement_level"]), bool(row["is_broken"])),
         )
+    card_ids = card_ids or []
+    card_by_instance = {int(r["instance_id"]): r for r in (card_rows or [])}
+    for cid in card_ids:
+        row = card_by_instance.get(cid)
+        if row is None:
+            continue
+        lines.append(_card_label(cid, str(row["card_id"]), int(row["print_number"])))
     embed.add_field(
         name="Offer",
         value="\n".join(lines) if lines else "_Nothing added yet_",
@@ -190,6 +207,49 @@ class TradeGearSelect(discord.ui.Select):
         )
 
 
+class TradeCardSelect(discord.ui.Select):
+    def __init__(self, view: TradeBuildView, instances: list[object]) -> None:
+        self._view = view
+        options: list[discord.SelectOption] = []
+        for row in instances[:24]:
+            iid = int(row["instance_id"])
+            label = _card_label(iid, str(row["card_id"]), int(row["print_number"]))
+            options.append(
+                discord.SelectOption(label=label[:100], value=str(iid), description="Add GoonCard"),
+            )
+        if not options:
+            options.append(
+                discord.SelectOption(label="No tradeable cards", value="_none"),
+            )
+        super().__init__(
+            placeholder="Add GoonCard…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            disabled=not instances,
+            row=2,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.values[0] == "_none":
+            await interaction.response.defer()
+            return
+        instance_id = int(self.values[0])
+        if instance_id in self._view.card_ids:
+            await interaction.response.send_message("Already in the offer.", ephemeral=True)
+            return
+        if len(self._view.card_ids) >= config.TRADE_MAX_CARD_INSTANCES:
+            await interaction.response.send_message(
+                f"Max **{config.TRADE_MAX_CARD_INSTANCES}** cards per trade.", ephemeral=True,
+            )
+            return
+        self._view.card_ids.append(instance_id)
+        await interaction.response.edit_message(
+            embed=await self._view.build_embed(),
+            view=self._view,
+        )
+
+
 class TradeBuildView(discord.ui.View):
     def __init__(
         self,
@@ -207,6 +267,7 @@ class TradeBuildView(discord.ui.View):
         self.nuggets = 0.0
         self.drugs: dict[str, int] = {}
         self.gear_ids: list[int] = []
+        self.card_ids: list[int] = []
         self._built = False
 
     async def populate(self) -> None:
@@ -216,14 +277,21 @@ class TradeBuildView(discord.ui.View):
         instances = await self.cog.bot.db.list_tradeable_gear_instances(
             self.initiator_id, self.guild_id,
         )
+        cards = await self.cog.bot.db.list_tradeable_card_instances(
+            self.initiator_id, self.guild_id,
+        )
         self.add_item(TradeDrugSelect(self, inventory))
         self.add_item(TradeGearSelect(self, instances))
+        self.add_item(TradeCardSelect(self, cards))
         self._built = True
 
     async def build_embed(self) -> discord.Embed:
         guild = self.cog.bot.get_guild(self.guild_id)
         initiator = guild.get_member(self.initiator_id) if guild else None
         instances = await self.cog.bot.db.list_tradeable_gear_instances(
+            self.initiator_id, self.guild_id,
+        )
+        cards = await self.cog.bot.db.list_tradeable_card_instances(
             self.initiator_id, self.guild_id,
         )
         return build_trade_embed(
@@ -233,9 +301,11 @@ class TradeBuildView(discord.ui.View):
             drugs=self.drugs,
             gear_ids=self.gear_ids,
             gear_rows=instances,
+            card_ids=self.card_ids,
+            card_rows=cards,
         )
 
-    @discord.ui.button(label="Set goonbux", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Set goonbux", style=discord.ButtonStyle.secondary, row=3)
     async def set_nuggets(
         self, interaction: discord.Interaction, button: discord.ui.Button,
     ) -> None:
@@ -245,7 +315,7 @@ class TradeBuildView(discord.ui.View):
             return
         await interaction.response.send_modal(NuggetsModal(self))
 
-    @discord.ui.button(label="Clear offer", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Clear offer", style=discord.ButtonStyle.secondary, row=3)
     async def clear_offer(
         self, interaction: discord.Interaction, button: discord.ui.Button,
     ) -> None:
@@ -256,9 +326,10 @@ class TradeBuildView(discord.ui.View):
         self.nuggets = 0.0
         self.drugs.clear()
         self.gear_ids.clear()
+        self.card_ids.clear()
         await interaction.response.edit_message(embed=await self.build_embed(), view=self)
 
-    @discord.ui.button(label="Send offer", style=discord.ButtonStyle.success, row=3)
+    @discord.ui.button(label="Send offer", style=discord.ButtonStyle.success, row=4)
     async def send_offer(
         self, interaction: discord.Interaction, button: discord.ui.Button,
     ) -> None:
@@ -273,16 +344,19 @@ class TradeBuildView(discord.ui.View):
             nuggets=self.nuggets,
             drugs=self.drugs,
             gear_instance_ids=self.gear_ids,
+            card_instance_ids=self.card_ids,
         )
         errors = {
             "self_trade": "You can't trade with yourself.",
             "empty_offer": "Add something to trade first.",
             "too_many_drugs": "Too many drug types.",
             "too_many_gear": "Too much gear.",
+            "too_many_cards": "Too many cards.",
             "trade_busy": "You or they already have a pending trade.",
             "insufficient_nuggets": "Not enough goonbux.",
             "insufficient_drugs": "Not enough product in stash.",
             "invalid_gear": "Gear unavailable (equipped or missing).",
+            "invalid_card": "Card unavailable (listed, escrowed, or missing).",
         }
         if err:
             await interaction.response.send_message(errors.get(err, "Trade failed."), ephemeral=True)
@@ -318,11 +392,21 @@ class TradeReceiveView(discord.ui.View):
         initiator = guild.get_member(int(trade["initiator_id"])) if guild else None
         drugs = json.loads(str(trade["offer_drugs"] or "{}"))
         gear_ids = [int(x) for x in json.loads(str(trade["offer_gear"] or "[]"))]
+        card_ids = []
+        try:
+            card_ids = [int(x) for x in json.loads(str(trade["offer_cards"] or "[]"))]
+        except (KeyError, IndexError, TypeError):
+            card_ids = []
         gear_rows = []
         for gid in gear_ids:
             row = await self.cog.bot.db.get_gear_instance(gid, self.guild_id)
             if row:
                 gear_rows.append(row)
+        card_rows = []
+        for cid in card_ids:
+            row = await self.cog.bot.db.get_card_instance(cid, self.guild_id)
+            if row:
+                card_rows.append(row)
         embed = build_trade_embed(
             initiator=initiator or receiver,
             receiver=receiver,
@@ -330,6 +414,8 @@ class TradeReceiveView(discord.ui.View):
             drugs={k: int(v) for k, v in drugs.items()},
             gear_ids=gear_ids,
             gear_rows=gear_rows,
+            card_ids=card_ids,
+            card_rows=card_rows,
             pending=True,
         )
         try:

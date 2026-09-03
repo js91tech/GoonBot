@@ -11,7 +11,7 @@
 | Brand | GoonBot · currency **goonbux** 💋 |
 | Boss | **Velvet Vixen** (and adult specials) |
 | Safety | First-use **18+ confirm**; guild setting `nsfw_channel_only` (default on) |
-| UX | Hub panels (Views/Selects/Buttons) for profile, gear, jobs, character, alchemy, companions, relics, museum, crime, casino, dungeon lobby, drugs extras, contracts, expeditions, season, chaos |
+| UX | Hub panels (Views/Selects/Buttons) for profile, gear, jobs, character, alchemy, companions, relics, museum, GoonCards, crime, casino, dungeon lobby, drugs extras, contracts, expeditions, season, chaos |
 
 ## Deploy (new stack)
 

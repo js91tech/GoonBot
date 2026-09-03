@@ -42,6 +42,14 @@ async def roll_boss_expansion_loot(
             await record_expansion_event(db, guild_id, uid, "boss_mythic_kill")
         await record_expansion_event(db, guild_id, uid, "boss_kill")
         await db.increment_museum_category(guild_id, uid, "bosses", 1)
+        chance = float(await db.get_config_value(guild_id, "card_boss_drop_chance"))
+        granted = await db.try_card_drop(uid, guild_id, chance)
+        if granted is not None:
+            from utils.cards import card_by_id
+
+            defn = card_by_id(str(granted["card_id"]))
+            name = defn.name if defn else granted["card_id"]
+            lines.append(f"<@{uid}> · GoonCard `{name}` #{int(granted['print_number']):04d}")
     return lines
 
 

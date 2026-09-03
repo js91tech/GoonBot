@@ -83,6 +83,16 @@ ACTIVITY_ROLE_NAMES: dict[int, str] = {
 TRADE_EXPIRE_SECONDS = 300
 TRADE_MAX_DRUG_TYPES = 5
 TRADE_MAX_GEAR_INSTANCES = 5
+TRADE_MAX_CARD_INSTANCES = 5
+
+# GoonCards
+CARD_PACK_PRICE = 2500.0
+CARD_PACK_SIZE = 3
+CARD_PULL_COOLDOWN_SECONDS = 15 * 60
+CARD_MARKET_TAX = 0.05
+CARD_NPC_SELL_MULT = 0.50
+CARD_DAILY_DROP_CHANCE = 0.08
+CARD_BOSS_DROP_CHANCE = 0.12
 
 # DM reminders are off. GoonBot must not DM players unless this is explicitly re-enabled.
 DM_NOTIFICATIONS_ENABLED = os.getenv("DM_NOTIFICATIONS_ENABLED", "").strip().lower() in {
@@ -1251,6 +1261,44 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
         "Seconds between energy regen ticks",
         minimum=60,
         integer=True,
+    ),
+    "card_pack_price": LiveSetting(
+        CARD_PACK_PRICE,
+        "GoonCards booster pack price",
+        minimum=1.0,
+    ),
+    "card_pack_size": LiveSetting(
+        CARD_PACK_SIZE,
+        "Cards granted per booster pack",
+        minimum=1,
+        maximum=5,
+        integer=True,
+    ),
+    "card_pull_cooldown_seconds": LiveSetting(
+        CARD_PULL_COOLDOWN_SECONDS,
+        "Cooldown between free GoonCards pulls",
+        minimum=30,
+        integer=True,
+    ),
+    "card_market_tax": LiveSetting(
+        CARD_MARKET_TAX,
+        "Player card-market tax (feeds house pot)",
+        maximum=0.5,
+    ),
+    "card_npc_sell_mult": LiveSetting(
+        CARD_NPC_SELL_MULT,
+        "NPC buyback as a fraction of card base value",
+        maximum=1.0,
+    ),
+    "card_daily_drop_chance": LiveSetting(
+        CARD_DAILY_DROP_CHANCE,
+        "Chance /daily grants a GoonCard",
+        maximum=1.0,
+    ),
+    "card_boss_drop_chance": LiveSetting(
+        CARD_BOSS_DROP_CHANCE,
+        "Chance each boss contributor gets a GoonCard",
+        maximum=1.0,
     ),
 }
 

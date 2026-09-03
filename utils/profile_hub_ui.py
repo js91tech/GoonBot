@@ -294,6 +294,15 @@ class ProfileHubView(discord.ui.View):
 
         await send_chaos_hub(interaction, self.cog)
 
+    @discord.ui.button(label="Cards", style=discord.ButtonStyle.primary, row=2)
+    async def cards_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button,
+    ) -> None:
+        del button
+        from utils.cards_hub_ui import send_cards_hub
+
+        await send_cards_hub(self.cog, interaction)
+
     @discord.ui.button(label="Buy VIP heat", style=discord.ButtonStyle.success, row=2)
     async def vip_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button,

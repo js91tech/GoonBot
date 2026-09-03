@@ -136,6 +136,21 @@ async def _main() -> int:
     except Exception as exc:
         errors.append(f"drug lab large stash: {exc}")
 
+    try:
+        from utils.cards_hub_ui import CardsHubView
+
+        await db.grant_card(user_id, guild_id, "card_velvet_vixen")
+        for tab in ("binder", "packs", "market", "collection"):
+            cards_view = CardsHubView(cog, guild_id, user_id, tab=tab)
+            embed, attachment = await cards_view.build_payload()
+            _validate_view(cards_view, f"cards_{tab}", errors)
+            if tab == "binder" and (attachment is None or attachment.filename != "binder.png"):
+                errors.append("cards binder missing binder.png")
+            if embed.title is None:
+                errors.append(f"cards_{tab} missing title")
+    except Exception as exc:
+        errors.append(f"cards hub: {exc}")
+
     await db.close()
 
     if errors:
@@ -143,7 +158,7 @@ async def _main() -> int:
         for line in errors:
             print(f"  - {line}", file=sys.stderr)
         return 1
-    print("OK: drug lab and business panels build cleanly (including under-attack + large stash)")
+    print("OK: drug lab, business, and GoonCards panels build cleanly")
     return 0
 
 

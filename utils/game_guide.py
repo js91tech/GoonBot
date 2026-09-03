@@ -557,6 +557,33 @@ def _build_sections() -> tuple[GuideSection, ...]:
             ),
         ),
         GuideSection(
+            section_id="cards",
+            label="GoonCards",
+            emoji="🃏",
+            description="Collect, buy packs, sell, and trade cards",
+            pages=_static_pages(
+                "GoonCards",
+                [
+                    "**48-card launch catalog** across Velvet Court, Floor Staff, Personas, "
+                    "Hustle, Lounge, and Reliquary. Copies have print numbers; the binder "
+                    "groups duplicates.\n"
+                    "· `/cards` — binder, packs, player market, collection dex\n"
+                    "· Profile hub **Cards** button opens the same panel\n"
+                    "· `/trade` can escrow GoonCards with goonbux, gear, and drugs",
+                    "**Getting cards**\n"
+                    "· **Buy pack** — spend goonbux for 3 random cards (rarity-weighted)\n"
+                    "· **Free pull** — cooldown hunt, one card\n"
+                    "· `/daily` and boss raids have a small drop chance\n"
+                    "· Player market — list a specific print, buy someone else's",
+                    "**Selling & collecting**\n"
+                    "· NPC buyback on a copy or all extras (keeps your lowest print)\n"
+                    "· Market tax feeds the house pot\n"
+                    "· Favorite a copy to showcase it\n"
+                    "· Museum tracks unique cards collected",
+                ],
+            ),
+        ),
+        GuideSection(
             section_id="progression",
             label="Progression",
             emoji="🏆",

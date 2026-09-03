@@ -21,6 +21,7 @@ MUSEUM_CATEGORIES: tuple[MuseumCategory, ...] = (
     MuseumCategory("companions", "Menagerie", "Henchlings obtained."),
     MuseumCategory("phenotypes", "Phenotype Lab", "Crossbreeds discovered."),
     MuseumCategory("blueprints", "Blueprint Archive", "Codex entries unlocked."),
+    MuseumCategory("cards", "GoonCards", "Unique GoonCards collected."),
 )
 
 CATEGORY_TOTALS: dict[str, int] = {
@@ -32,6 +33,7 @@ CATEGORY_TOTALS: dict[str, int] = {
     "companions": 8,
     "phenotypes": 15,
     "blueprints": 15,
+    "cards": 48,
 }
 
 
