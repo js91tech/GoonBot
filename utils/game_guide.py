@@ -564,9 +564,11 @@ def _build_sections() -> tuple[GuideSection, ...]:
             pages=_static_pages(
                 "GoonCards",
                 [
-                    "**48-card launch catalog** across Velvet Court, Floor Staff, Personas, "
-                    "Hustle, Lounge, and Reliquary. Copies have print numbers; the binder "
-                    "groups duplicates.\n"
+                    "**148-card launch catalog** — original six 8-card sets (Velvet Court, "
+                    "Floor Staff, Personas, Hustle, Lounge, Reliquary) plus ten lust sets of "
+                    "10 (The Edge, Private Booth, Floor Heat, Kink Cabinet, Aftercare Suite, "
+                    "Cabaret Bodies, Voyeur Gallery, Sweet Denial, Altar of Worship, Midnight "
+                    "Encore). Copies have print numbers; the binder groups duplicates.\n"
                     "· `/cards` — binder, packs, player market, collection dex\n"
                     "· Profile hub **Cards** button opens the same panel\n"
                     "· `/trade` can escrow GoonCards with goonbux, gear, and drugs",

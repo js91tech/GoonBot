@@ -5,12 +5,14 @@ composition inspired by GoonBot palettes and mood (painterly glam velvet,
 crimson/gold, neon lounge, pixel city, grow lab) — not cropped from boss
 portraits, Nikki GIFs, or brand banners. No wordmarks, no "18+" copy.
 
-`utils/card_art.py` is a seeded unique compositor used as the offline
-fallback (no API key). Refresh compositor plates from the repo root:
+Launch catalog is **148** unique plates: the original 48 plus 100 lust-set
+portraits. `utils/card_art.py` is a seeded unique compositor used as the
+offline fallback (no API key). Refresh compositor plates from the repo root:
 
 ```bash
-python3 scripts/generate_card_portraits.py
-python3 scripts/generate_card_portraits.py --force
+python3 scripts/generate_card_portraits.py              # skip files that already exist
+python3 scripts/generate_card_portraits.py --only-missing
+python3 scripts/generate_card_portraits.py --force      # overwrite all, including the original 48
 ```
 
 `--ai` is optional and tries the OpenAI-compatible images API first. Missing

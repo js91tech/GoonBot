@@ -33,7 +33,7 @@ CATEGORY_TOTALS: dict[str, int] = {
     "companions": 8,
     "phenotypes": 15,
     "blueprints": 15,
-    "cards": 48,
+    "cards": 148,
 }
 
 

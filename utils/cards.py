@@ -1,4 +1,10 @@
-"""GoonCards catalog — 48 collectible trading cards across six sets."""
+"""GoonCards catalog — 148 collectible trading cards across 16 sets.
+
+Launch 48 stay in six 8-card sets (Velvet Court, Floor Staff, Personas, Hustle,
+Lounge, Reliquary). The lust expansion adds 100 cards in ten 10-card sets:
+The Edge, Private Booth, Floor Heat, Kink Cabinet, Aftercare Suite,
+Cabaret Bodies, Voyeur Gallery, Sweet Denial, Altar of Worship, Midnight Encore.
+"""
 from __future__ import annotations
 
 import random
@@ -6,7 +12,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 Rarity = Literal["common", "uncommon", "rare", "epic", "legendary", "mythic"]
-SetId = Literal["velvet", "floor", "personas", "hustle", "lounge", "reliquary"]
+SetId = Literal[
+    "velvet", "floor", "personas", "hustle", "lounge", "reliquary",
+    "edge", "booth", "heat", "kink", "aftercare", "cabaret", "peek", "denial", "worship", "encore",
+]
 
 RARITY_ORDER: tuple[Rarity, ...] = (
     "common",
@@ -78,6 +87,16 @@ SET_ORDER: tuple[SetId, ...] = (
     "hustle",
     "lounge",
     "reliquary",
+    "edge",
+    "booth",
+    "heat",
+    "kink",
+    "aftercare",
+    "cabaret",
+    "peek",
+    "denial",
+    "worship",
+    "encore",
 )
 
 SET_LABELS: dict[SetId, str] = {
@@ -87,6 +106,16 @@ SET_LABELS: dict[SetId, str] = {
     "hustle": "Hustle",
     "lounge": "Lounge",
     "reliquary": "Reliquary",
+    "edge": "The Edge",
+    "booth": "Private Booth",
+    "heat": "Floor Heat",
+    "kink": "Kink Cabinet",
+    "aftercare": "Aftercare Suite",
+    "cabaret": "Cabaret Bodies",
+    "peek": "Voyeur Gallery",
+    "denial": "Sweet Denial",
+    "worship": "Altar of Worship",
+    "encore": "Midnight Encore",
 }
 
 SET_EMOJI: dict[SetId, str] = {
@@ -96,6 +125,16 @@ SET_EMOJI: dict[SetId, str] = {
     "hustle": "🕶️",
     "lounge": "🔥",
     "reliquary": "🗿",
+    "edge": "🥵",
+    "booth": "🕯️",
+    "heat": "💃",
+    "kink": "🔗",
+    "aftercare": "🛏️",
+    "cabaret": "🍒",
+    "peek": "👁️",
+    "denial": "⏳",
+    "worship": "🛐",
+    "encore": "🌙",
 }
 
 PORTRAIT_STYLE = (
@@ -130,6 +169,59 @@ class CardDefinition:
     @property
     def rarity_label(self) -> str:
         return RARITY_LABELS[self.rarity]
+
+
+# Launch 48 from Velvet Court / Floor Staff / Personas / Hustle / Lounge / Reliquary.
+ORIGINAL_CARD_IDS: frozenset[str] = frozenset((
+    'card_hostess',
+    'card_stagehand',
+    'card_tomass',
+    'card_shadow_velvet',
+    'card_freaky_nikki',
+    'card_zz_wrath',
+    'card_leviathan',
+    'card_velvet_vixen',
+    'card_floor_runner',
+    'card_velvet_imp',
+    'card_bottle_bird',
+    'card_vault_bunny',
+    'card_tip_hound',
+    'card_aftercare_softie',
+    'card_house_blend',
+    'card_empire_drone',
+    'card_talent',
+    'card_host',
+    'card_fixer',
+    'card_headliner',
+    'card_promoter',
+    'card_ghost',
+    'card_circuit_boss',
+    'card_house_idol',
+    'card_wallet_lift',
+    'card_name_drop',
+    'card_table_games',
+    'card_crew_panel',
+    'card_bank_heist',
+    'card_bodyguard',
+    'card_black_card',
+    'card_cartel_title',
+    'card_edge',
+    'card_floor_dare',
+    'card_tease',
+    'card_group_round',
+    'card_afterglow',
+    'card_ruin',
+    'card_kisses_velvet',
+    'card_velvet_ready',
+    'card_street_token',
+    'card_jester_bell',
+    'card_medic_patch',
+    'card_scrap_idol',
+    'card_plunder_seal',
+    'card_duelist_coin',
+    'card_void_heart',
+    'card_velvet_vault_key',
+))
 
 
 def _c(
@@ -448,10 +540,612 @@ CARD_DEFINITIONS: dict[str, CardDefinition] = {
         "mythic keybearer with an ornate crimson vault key",
         "open gold vault, Velvet's silhouette, destiny",
     ),
+    # --- Lust expansion: 10 sets × 10 (The Edge through Midnight Encore) ---
+    'card_slow_stroke': _c(
+        'card_slow_stroke', 'Slow Stroke', 'edge', 'common', '✋',
+        "Don't finish. Don't even think about finishing.",
+        'adult cabaret muse mid slow stroke, flushed cheeks, velvet chair',
+        'heat haze, bitten lip, 18+ nightlife',
+    ),
+    'card_hold_it': _c(
+        'card_hold_it', 'Hold It', 'edge', 'common', '🛑',
+        'The meter is full. The rule is wait.',
+        'tense adult performer gripping the chair arms, jaw tight',
+        'crimson lighting, denial, sweat sheen',
+    ),
+    'card_not_yet': _c(
+        'card_not_yet', 'Not Yet', 'edge', 'common', '⏳',
+        'Velvet said not yet. You heard her.',
+        'smirking hostess with a finger to painted lips',
+        'gold jewelry, hush, booth light',
+    ),
+    'card_meter_pulse': _c(
+        'card_meter_pulse', 'Meter Pulse', 'edge', 'common', '💓',
+        'Every chat, every job, every sip fills it.',
+        'flushed adult dancer with a glowing pulse at the throat',
+        'neon veins of gold, lounge bokeh',
+    ),
+    'card_edge_queen': _c(
+        'card_edge_queen', 'Edge Queen', 'edge', 'uncommon', '👑',
+        'She lives on the line and makes you live there too.',
+        'regal adult cabaret queen mid-edge, crown tilted',
+        'crimson gown slipping, commanding eyes',
+    ),
+    'card_denial_coach': _c(
+        'card_denial_coach', 'Denial Coach', 'edge', 'uncommon', '📋',
+        'Counts out loud. You do not get to skip.',
+        'sharp-eyed adult coach with a gold clicker and silk gloves',
+        'clipboard, cruel kindness, spotlight',
+    ),
+    'card_leak_scare': _c(
+        'card_leak_scare', 'Leak Scare', 'edge', 'uncommon', '💧',
+        'Almost. The floor noticed. Hold.',
+        'startled adult performer biting a knuckle, shine on skin',
+        'wet light, velvet, panic-pleasure',
+    ),
+    'card_ruined_edge': _c(
+        'card_ruined_edge', 'Ruined Edge', 'edge', 'rare', '💦',
+        "You waited. She didn't let you have it anyway.",
+        'wrecked-beautiful adult cabaret villain after a ruined peak',
+        'champagne spill, wicked calm, glitter',
+    ),
+    'card_overstim': _c(
+        'card_overstim', 'Overstim', 'edge', 'epic', '⚡',
+        'Past the line. Still not allowed to drop.',
+        'overstimulated adult star arching under gold strobes',
+        'electric heat, open mouth, high contrast',
+    ),
+    'card_forever_edge': _c(
+        'card_forever_edge', 'Forever Edge', 'edge', 'legendary', '🔥',
+        'The streak that never cashes. The house favorite.',
+        'legendary edging sovereign locked in beautiful tension',
+        'eternal crimson, gold rain, worship lighting',
+    ),
+    'card_booth_curtain': _c(
+        'card_booth_curtain', 'Booth Curtain', 'booth', 'common', '🍷',
+        'Heavy velvet. What happens behind it stays billed.',
+        'adult host drawing a thick crimson curtain with a knowing look',
+        'private booth, gold rod, hush',
+    ),
+    'card_lap_heat': _c(
+        'card_lap_heat', 'Lap Heat', 'booth', 'common', '🔥',
+        'Closer than the floor allows. Tips get weird.',
+        'adult dancer in the lap-light, breath on the camera',
+        'tight booth, skin sheen, rose lamps',
+    ),
+    'card_whisper_tip': _c(
+        'card_whisper_tip', 'Whisper Tip', 'booth', 'common', '👄',
+        'A price named against your ear. Pay it.',
+        'adult muse whispering with crimson lipstick at the lobe',
+        'extreme close, gold earring, intimate',
+    ),
+    'card_champagne_solo': _c(
+        'card_champagne_solo', 'Champagne Solo', 'booth', 'common', '🥂',
+        'One bottle. One guest. No audience.',
+        'adult cabaret star pouring champagne in a closed booth',
+        'flute, wet collarbone, candle gold',
+    ),
+    'card_private_dance': _c(
+        'card_private_dance', 'Private Dance', 'booth', 'uncommon', '💃',
+        'The meter climbs without a crowd. Meaner that way.',
+        'adult dancer mid private routine, hands on thighs',
+        'booth neon, slow roll, heat',
+    ),
+    'card_one_way_glass': _c(
+        'card_one_way_glass', 'One-Way Glass', 'booth', 'uncommon', '🪟',
+        "They think it's a mirror. You know it isn't.",
+        'adult voyeur portrait behind gold-tinted glass',
+        'reflection, dark booth, watching',
+    ),
+    'card_hands_on_knees': _c(
+        'card_hands_on_knees', 'Hands on Knees', 'booth', 'uncommon', '🧎',
+        'House posture. You stay there until she says.',
+        'adult kneeling in a velvet booth, palms on thighs',
+        'collar glint, low angle, worship',
+    ),
+    'card_closed_booth': _c(
+        'card_closed_booth', 'Closed Booth', 'booth', 'rare', '🔒',
+        'Occupied. Do not knock. Do not look. (Look.)',
+        'adult silhouette against a lit booth curtain',
+        'backlit bodies, gold fringe, secrecy',
+    ),
+    'card_velvet_lap': _c(
+        'card_velvet_lap', 'Velvet Lap', 'booth', 'epic', '💋',
+        "The house special. You don't sit so much as melt.",
+        'Velvet-coded adult star claiming a lap in crimson',
+        'close heat, lipstick, commanding smile',
+    ),
+    'card_after_hours': _c(
+        'card_after_hours', 'After Hours Booth', 'booth', 'legendary', '🌙',
+        "The club closed. The booth didn't.",
+        'legendary after-hours adult hostess in leftover spotlight',
+        'empty club, one lamp, invitation',
+    ),
+    'card_warmup_circle': _c(
+        'card_warmup_circle', 'Warm-Up Circle', 'heat', 'common', '⭕',
+        'Everybody in. Hands where Velvet can see them.',
+        'adult floor regulars in a warm circle of light',
+        'shared heat, couches, camaraderie',
+    ),
+    'card_floor_grind': _c(
+        'card_floor_grind', 'Floor Grind', 'heat', 'common', '🕺',
+        'The carpet learns your name the long way.',
+        'adult dancer grinding under a sweaty spotlight',
+        'crowd bokeh, gold dust, motion',
+    ),
+    'card_crowd_breath': _c(
+        'card_crowd_breath', 'Crowd Breath', 'heat', 'common', '😮',
+        "The room inhales with you. Don't you dare exhale first.",
+        'flushed adult face in a packed lounge, mouths behind',
+        'crowd heat, crimson, voyeur',
+    ),
+    'card_sweaty_spot': _c(
+        'card_sweaty_spot', 'Sweaty Spotlight', 'heat', 'common', '💡',
+        'The cone finds you. Perform or get ruined.',
+        'sweat-sheen adult performer trapped in a hard spotlight',
+        'bare shoulder, dare energy, gold',
+    ),
+    'card_group_pulse': _c(
+        'card_group_pulse', 'Group Pulse', 'heat', 'uncommon', '🫀',
+        "One meter. Many hands. Free join if you're fast.",
+        'cluster of adult nightlife bodies sharing a pulse of light',
+        'group ritual, velvet, heat',
+    ),
+    'card_hands_everywhere': _c(
+        'card_hands_everywhere', 'Hands Everywhere', 'heat', 'uncommon', '🙌',
+        'Consent was a chorus. The floor got loud.',
+        'adult cabaret star surrounded by reaching adult hands',
+        'gold rings, skin, crowd worship',
+    ),
+    'card_voyeur_rail': _c(
+        'card_voyeur_rail', 'Voyeur Rail', 'heat', 'uncommon', '👁️',
+        'Paid seats along the edge. Looking is the point.',
+        'adult watcher at the rail, drink forgotten, eyes hungry',
+        'rail light, dark suit, voyeur',
+    ),
+    'card_full_floor': _c(
+        'card_full_floor', 'Full Floor', 'heat', 'rare', '🌊',
+        'No empty carpet. The house is a body now.',
+        'packed adult cabaret floor from above, gold and crimson',
+        'bodies, motion, heatwave',
+    ),
+    'card_house_heatwave': _c(
+        'card_house_heatwave', 'House Heatwave', 'heat', 'epic', '🌡️',
+        'AC failed on purpose. Tips went feral.',
+        'glowing adult headliner radiating heat in a packed room',
+        'haze, sweat, molten gold',
+    ),
+    'card_the_room_came': _c(
+        'card_the_room_came', 'The Room Came', 'heat', 'legendary', '💥',
+        'When the floor peaks together, the pot notices.',
+        'legendary group-climax portrait, silk and gold rain',
+        'aftershock, adult bodies, triumph',
+    ),
+    'card_silk_rope': _c(
+        'card_silk_rope', 'Silk Rope', 'kink', 'common', '🪢',
+        'Pretty ties. Pretty marks. Pretty please.',
+        'coiled crimson silk rope on velvet, gold ring',
+        'macro still, cabaret shrine',
+    ),
+    'card_soft_cuffs': _c(
+        'card_soft_cuffs', 'Soft Cuffs', 'kink', 'common', '🔗',
+        'Lined. Labeled. Yours until last call.',
+        'padded gold-ring cuffs on a silk cloth',
+        'still life, warm lamps',
+    ),
+    'card_collar_click': _c(
+        'card_collar_click', 'Collar Click', 'kink', 'common', '🔔',
+        'The sound the floor waits for.',
+        'adult muse fastening a velvet collar, ring glinting',
+        'throat close, gold hardware, smirk',
+    ),
+    'card_wax_play': _c(
+        'card_wax_play', 'Wax Play', 'kink', 'common', '🕯️',
+        'Heat with manners. Drip with intent.',
+        'candles and crimson wax pool on dark velvet',
+        'still life, gold drip',
+    ),
+    'card_riding_crop': _c(
+        'card_riding_crop', 'Riding Crop', 'kink', 'uncommon', '🏇',
+        'A tap is a sentence. A swing is a paragraph.',
+        'leather crop across a gold-trimmed cushion',
+        'still life, threat and polish',
+    ),
+    'card_blindfold_kiss': _c(
+        'card_blindfold_kiss', 'Blindfold Kiss', 'kink', 'uncommon', '🙈',
+        "If you can't see, you feel everything.",
+        'adult beauty in a silk blindfold, lips parted',
+        'close portrait, velvet, trust',
+    ),
+    'card_worship_kneel': _c(
+        'card_worship_kneel', 'Worship Kneel', 'kink', 'uncommon', '🙏',
+        'Knees first. Words second. Mouth whenever told.',
+        'adult worshiper kneeling at a velvet dais',
+        'low angle, collar, gold',
+    ),
+    'card_harness_night': _c(
+        'card_harness_night', 'Harness Night', 'kink', 'rare', '⛓️',
+        'Straps as jewelry. The outfit is the scene.',
+        'adult cabaret star in a gold-ring harness',
+        'bare torso lighting, confident',
+    ),
+    'card_full_kit': _c(
+        'card_full_kit', 'Full Kit', 'kink', 'epic', '🧰',
+        "Drawer open. Night booked. Don't be late.",
+        'open toy drawer, gold hardware, crimson silk',
+        'pixel cabinet, adult cabaret',
+    ),
+    'card_dungeon_hostess': _c(
+        'card_dungeon_hostess', 'Dungeon Hostess', 'kink', 'legendary', '🖤',
+        'Front of house for the rooms downstairs.',
+        'legendary adult dungeon hostess in latex and gold',
+        'dark velvet, crop, welcoming cruelty',
+    ),
+    'card_water_bottle': _c(
+        'card_water_bottle', 'Water Bottle', 'aftercare', 'common', '💧',
+        'First rule after a ruin: drink, then talk.',
+        'adult aftercare attendant offering water in gold light',
+        'soft robe, care, dim room',
+    ),
+    'card_soft_towel': _c(
+        'card_soft_towel', 'Soft Towel', 'aftercare', 'common', '🧺',
+        'Warm. Clean. Around your shoulders like a yes.',
+        'adult muse wrapped in a towel, steam and gold',
+        'bath light, gentle, intimate',
+    ),
+    'card_hair_stroke': _c(
+        'card_hair_stroke', 'Hair Stroke', 'aftercare', 'common', '🫶',
+        'Fingers in the hair. Meter cooling on purpose.',
+        'adult aftercare portrait, hand in tousled hair',
+        'rose room, soft eyes',
+    ),
+    'card_check_in': _c(
+        'card_check_in', 'Check-In', 'aftercare', 'common', '📝',
+        'Color. Water. Want more or want held.',
+        'soft-eyed adult attendant with a gold notepad',
+        'clinic-lounge, care, warmth',
+    ),
+    'card_silk_two': _c(
+        'card_silk_two', 'Silk for Two', 'aftercare', 'uncommon', '🛏️',
+        'Two bodies. One set of sheets. No performance.',
+        'silk sheets and gold dust, two indentations',
+        'still life afterglow',
+    ),
+    'card_warm_oil': _c(
+        'card_warm_oil', 'Warm Oil', 'aftercare', 'uncommon', '🧴',
+        'Hands slow down. Skin stays in the story.',
+        'adult aftercare masseur with glowing oil',
+        'amber light, bare shoulder, calm',
+    ),
+    'card_quiet_praise': _c(
+        'card_quiet_praise', 'Quiet Praise', 'aftercare', 'uncommon', '💗',
+        "Good. That's all. Say it until it sticks.",
+        'adult caretaker whispering praise, forehead kiss energy',
+        'soft focus, gold, intimate',
+    ),
+    'card_afterglow_bath': _c(
+        'card_afterglow_bath', 'Afterglow Bath', 'aftercare', 'rare', '🛁',
+        'Steam, two glasses, nobody counting.',
+        'steamy bath scene, adult silhouettes, gold fixtures',
+        'pixel bath, afterglow',
+    ),
+    'card_held_til_dawn': _c(
+        'card_held_til_dawn', 'Held Until Dawn', 'aftercare', 'epic', '🌅',
+        "The floor closed. The hold didn't.",
+        'adult pair in gold morning light, silk and calm',
+        'aftercare bed, tender, 18+',
+    ),
+    'card_house_aftercare': _c(
+        'card_house_aftercare', 'House Aftercare', 'aftercare', 'legendary', '💋',
+        "Velvet's own cool-down. You earned the quiet.",
+        'legendary aftercare sovereign in a silk robe, caring and lethal',
+        'rose lighting, gold mug, home',
+    ),
+    'card_bare_shoulder': _c(
+        'card_bare_shoulder', 'Bare Shoulder', 'cabaret', 'common', '✨',
+        'The dress did the first half. You do the rest.',
+        'adult cabaret beauty, one strap gone, shoulder lit',
+        'gold jewelry, smirk, lounge',
+    ),
+    'card_hip_sway': _c(
+        'card_hip_sway', 'Hip Sway', 'cabaret', 'common', '🍑',
+        'The walk from the booth to the stage is the act.',
+        'adult dancer mid hip-sway, sequin catch-lights',
+        'stage, motion, heat',
+    ),
+    'card_lip_bite': _c(
+        'card_lip_bite', 'Lip Bite', 'cabaret', 'common', '🫦',
+        'A tell. A dare. A receipt.',
+        'extreme close adult mouth, tooth on crimson lip',
+        'macro, gold light, lust',
+    ),
+    'card_glove_peel': _c(
+        'card_glove_peel', 'Glove Peel', 'cabaret', 'common', '🧤',
+        'Opera gloves coming off one finger at a time.',
+        'adult star peeling a black opera glove with teeth',
+        'close hands, gold rings, tease',
+    ),
+    'card_corset_breath': _c(
+        'card_corset_breath', 'Corset Breath', 'cabaret', 'uncommon', '🎀',
+        'Laced to speak short and mean it.',
+        'adult cabaret muse in a tight corset, flushed',
+        'laces, gold, shallow breath',
+    ),
+    'card_thigh_high': _c(
+        'card_thigh_high', 'Thigh High', 'cabaret', 'uncommon', '🦵',
+        'The line where the night starts paying attention.',
+        'adult pin-up, garter clip and velvet, looking back',
+        'thigh light, gold clasp, 18+',
+    ),
+    'card_stage_strip': _c(
+        'card_stage_strip', 'Stage Strip', 'cabaret', 'uncommon', '🎤',
+        'Not nude yet. Nude is a destination.',
+        'adult headliner mid-strip under encore lights',
+        'sequins, smoke, fame',
+    ),
+    'card_body_heat': _c(
+        'card_body_heat', 'Body Heat', 'cabaret', 'rare', '🌡️',
+        'Skin as the whole costume. Spotlight as the rest.',
+        'adult cabaret nude-glam bust, tasteful and explicit heat',
+        'skin sheen, gold, commanding',
+    ),
+    'card_skin_spotlight': _c(
+        'card_skin_spotlight', 'Skin and Spotlight', 'cabaret', 'epic', '🌟',
+        'The body is the marquee. Read it.',
+        'legendary-feeling adult body in a hard cone of light',
+        'bare glam, cabaret, no text',
+    ),
+    'card_the_body_show': _c(
+        'card_the_body_show', 'The Body Is the Show', 'cabaret', 'legendary', '🍒',
+        'No plot. No metaphor. Just the house in skin.',
+        'legendary adult cabaret body-sovereign, velvet and gold',
+        'throne of light, 18+ pin-up, command',
+    ),
+    'card_keyhole': _c(
+        'card_keyhole', 'Keyhole', 'peek', 'common', '🔑',
+        "You weren't invited. You were installed.",
+        'keyhole view of crimson lounge light and a lip',
+        'still life voyeur, gold',
+    ),
+    'card_mirror_wall': _c(
+        'card_mirror_wall', 'Mirror Wall', 'peek', 'common', '🪞',
+        'Every angle is a seat. Every seat is a mirror.',
+        'adult beauty multiplied in gold-framed mirrors',
+        'gallery, vanity, watching',
+    ),
+    'card_dark_seat': _c(
+        'card_dark_seat', 'Dark Booth Seat', 'peek', 'common', '💺',
+        'Paid shadow. Bring your own breath.',
+        'adult silhouette in a dark gallery seat, drink glowing',
+        'voyeur rail, red lamp',
+    ),
+    'card_camera_red': _c(
+        'card_camera_red', 'Camera Red', 'peek', 'common', '📷',
+        'The rec light is a kink. Smile for the house.',
+        'adult performer clocking a red camera light',
+        'glint, smirk, recorded',
+    ),
+    'card_watch_watch': _c(
+        'card_watch_watch', 'Watching You Watch', 'peek', 'uncommon', '👀',
+        'The gallery watches the watchers. Nested heat.',
+        'adult voyeur caught looking, blush and grin',
+        'two-way, gold, caught',
+    ),
+    'card_two_way': _c(
+        'card_two_way', 'Two-Way', 'peek', 'uncommon', '🪟',
+        'Glass with opinions. You on both sides.',
+        'split adult portrait, one side dark, one lit skin',
+        'mirror glass, voyeur',
+    ),
+    'card_peep_show': _c(
+        'card_peep_show', 'Peep Show', 'peek', 'rare', '🎬',
+        'Coin slot. Tiny window. Entire religion.',
+        'pixel peep booth, adult silhouette in crimson',
+        'voyeur window, gold coin',
+    ),
+    'card_hidden_rail': _c(
+        'card_hidden_rail', 'Hidden Rail', 'peek', 'rare', '🚧',
+        'Staff-only sightline. Staff-only stories.',
+        'adult floor watcher behind a dark rail',
+        'backstage peek, neon',
+    ),
+    'card_gallery_pass': _c(
+        'card_gallery_pass', 'Gallery Pass', 'peek', 'epic', '🎫',
+        "All windows. All nights. Don't get seen getting seen.",
+        'black gallery pass on velvet, gold stamp',
+        'still life access',
+    ),
+    'card_night_optics': _c(
+        'card_night_optics', 'Night Optics', 'peek', 'epic', '🌃',
+        'The whole lounge as a viewing instrument.',
+        'adult optic-glam bust with dark lenses and city neon',
+        'voyeur tech, gold trim',
+    ),
+    'card_hands_off': _c(
+        'card_hands_off', 'Hands Off', 'denial', 'common', '🚫',
+        "Look. Don't. That's the whole game.",
+        'adult muse catching a wrist, painted nails, no',
+        'close hands, gold rings, denial',
+    ),
+    'card_wait': _c(
+        'card_wait', 'Wait', 'denial', 'common', '⏸️',
+        'A full minute can be a life sentence.',
+        'adult clock-face still life, crimson hands',
+        'edge timer, gold',
+    ),
+    'card_permission': _c(
+        'card_permission', 'Permission Please', 'denial', 'common', '🙋',
+        'Ask pretty. Ask again. Maybe.',
+        'adult kneeling ask, eyes up, lips parted',
+        'collar, booth, please',
+    ),
+    'card_count_ten': _c(
+        'card_count_ten', 'Count to Ten', 'denial', 'common', '🔟',
+        'If you finish on eight, you start over.',
+        'adult coach mouthing numbers, gold clicker',
+        'cruel calm, spotlight',
+    ),
+    'card_denied_again': _c(
+        'card_denied_again', 'Denied Again', 'denial', 'uncommon', '🙅',
+        'The third no is the one that ruins people.',
+        'adult keyholder shaking her head, delighted',
+        'silk, smirk, no',
+    ),
+    'card_beg_pretty': _c(
+        'card_beg_pretty', 'Beg Pretty', 'denial', 'uncommon', '🥺',
+        'Pretty is a skill. Begging is a sport.',
+        'adult worshiper mid-beg, wet eyes, gold light',
+        'kneel, heat, ask',
+    ),
+    'card_locked_up': _c(
+        'card_locked_up', 'Locked Up', 'denial', 'rare', '🔒',
+        'Hardware with a schedule. She keeps the diary.',
+        'gold lock and velvet, still life of denial',
+        'key, shrine, wait',
+    ),
+    'card_edged_raw': _c(
+        'card_edged_raw', 'Edged Raw', 'denial', 'rare', '💢',
+        'Hours. No finish. The face tells on you.',
+        'wrecked-beautiful adult edging portrait, shine and tension',
+        'heat, bite, 18+',
+    ),
+    'card_orgasm_ban': _c(
+        'card_orgasm_ban', 'Orgasm Ban', 'denial', 'epic', '🛑',
+        "House rule until Velvet lifts it. She won't.",
+        'adult sovereign with a gold stamp, ban in her eyes',
+        'decree, crimson, power',
+    ),
+    'card_keyholder': _c(
+        'card_keyholder', 'Keyholder', 'denial', 'epic', '🗝️',
+        'Your night lives on a chain around her throat.',
+        'adult keyholder, ornate key on a collar ring',
+        'smirk, gold, ownership',
+    ),
+    'card_kneel': _c(
+        'card_kneel', 'Kneel', 'worship', 'common', '🧎',
+        'The first position. The only honest one.',
+        'adult worshiper on both knees at a velvet altar',
+        'low light, gold, devotion',
+    ),
+    'card_kiss_ring': _c(
+        'card_kiss_ring', 'Kiss the Ring', 'worship', 'common', '💍',
+        "Mouth to metal. That's the greeting.",
+        'extreme close of lips on a gold signet',
+        'macro worship, crimson',
+    ),
+    'card_offer': _c(
+        'card_offer', 'Offer', 'worship', 'common', '🎁',
+        "You brought a body. She'll tell you where to put it.",
+        'adult offering portrait, palms up, flushed',
+        'altar gold, silk, yes',
+    ),
+    'card_praise': _c(
+        'card_praise', 'Praise', 'worship', 'common', '✨',
+        'Say it until your mouth forgets other words.',
+        'adult devotee mid-praise, eyes wet with light',
+        'altar, gold dust, devotion',
+    ),
+    'card_tongue_service': _c(
+        'card_tongue_service', 'Tongue Service', 'worship', 'uncommon', '👅',
+        'The liturgy is wet and specific.',
+        'adult worship close-up, tongue and gold jewelry',
+        'explicit cabaret, 18+, heat',
+    ),
+    'card_footstool': _c(
+        'card_footstool', 'Footstool', 'worship', 'uncommon', '👠',
+        'Furniture with a pulse. Stay.',
+        'adult at her feet, gold heel in frame',
+        'worship angle, velvet, service',
+    ),
+    'card_altar_night': _c(
+        'card_altar_night', 'Altar Night', 'worship', 'rare', '🛐',
+        'The whole room on its knees. She stands.',
+        'pixel altar, kneeling adults, gold idol',
+        'ritual lounge, candles',
+    ),
+    'card_holy_ruin': _c(
+        'card_holy_ruin', 'Holy Ruin', 'worship', 'rare', '💦',
+        'You came for salvation. You left a mess.',
+        'dramatic ruin at an altar, spilled gold and crimson',
+        'still life blasphemy, glitter',
+    ),
+    'card_high_priestess': _c(
+        'card_high_priestess', 'High Priestess', 'worship', 'epic', '👸',
+        'She takes offerings. She does not return change.',
+        'adult high priestess of the lounge in gold and bare velvet',
+        'crown, altar, command',
+    ),
+    'card_divine_taste': _c(
+        'card_divine_taste', 'Divine Taste', 'worship', 'epic', '🍷',
+        'Chalice first. Then you.',
+        'gold chalice, wine like lipstick, shrine light',
+        'still life sacrament, lust',
+    ),
+    'card_last_call': _c(
+        'card_last_call', 'Last Call Kiss', 'encore', 'common', '😘',
+        'Lights up in five. Mouths busy now.',
+        'adult kiss close at last call, neon dying',
+        "lipstick, gold, night's end",
+    ),
+    'card_lights_down': _c(
+        'card_lights_down', 'Lights Down', 'encore', 'common', '🔅',
+        'The house dimmer is a sex act.',
+        'adult silhouette as the spots die, one gold leftover',
+        'encore dark, skin edge',
+    ),
+    'card_midnight_toast': _c(
+        'card_midnight_toast', 'Midnight Toast', 'encore', 'uncommon', '🥂',
+        'One more glass. One more round. One more ruin.',
+        'adult toast in an empty lounge, two flutes',
+        'after hours, gold, intimacy',
+    ),
+    'card_encore_strip': _c(
+        'card_encore_strip', 'Encore Strip', 'encore', 'rare', '🌟',
+        "They already clapped. She isn't done.",
+        'adult headliner stripping in leftover spotlight',
+        'encore, sequins, heat',
+    ),
+    'card_final_ruin': _c(
+        'card_final_ruin', 'Final Ruin', 'encore', 'rare', '💥',
+        'The last dump of the night. Make it count.',
+        'chaotic beautiful ruin, glitter and spilled pour',
+        'still life finale',
+    ),
+    'card_house_closer': _c(
+        'card_house_closer', 'House Closer', 'encore', 'legendary', '🚪',
+        'She locks the door from the inside.',
+        'legendary adult closer in a long coat and nothing polite',
+        'empty club, one lamp, ownership',
+    ),
+    'card_velvets_mouth': _c(
+        'card_velvets_mouth', "Velvet's Mouth", 'encore', 'mythic', '💋',
+        'The myth. The kiss. The reason you came.',
+        "mythic macro of Velvet's mouth, crimson and gold",
+        'extreme close, 18+, shrine',
+    ),
+    'card_ruin_crown': _c(
+        'card_ruin_crown', 'The Ruin Crown', 'encore', 'mythic', '👑',
+        'Whoever wears it decides who gets to finish.',
+        'mythic adult sovereign crowned in spilled gold and ruin light',
+        'throne, wreckage, power',
+    ),
+    'card_aftercare_goddess': _c(
+        'card_aftercare_goddess', 'Aftercare Goddess', 'encore', 'mythic', '🕊️',
+        'She ruins you, then she puts you back.',
+        'mythic aftercare goddess, silk robe, lethal tenderness',
+        'rose gold, steam, 18+',
+    ),
+    'card_still_ready': _c(
+        'card_still_ready', "I'm Still Ready", 'encore', 'mythic', '🔥',
+        'The button after the button. The floor legend continues.',
+        "mythic lounge champion still answering Velvet's call",
+        'heroic cabaret, gold rain, hunger',
+    ),
 }
 
 
-assert len(CARD_DEFINITIONS) == 48, f"expected 48 cards, got {len(CARD_DEFINITIONS)}"
+assert len(CARD_DEFINITIONS) == 148, f"expected 148 cards, got {len(CARD_DEFINITIONS)}"
+assert ORIGINAL_CARD_IDS <= set(CARD_DEFINITIONS), "original 48 ids must remain"
 
 
 def card_by_id(card_id: str) -> CardDefinition | None:
