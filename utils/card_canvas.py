@@ -1,13 +1,13 @@
 """PIL GoonCards frames — portrait + rarity border for inspect, binder, and packs."""
 from __future__ import annotations
 
-import hashlib
 import io
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from utils.card_ai import CARDS_ASSETS_ROOT, PORTRAIT_SIZE, portrait_path
+from utils.card_art import render_card_art
 from utils.cards import (
     RARITY_FRAME_RGB,
     RARITY_LABELS,
@@ -51,55 +51,8 @@ def _truncate(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, m
 
 
 def render_procedural_portrait(card: CardDefinition, size: int = PORTRAIT_SIZE) -> Image.Image:
-    """Unique bust art when no AI (or cached) portrait exists."""
-    digest = hashlib.sha256(card.card_id.encode()).digest()
-    frame = RARITY_FRAME_RGB[card.rarity]
-    top = (18 + digest[0] % 30, 10 + digest[1] % 20, 16 + digest[2] % 28)
-    bottom = (
-        min(255, frame[0] // 2 + digest[3] % 40),
-        min(255, frame[1] // 2 + digest[4] % 40),
-        min(255, frame[2] // 2 + digest[5] % 40),
-    )
-    img = Image.new("RGB", (size, size))
-    px = img.load()
-    for y in range(size):
-        t = y / max(size - 1, 1)
-        row = (
-            int(top[0] + (bottom[0] - top[0]) * t),
-            int(top[1] + (bottom[1] - top[1]) * t),
-            int(top[2] + (bottom[2] - top[2]) * t),
-        )
-        for x in range(size):
-            px[x, y] = row
-    draw = ImageDraw.Draw(img)
-    skin = (
-        140 + digest[6] % 80,
-        90 + digest[7] % 70,
-        70 + digest[8] % 55,
-    )
-    hair = (
-        20 + digest[9] % 160,
-        15 + digest[10] % 80,
-        20 + digest[11] % 90,
-    )
-    accent = frame
-    cx, cy = size // 2, int(size * 0.42)
-    head_r = int(size * 0.18)
-    draw.ellipse((cx - head_r, cy - head_r, cx + head_r, cy + head_r), fill=skin)
-    hair_r = int(head_r * 1.15)
-    draw.ellipse((cx - hair_r, cy - hair_r - 8, cx + hair_r, cy + 8), fill=hair)
-    draw.ellipse((cx - head_r, cy - head_r, cx + head_r, cy + head_r), outline=accent, width=3)
-    body_top = cy + head_r - 6
-    draw.rounded_rectangle(
-        (cx - int(size * 0.22), body_top, cx + int(size * 0.22), size - 12),
-        radius=24,
-        fill=accent,
-        outline=(255, 220, 160),
-        width=2,
-    )
-    emoji_font = _font(max(28, size // 8), bold=True)
-    draw.text((cx, size - 36), card.emoji, fill=INK, font=emoji_font, anchor="mm")
-    return img.convert("RGBA")
+    """Unique painterly plate for this catalog id when no cached PNG exists."""
+    return render_card_art(card, size=size)
 
 
 def load_portrait(card: CardDefinition) -> Image.Image:
