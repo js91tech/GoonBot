@@ -62,11 +62,11 @@ def _mood_colors(relpath: str) -> tuple[RGB, ...]:
     if not path.is_file():
         _MOOD_CACHE[relpath] = ()
         return ()
-    image = Image.open(path)
-    n_frames = getattr(image, "n_frames", 1)
-    if n_frames > 1:
-        image.seek(0)
-    small = image.convert("RGB").resize((8, 8), Image.Resampling.BOX)
+    with Image.open(path) as image:
+        n_frames = getattr(image, "n_frames", 1)
+        if n_frames > 1:
+            image.seek(0)
+        small = image.convert("RGB").resize((8, 8), Image.Resampling.BOX)
     arr = np.asarray(small, dtype=np.float32)
     colors: list[RGB] = []
     for y in range(0, 8, 2):
