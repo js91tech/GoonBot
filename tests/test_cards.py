@@ -154,6 +154,11 @@ class CardCanvasTests(unittest.TestCase):
     def test_procedural_plates_are_not_cover_crops(self) -> None:
         from PIL import Image
 
+        def ahash(im: Image.Image, size: int = 16) -> np.ndarray:
+            gray = im.convert("L").resize((size, size), Image.Resampling.BOX)
+            arr = np.asarray(gray, dtype=np.float32)
+            return arr > arr.mean()
+
         root = Path(__file__).resolve().parent.parent / "assets"
         crops: list[tuple[str, np.ndarray]] = []
         for rel in (
@@ -179,14 +184,14 @@ class CardCanvasTests(unittest.TestCase):
             crop = im.crop((left, top, left + side, top + side)).resize(
                 (512, 512), Image.Resampling.LANCZOS,
             )
-            crops.append((rel, np.asarray(crop, dtype=np.int16)))
+            crops.append((rel, ahash(crop)))
         self.assertTrue(crops)
         for card in CARD_DEFINITIONS.values():
-            plate = np.asarray(render_procedural_portrait(card).convert("RGB"), dtype=np.int16)
+            plate = ahash(render_procedural_portrait(card).convert("RGB"))
             for rel, crop in crops:
-                diff = float(np.abs(plate - crop).mean())
+                dist = int(np.count_nonzero(plate != crop))
                 self.assertGreater(
-                    diff, 28.0, f"{card.card_id} too close to cover-crop of {rel} ({diff:.1f})",
+                    dist, 32, f"{card.card_id} aHash too close to cover-crop of {rel} ({dist})",
                 )
 
     def test_load_portrait_fallback(self) -> None:
