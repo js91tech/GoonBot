@@ -184,7 +184,12 @@ class CardsHubTests(unittest.IsolatedAsyncioTestCase):
         self.tmp.cleanup()
 
     async def test_binder_and_tabs_respect_row_limits(self) -> None:
-        from utils.cards_hub_ui import CardsHubView
+        from utils.cards_hub_ui import BinderFilterSelect, CardsHubView
+        from utils.cards import SET_ORDER
+
+        filt = BinderFilterSelect("all|all")
+        self.assertLessEqual(len(filt.options), 25)
+        self.assertGreaterEqual(len(filt.options), 1 + len(SET_ORDER))
 
         for tab in ("binder", "packs", "market", "collection"):
             view = CardsHubView(self.cog, self.guild_id, self.user_id, tab=tab)

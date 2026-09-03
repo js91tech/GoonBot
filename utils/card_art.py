@@ -381,6 +381,595 @@ CARD_RECIPES: dict[str, CardRecipe] = {
         "", (140, 20, 36), (214, 170, 64), "open_vault", (12, 6, 8), (70, 36, 16),
         (255, 200, 80), "macro", (), ("vault_key",), "bosses/glam/velvet_vixen_mythic.png",
     ),
+    # --- Lust expansion (100) ---
+    'card_slow_stroke': CardRecipe(
+        "bust", 'femme', 'cascade', (20, 0, 22), (178, 163, 166), (118, 13, 60), (8, 19, 46),
+        'velvet_scoop', (55, 0, 43), (247, 191, 73), 'curtains', (2, 21, 20), (84, 25, 30),
+        (255, 171, 65), 'front_smile', ('gold_drops', 'choker'), ('necklace',),
+        'bosses/glam/velvet_vixen_normal.png',
+    ),
+    'card_hold_it': CardRecipe(
+        "bust", 'masc', 'pixie', (0, 15, 57), (195, 193, 137), (135, 43, 3), (25, 49, 9),
+        'black_crew', (72, 24, 86), (184, 141, 36), 'backstage', (19, 15, 27), (101, 0, 13),
+        (209, 201, 108), 'three_left', ('headset', 'lanyard'), ('gel_lights',),
+        'bosses/glam/velvet_vixen_enraged.png',
+    ),
+    'card_not_yet': CardRecipe(
+        "bust", 'andro', 'slick', (0, 45, 0), (166, 101, 58), (152, 73, 46), (42, 0, 52),
+        'leather_v', (89, 54, 19), (201, 171, 79), 'lounge_neon', (36, 9, 0), (58, 25, 56),
+        (226, 131, 51), 'front_smirk', ('stubble', 'hoop', 'chain'), ('green_aura',),
+        'bosses/glam/velvet_vixen_mythic.png',
+    ),
+    'card_meter_pulse': CardRecipe(
+        "bust", 'femme', 'void_fall', (71, 71, 11), (229, 181, 151), (169, 3, 89), (59, 29, 15),
+        'black_high', (106, 0, 62), (218, 201, 42), 'void', (17, 3, 5), (75, 0, 39),
+        (243, 161, 94), 'three_right', ('silver_drops', 'cold_rim'), (),
+        'bosses/glam/velvet_vixen_shadow.png',
+    ),
+    'card_edge_queen': CardRecipe(
+        "bust", 'masc', 'pink_bob', (30, 0, 46), (246, 139, 122), (186, 33, 32), (76, 59, 58),
+        'satin_lace', (123, 4, 0), (235, 151, 85), 'neon_pink', (34, 0, 12), (92, 25, 22),
+        (255, 191, 37), 'wink_left', ('bow', 'wink'), ('neon_tubes',),
+        'bosses/glam/velvet_vixen_celestial.png',
+    ),
+    'card_denial_coach': CardRecipe(
+        "bust", 'andro', 'platinum', (47, 0, 89), (191, 169, 165), (203, 63, 75), (13, 9, 21),
+        'wrath_collar', (140, 34, 38), (252, 181, 48), 'storm_gold', (15, 0, 19), (109, 0, 5),
+        (255, 121, 80), 'pierce', ('skull_jewel', 'gold_filigree'), ('gold_wisps',),
+        'bosses/armored/velvet_vixen_normal.png',
+    ),
+    'card_leak_scare': CardRecipe(
+        "bust", 'femme', 'teal_kelp', (122, 21, 0), (162, 149, 86), (120, 0, 18), (30, 39, 0),
+        'scale_cape', (157, 64, 81), (189, 131, 91), 'abyss', (32, 21, 26), (66, 25, 48),
+        (255, 151, 123), 'tower', ('scale_crown', 'fin_ear'), ('depth_rays',),
+        'bosses/armored/velvet_vixen_enraged.png',
+    ),
+    'card_ruined_edge': CardRecipe(
+        "bust", 'masc', 'crimson_crown', (81, 55, 35), (225, 157, 107), (137, 23, 61), (47, 0, 27),
+        'throne_gown', (64, 0, 14), (206, 161, 54), 'throne', (13, 15, 0), (83, 0, 31),
+        (211, 181, 66), 'command', ('tall_crown', 'ruby_collar'), ('god_rays',),
+        'bosses/armored/velvet_vixen_shadow.png',
+    ),
+    'card_overstim': CardRecipe(
+        "bust", 'andro', 'pony', (98, 85, 78), (242, 187, 150), (154, 53, 4), (64, 19, 0),
+        'waiter_vest', (81, 14, 57), (223, 191, 97), 'busy_floor', (30, 9, 4), (100, 25, 14),
+        (228, 111, 109), 'soft', ('vest_buttons',), ('champagne_tray',),
+        'bosses/armored/velvet_vixen_mythic.png',
+    ),
+    'card_forever_edge': CardRecipe(
+        "bust", 'femme', 'messy_bun', (33, 0, 0), (187, 145, 121), (171, 0, 47), (81, 49, 33),
+        'satin_bunny', (98, 44, 0), (240, 141, 60), 'jester_dark', (11, 3, 11), (57, 0, 57),
+        (245, 141, 52), 'cool', ('bunny_ears', 'key_charm'), ('spark',),
+        'bosses/tomass.png',
+    ),
+    'card_booth_curtain': CardRecipe(
+        "bust", 'masc', 'leaf_crop', (0, 5, 24), (158, 125, 114), (188, 13, 90), (18, 0, 0),
+        'silk_robe', (115, 0, 33), (177, 171, 103), 'neon_perch', (28, 0, 18), (74, 25, 40),
+        (255, 171, 95), 'pose_up', ('robe_tie',), ('bottle',),
+        'bosses/zz_wrath.png',
+    ),
+    'card_lap_heat': CardRecipe(
+        "bust", 'andro', 'slick_short', (9, 35, 67), (221, 133, 135), (205, 43, 33), (35, 29, 39),
+        'lab_coat', (132, 0, 76), (194, 201, 66), 'vault_glow', (9, 0, 25), (91, 0, 23),
+        (255, 201, 38), 'fade', ('gold_glasses', 'vials'), ('vault_ring',),
+        'bosses/freaky_nikki/spawn.gif',
+    ),
+    'card_whisper_tip': CardRecipe(
+        "bust", 'femme', 'stage_curl', (84, 61, 0), (238, 163, 106), (122, 73, 76), (52, 59, 2),
+        'velvet_blazer', (149, 24, 9), (211, 151, 29), 'carpet_lamps', (26, 21, 0), (108, 25, 6),
+        (255, 131, 81), 'warlord', ('holo_clip',), ('tip_jar',),
+        'bosses/freaky_nikki/down.gif',
+    ),
+    'card_champagne_solo': CardRecipe(
+        "bust", 'masc', 'side_part', (43, 0, 13), (183, 193, 149), (139, 3, 19), (69, 9, 45),
+        'fire_jacket', (56, 54, 52), (228, 181, 72), 'rose_room', (7, 15, 3), (65, 0, 49),
+        (213, 161, 124), 'regal', ('mic_stand',), ('steam',),
+        'bosses/freaky_nikki/twist.gif',
+    ),
+    'card_private_dance': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (128, 35, 20), (255, 151, 76), 'grow_mood', (56, 21, 0), (50, 55, 30),
+        (255, 181, 98), "scene", (), (), 'bosses/freaky_nikki/grab.gif', 'lap_booth',
+    ),
+    'card_one_way_glass': CardRecipe(
+        "bust", 'femme', 'updo', (135, 11, 0), (217, 181, 163), (173, 63, 5), (23, 0, 51),
+        'long_coat', (90, 4, 28), (182, 161, 78), 'penthouse', (5, 3, 17), (99, 0, 15),
+        (247, 121, 110), 'stoic', ('shades',), ('city_windows',),
+        'bosses/freaky_nikki/defeat.gif',
+    ),
+    'card_hands_on_knees': CardRecipe(
+        "bust", 'masc', 'fade', (94, 45, 2), (234, 139, 134), (190, 0, 48), (40, 19, 14),
+        'sequin', (107, 34, 71), (199, 191, 41), 'spotlight', (22, 0, 24), (56, 25, 58),
+        (255, 151, 53), 'intense', ('sparkle',), ('mic',),
+        'bosses/freaky_nikki/slap.gif',
+    ),
+    'card_closed_booth': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (99, 45, 69), (252, 161, 45), 'velvet_rope', (27, 31, 47), (101, 0, 0),
+        (240, 191, 67), "scene", (), (), 'brand/goonbot-icon-explicit.png', 'private_booth',
+    ),
+    'card_velvet_lap': CardRecipe(
+        "bust", 'femme', 'spark_crest', (46, 0, 96), (150, 149, 98), (124, 53, 34), (74, 0, 20),
+        'pale_silk', (141, 0, 47), (233, 171, 47), 'alley', (20, 21, 2), (90, 25, 24),
+        (255, 111, 39), 'kiss_blow', ('translucent',), ('neon_sign',),
+        'brand/goonbot-banner-explicit.png',
+    ),
+    'card_after_hours': CardRecipe(
+        "bust", 'masc', 'gold_coils', (5, 0, 0), (213, 157, 119), (141, 0, 77), (11, 29, 63),
+        'split_coat', (158, 14, 90), (250, 201, 90), 'encore', (37, 15, 9), (107, 0, 7),
+        (215, 141, 82), 'hero', ('spark_crown',), ('smoke',),
+        'brand/goonbot-banner.png',
+    ),
+    'card_warmup_circle': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (70, 55, 38), (223, 171, 94), 'city_posters', (0, 41, 16), (72, 0, 48),
+        (255, 201, 116), "scene", (), (), 'districts/downtown.png', 'group_floor',
+    ),
+    'card_floor_grind': CardRecipe(
+        "bust", 'femme', 'buzz', (97, 51, 85), (247, 145, 133), (175, 43, 63), (45, 9, 0),
+        'thief_gloves', (82, 0, 66), (204, 181, 96), 'moonlit', (35, 3, 23), (81, 0, 33),
+        (249, 201, 68), 'look_back', ('cap', 'gloves'), ('mist',),
+        'districts/financial.png',
+    ),
+    'card_crowd_breath': CardRecipe(
+        "bust", 'masc', 'heat_fall', (56, 85, 0), (146, 125, 54), (192, 73, 6), (62, 39, 32),
+        'tux_guard', (99, 0, 0), (221, 131, 59), 'dual_fire', (16, 0, 0), (98, 25, 16),
+        (255, 131, 111), 'close_up', ('earpiece', 'lapel_pin'), ('embers',),
+        'districts/industrial.png',
+    ),
+    'card_sweaty_spot': CardRecipe(
+        "bust", 'andro', 'dare_spike', (73, 0, 23), (209, 133, 147), (209, 3, 49), (79, 0, 0),
+        'chair_grip', (116, 24, 42), (238, 161, 102), 'cathedral', (33, 0, 1), (55, 0, 59),
+        (255, 161, 54), 'front_smile', ('chair',), ('adoring_lights',),
+        'districts/beachfront.png',
+    ),
+    'card_group_pulse': CardRecipe(
+        "creature", "none", 'moth', (168, 171, 154), (144, 39, 56), (88, 7, 38), (223, 191, 94),
+        "motley", (96, 7, 42), (180, 159, 70), 'crowd_blur', (0, 0, 24), (38, 7, 38),
+        (223, 151, 54), "impish", ("horns",), ("spark",),
+        'districts/residential.png',
+    ),
+    'card_hands_everywhere': CardRecipe(
+        "bust", 'masc', 'ready_mane', (0, 35, 0), (243, 193, 161), (143, 63, 35), (33, 49, 1),
+        'booth_satin', (150, 0, 18), (192, 141, 28), 'club_door', (31, 15, 15), (89, 0, 25),
+        (217, 121, 40), 'front_smirk', ('kiss_hand',), ('door',),
+        'drugs/grow_lab.png',
+    ),
+    'card_voyeur_rail': CardRecipe(
+        "bust", 'andro', 'cream_waves', (0, 65, 12), (142, 101, 82), (160, 0, 78), (50, 0, 44),
+        'champion', (57, 4, 61), (209, 171, 71), 'heat', (12, 9, 22), (106, 25, 8),
+        (234, 151, 83), 'three_right', ('arm_up', 'small_crown'), ('haze',),
+        'businesses/corporation.png',
+    ),
+    'card_full_floor': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (109, 25, 19), (255, 141, 75), 'spot', (37, 11, 0), (31, 45, 29),
+        (250, 171, 97), "scene", (), (), 'businesses/chain_restaurant.png', 'group_floor',
+    ),
+    'card_house_heatwave': CardRecipe(
+        "bust", 'masc', 'braids', (18, 0, 0), (222, 139, 146), (194, 53, 64), (84, 59, 50),
+        'corset', (91, 64, 37), (243, 151, 77), 'rose_gold', (10, 0, 0), (80, 25, 34),
+        (255, 111, 69), 'pierce', ('blindfold',), ('bokeh_warm',),
+        'businesses/factory.png',
+    ),
+    'card_the_room_came': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (63, 5, 25), (216, 201, 81), 'gold_rain', (0, 0, 3), (65, 25, 35),
+        (255, 151, 103), "scene", (), (), 'businesses/coffee_shop.png', 'group_floor',
+    ),
+    'card_silk_rope': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (130, 41, 82), (173, 189, 65), 'open_vault', (10, 17, 42), (75, 21, 35),
+        (255, 121, 93), "macro", (), ('silk_rope',),
+        'businesses/restaurant.png',
+    ),
+    'card_soft_cuffs': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (147, 0, 45), (190, 139, 28), 'wax_glow', (27, 0, 5), (92, 51, 0),
+        (221, 151, 56), "macro", (), ('soft_cuffs',),
+        'businesses/food_cart.png',
+    ),
+    'card_collar_click': CardRecipe(
+        "bust", 'andro', 'wet_fall', (86, 0, 0), (218, 187, 174), (162, 73, 36), (72, 19, 62),
+        'open_robe', (159, 0, 0), (231, 191, 89), 'rope_dark', (6, 9, 28), (88, 25, 26),
+        (236, 131, 41), 'cool', ('fan',), ('green_aura',),
+        'businesses/lemon_stand.png',
+    ),
+    'card_wax_play': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (101, 51, 51), (224, 199, 34), 'steam_bath', (0, 27, 11), (46, 31, 4),
+        (255, 131, 62), "macro", (), ('wax_pool',),
+        'bosses/glam/velvet_vixen_normal.png',
+    ),
+    'card_riding_crop': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (118, 1, 14), (241, 149, 77), 'booth_red', (0, 0, 0), (63, 0, 47),
+        (255, 161, 105), "macro", (), ('riding_crop',),
+        'bosses/glam/velvet_vixen_enraged.png',
+    ),
+    'card_blindfold_kiss': CardRecipe(
+        "bust", 'andro', 'slick', (0, 55, 0), (197, 133, 159), (213, 63, 65), (43, 29, 31),
+        'leather_v', (100, 54, 8), (202, 201, 58), 'altar_gold', (21, 0, 13), (79, 0, 35),
+        (255, 121, 70), 'warlord', ('blindfold', 'collar'), ('gold_wisps',),
+        'bosses/glam/velvet_vixen_mythic.png',
+    ),
+    'card_worship_kneel': CardRecipe(
+        "bust", 'femme', 'void_fall', (72, 81, 30), (214, 163, 130), (130, 0, 8), (60, 59, 0),
+        'black_high', (117, 0, 51), (219, 151, 101), 'curtains', (2, 21, 20), (96, 25, 18),
+        (255, 151, 113), 'regal', ('opera_gloves', 'fan'), ('depth_rays',),
+        'bosses/glam/velvet_vixen_shadow.png',
+    ),
+    'card_harness_night': CardRecipe(
+        "bust", 'masc', 'pink_bob', (31, 0, 65), (231, 193, 173), (147, 23, 51), (77, 9, 37),
+        'satin_lace', (134, 4, 0), (236, 181, 64), 'backstage', (19, 15, 27), (53, 0, 61),
+        (221, 181, 56), 'glance', ('lace_mask', 'gold_drops'), ('god_rays',),
+        'bosses/glam/velvet_vixen_celestial.png',
+    ),
+    'card_full_kit': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (56, 35, 12), (255, 151, 68), 'lounge_neon', (0, 21, 0), (58, 55, 22),
+        (255, 181, 90), "scene", (), (), 'bosses/armored/velvet_vixen_normal.png', 'toy_drawer',
+    ),
+    'card_dungeon_hostess': CardRecipe(
+        "bust", 'femme', 'teal_kelp', (123, 31, 19), (193, 181, 115), (181, 0, 37), (31, 0, 43),
+        'scale_cape', (58, 64, 70), (190, 161, 70), 'void', (17, 3, 5), (87, 0, 27),
+        (255, 141, 42), 'intense', ('headset', 'lanyard'), ('spark',),
+        'bosses/armored/velvet_vixen_enraged.png',
+    ),
+    'card_water_bottle': CardRecipe(
+        "bust", 'masc', 'crimson_crown', (82, 65, 54), (210, 139, 158), (198, 13, 80), (48, 19, 6),
+        'throne_gown', (75, 0, 3), (207, 191, 33), 'neon_pink', (34, 0, 12), (104, 25, 10),
+        (255, 171, 85), 'dare', ('stubble', 'hoop', 'chain'), ('bottle',),
+        'bosses/armored/velvet_vixen_shadow.png',
+    ),
+    'card_soft_towel': CardRecipe(
+        "bust", 'andro', 'pony', (99, 0, 0), (227, 169, 129), (215, 43, 23), (65, 49, 49),
+        'waiter_vest', (92, 14, 46), (224, 141, 76), 'storm_gold', (15, 0, 19), (61, 0, 53),
+        (255, 201, 128), 'kiss_blow', ('silver_drops', 'cold_rim'), ('vault_ring',),
+        'bosses/armored/velvet_vixen_mythic.png',
+    ),
+    'card_hair_stroke': CardRecipe(
+        "bust", 'femme', 'messy_bun', (34, 0, 8), (198, 149, 122), (132, 73, 66), (82, 0, 12),
+        'satin_bunny', (109, 44, 89), (241, 171, 39), 'abyss', (32, 21, 26), (78, 25, 36),
+        (206, 131, 71), 'hero', ('bow', 'wink'), ('tip_jar',),
+        'bosses/tomass.png',
+    ),
+    'card_check_in': CardRecipe(
+        "bust", 'masc', 'leaf_crop', (0, 15, 43), (189, 157, 143), (149, 3, 9), (19, 29, 55),
+        'silk_robe', (126, 0, 22), (178, 201, 82), 'throne', (13, 15, 0), (95, 0, 19),
+        (223, 161, 114), 'kneel_up', ('skull_jewel', 'gold_filigree'), ('steam',),
+        'bosses/zz_wrath.png',
+    ),
+    'card_silk_two': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (128, 61, 44), (251, 129, 27), 'busy_floor', (8, 37, 4), (73, 41, 0),
+        (255, 141, 55), "macro", (), ('satin_pillow',),
+        'bosses/freaky_nikki/spawn.gif',
+    ),
+    'card_warm_oil': CardRecipe(
+        "bust", 'femme', 'stage_curl', (85, 71, 0), (223, 145, 157), (183, 63, 95), (53, 9, 61),
+        'velvet_blazer', (160, 24, 0), (212, 181, 88), 'jester_dark', (11, 3, 11), (69, 0, 45),
+        (255, 121, 100), 'close_up', ('tall_crown', 'ruby_collar'), ('city_windows',),
+        'bosses/freaky_nikki/down.gif',
+    ),
+    'card_quiet_praise': CardRecipe(
+        "bust", 'masc', 'side_part', (44, 0, 32), (194, 125, 78), (200, 0, 38), (70, 39, 24),
+        'fire_jacket', (67, 54, 41), (229, 131, 51), 'neon_perch', (28, 0, 18), (86, 25, 28),
+        (255, 151, 43), 'front_smile', ('vest_buttons',), ('mic',),
+        'bosses/freaky_nikki/twist.gif',
+    ),
+    'card_afterglow_bath': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (129, 0, 0), (255, 181, 55), 'vault_glow', (57, 0, 0), (51, 5, 9),
+        (255, 131, 77), "scene", (), (), 'bosses/freaky_nikki/grab.gif', 'bath_steam',
+    ),
+    'card_held_til_dawn': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (66, 15, 42), (219, 211, 98), 'carpet_lamps', (0, 1, 20), (68, 35, 52),
+        (255, 161, 120), "scene", (), (), 'bosses/freaky_nikki/defeat.gif', 'aftercare_bed',
+    ),
+    'card_house_aftercare': CardRecipe(
+        "bust", 'masc', 'fade', (95, 55, 21), (219, 193, 113), (151, 0, 67), (41, 49, 0),
+        'sequin', (118, 34, 60), (200, 141, 100), 'rose_room', (7, 15, 3), (77, 0, 37),
+        (225, 141, 72), 'three_right', ('gold_glasses', 'vials'), ('smoke',),
+        'bosses/freaky_nikki/slap.gif',
+    ),
+    'card_bare_shoulder': CardRecipe(
+        "bust", 'andro', 'white_wisps', (0, 85, 64), (190, 101, 106), (168, 13, 10), (58, 0, 36),
+        'bomber', (135, 64, 0), (217, 171, 63), 'grow_mood', (24, 9, 10), (94, 25, 20),
+        (242, 171, 115), 'wink_left', ('holo_clip',), ('posters',),
+        'brand/goonbot-icon-explicit.png',
+    ),
+    'card_hip_sway': CardRecipe(
+        "bust", 'femme', 'spark_crest', (47, 0, 0), (181, 181, 127), (185, 43, 53), (75, 29, 0),
+        'pale_silk', (152, 0, 36), (234, 201, 26), 'penthouse', (5, 3, 17), (51, 0, 3),
+        (255, 201, 58), 'pierce', ('mic_stand',), ('mist',),
+        'brand/goonbot-banner-explicit.png',
+    ),
+    'card_lip_bite': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (104, 61, 68), (227, 129, 51), 'spotlight', (0, 37, 28), (49, 41, 21),
+        (255, 141, 79), "macro", (), ('lipstick_kiss',),
+        'brand/goonbot-banner.png',
+    ),
+    'card_glove_peel': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (121, 11, 31), (244, 159, 94), 'velvet_rope', (1, 0, 0), (66, 0, 64),
+        (255, 171, 42), "macro", (), ('glove_pair',),
+        'districts/downtown.png',
+    ),
+    'card_corset_breath': CardRecipe(
+        "bust", 'femme', 'buzz', (98, 61, 0), (186, 149, 62), (136, 33, 82), (46, 39, 48),
+        'thief_gloves', (93, 0, 55), (205, 131, 75), 'alley', (20, 21, 2), (102, 25, 12),
+        (210, 191, 87), 'soft', ('sparkle',), ('wallet',),
+        'districts/financial.png',
+    ),
+    'card_thigh_high': CardRecipe(
+        "bust", 'masc', 'heat_fall', (57, 0, 0), (249, 157, 155), (153, 63, 25), (63, 0, 11),
+        'tux_guard', (110, 0, 0), (222, 161, 38), 'encore', (37, 15, 9), (59, 0, 55),
+        (227, 121, 30), 'cool', ('gold_chains',), ('door',),
+        'districts/industrial.png',
+    ),
+    'card_stage_strip': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (122, 15, 66), (255, 211, 42), 'city_posters', (50, 1, 44), (44, 35, 0),
+        (255, 161, 64), "scene", (), (), 'districts/beachfront.png', 'cabaret_stage',
+    ),
+    'card_body_heat': CardRecipe(
+        "bust", 'femme', 'kiss_curl', (149, 11, 93), (211, 145, 169), (187, 23, 11), (17, 49, 17),
+        'spotlight_fit', (144, 54, 74), (176, 141, 44), 'moonlit', (35, 3, 23), (93, 0, 21),
+        (255, 181, 116), 'fade', ('spark_crown',), ('spot_cone',),
+        'districts/residential.png',
+    ),
+    'card_skin_spotlight': CardRecipe(
+        "bust", 'masc', 'ready_mane', (0, 45, 0), (182, 125, 90), (204, 53, 54), (34, 0, 60),
+        'booth_satin', (161, 0, 7), (193, 171, 87), 'dual_fire', (16, 0, 0), (50, 25, 4),
+        (255, 111, 59), 'warlord', ('small_crown', 'gold_shoulder'), ('bokeh_warm',),
+        'drugs/grow_lab.png',
+    ),
+    'card_the_body_show': CardRecipe(
+        "bust", 'andro', 'cream_waves', (0, 75, 31), (245, 133, 111), (121, 0, 97), (51, 29, 23),
+        'champion', (68, 4, 50), (210, 201, 50), 'cathedral', (33, 0, 1), (67, 0, 47),
+        (255, 141, 102), 'regal', ('cap', 'gloves'), ('coin_rain',),
+        'businesses/corporation.png',
+    ),
+    'card_keyhole': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (160, 61, 12), (203, 129, 75), 'crowd_blur', (40, 37, 0), (105, 41, 45),
+        (234, 141, 103), "macro", (), ('keyhole_view',),
+        'businesses/chain_restaurant.png',
+    ),
+    'card_mirror_wall': CardRecipe(
+        "bust", 'masc', 'braids', (19, 0, 0), (207, 193, 125), (155, 43, 83), (85, 9, 29),
+        'corset', (102, 64, 26), (244, 181, 56), 'club_door', (31, 15, 15), (101, 0, 13),
+        (229, 201, 88), 'stoic', ('chair',), ('gel_lights',),
+        'businesses/factory.png',
+    ),
+    'card_dark_seat': CardRecipe(
+        "bust", 'andro', 'shaved_side', (36, 25, 20), (178, 101, 118), (172, 73, 26), (22, 39, 0),
+        'latex', (119, 0, 69), (181, 131, 99), 'heat', (12, 9, 22), (58, 25, 56),
+        (246, 131, 31), 'intense', ('confetti',), ('green_aura',),
+        'businesses/coffee_shop.png',
+    ),
+    'card_camera_red': CardRecipe(
+        "bust", 'femme', 'afro_halo', (111, 51, 71), (241, 181, 139), (189, 3, 69), (39, 0, 35),
+        'towel', (136, 14, 2), (198, 161, 62), 'spot', (29, 3, 29), (75, 0, 39),
+        (255, 161, 74), 'dare', ('kiss_hand',), (),
+        'businesses/restaurant.png',
+    ),
+    'card_watch_watch': CardRecipe(
+        "bust", 'masc', 'wet_slick', (70, 85, 0), (186, 139, 110), (206, 33, 12), (56, 19, 0),
+        'mesh_top', (153, 44, 45), (215, 191, 25), 'rose_gold', (10, 0, 0), (92, 25, 22),
+        (255, 191, 117), 'kiss_blow', ('arm_up', 'small_crown'), ('neon_tubes',),
+        'businesses/food_cart.png',
+    ),
+    'card_two_way': CardRecipe(
+        "bust", 'andro', 'wet_fall', (87, 0, 9), (203, 169, 153), (123, 63, 55), (73, 49, 41),
+        'open_robe', (60, 0, 88), (232, 141, 68), 'gold_rain', (27, 0, 7), (109, 0, 5),
+        (255, 121, 60), 'hero', ('collar',), ('gold_wisps',),
+        'businesses/lemon_stand.png',
+    ),
+    'card_peep_show': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (52, 0, 16), (255, 191, 72), 'open_vault', (0, 0, 0), (54, 15, 26),
+        (255, 141, 94), "scene", (), (), 'bosses/glam/velvet_vixen_normal.png', 'voyeur_window',
+    ),
+    'card_hidden_rail': CardRecipe(
+        "bust", 'masc', 'pixie', (0, 35, 0), (237, 157, 167), (157, 23, 41), (27, 29, 47),
+        'black_crew', (94, 24, 64), (186, 201, 74), 'wax_glow', (25, 15, 21), (83, 0, 31),
+        (231, 181, 46), 'look_back', ('lace_mask',), ('god_rays',),
+        'bosses/glam/velvet_vixen_enraged.png',
+    ),
+    'card_gallery_pass': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (136, 61, 36), (179, 129, 99), 'rope_dark', (16, 37, 0), (81, 41, 0),
+        (255, 141, 47), "macro", (), ('compact_mirror',),
+        'bosses/glam/velvet_vixen_mythic.png',
+    ),
+    'card_night_optics': CardRecipe(
+        "creature", "none", 'cat', (53, 1, 53), (61, 17, 59), (133, 0, 53), (255, 181, 109),
+        "motley", (141, 0, 57), (225, 149, 85), 'steam_bath', (29, 0, 39), (83, 0, 53),
+        (255, 141, 69), "impish", ("bunny_ears",), ("spark",),
+        'bosses/glam/velvet_vixen_shadow.png',
+    ),
+    'card_hands_off': CardRecipe(
+        "bust", 'masc', 'pink_bob', (32, 0, 84), (170, 125, 102), (208, 13, 70), (78, 39, 16),
+        'satin_lace', (145, 4, 83), (237, 131, 43), 'booth_red', (4, 0, 6), (74, 25, 40),
+        (255, 171, 75), 'three_left', ('fan',), ('bottle',),
+        'bosses/glam/velvet_vixen_celestial.png',
+    ),
+    'card_wait': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (107, 0, 85), (230, 139, 68), 'altar_gold', (0, 0, 45), (52, 51, 38),
+        (255, 151, 96), "macro", (), ('edge_timer',),
+        'bosses/armored/velvet_vixen_normal.png',
+    ),
+    'card_permission': CardRecipe(
+        "bust", 'femme', 'teal_kelp', (124, 41, 38), (178, 163, 166), (142, 73, 56), (32, 19, 22),
+        'scale_cape', (69, 64, 59), (191, 191, 49), 'curtains', (2, 21, 20), (108, 25, 6),
+        (216, 131, 61), 'three_right', ('collar', 'pearls'), ('tip_jar',),
+        'bosses/armored/velvet_vixen_enraged.png',
+    ),
+    'card_count_ten': CardRecipe(
+        "bust", 'masc', 'crimson_crown', (83, 75, 73), (195, 193, 137), (159, 3, 0), (49, 49, 0),
+        'throne_gown', (86, 0, 0), (208, 141, 92), 'backstage', (19, 15, 27), (65, 0, 49),
+        (233, 161, 104), 'wink_left', ('blindfold', 'collar'), ('steam',),
+        'bosses/armored/velvet_vixen_shadow.png',
+    ),
+    'card_denied_again': CardRecipe(
+        "bust", 'andro', 'pony', (100, 0, 0), (166, 101, 58), (176, 33, 42), (66, 0, 28),
+        'waiter_vest', (103, 14, 35), (225, 171, 55), 'lounge_neon', (36, 9, 0), (82, 25, 32),
+        (250, 191, 47), 'pierce', ('opera_gloves', 'fan'), ('herbs',),
+        'bosses/armored/velvet_vixen_mythic.png',
+    ),
+    'card_beg_pretty': CardRecipe(
+        "bust", 'femme', 'messy_bun', (35, 0, 27), (229, 181, 151), (193, 63, 85), (83, 29, 0),
+        'satin_bunny', (120, 44, 78), (242, 201, 98), 'void', (17, 3, 5), (99, 0, 15),
+        (255, 121, 90), 'tower', ('lace_mask', 'gold_drops'), ('city_windows',),
+        'bosses/tomass.png',
+    ),
+    'card_locked_up': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (112, 61, 60), (235, 129, 43), 'neon_pink', (0, 37, 20), (57, 41, 13),
+        (255, 141, 71), "macro", (), ('velvet_collar',),
+        'bosses/zz_wrath.png',
+    ),
+    'card_edged_raw': CardRecipe(
+        "bust", 'andro', 'slick_short', (11, 55, 0), (191, 169, 165), (127, 23, 71), (37, 9, 0),
+        'lab_coat', (154, 0, 54), (196, 181, 24), 'storm_gold', (15, 0, 19), (73, 0, 41),
+        (255, 181, 76), 'soft', ('headset', 'lanyard'), ('rope',),
+        'bosses/freaky_nikki/spawn.gif',
+    ),
+    'card_orgasm_ban': CardRecipe(
+        "bust", 'femme', 'stage_curl', (86, 81, 16), (162, 149, 86), (144, 53, 14), (54, 39, 40),
+        'velvet_blazer', (61, 24, 0), (213, 131, 67), 'abyss', (32, 21, 26), (90, 25, 24),
+        (218, 111, 119), 'cool', ('stubble', 'hoop', 'chain'), ('neon_sign',),
+        'bosses/freaky_nikki/down.gif',
+    ),
+    'card_keyholder': CardRecipe(
+        "bust", 'masc', 'side_part', (45, 0, 51), (225, 157, 107), (161, 0, 57), (71, 0, 3),
+        'fire_jacket', (78, 54, 30), (230, 161, 30), 'throne', (13, 15, 0), (107, 0, 7),
+        (235, 141, 62), 'pose_up', ('silver_drops', 'cold_rim'), ('smoke',),
+        'bosses/freaky_nikki/twist.gif',
+    ),
+    'card_kneel': CardRecipe(
+        "bust", 'andro', 'undercut', (62, 5, 0), (242, 187, 150), (178, 13, 0), (8, 19, 46),
+        'gold_vest', (95, 0, 73), (247, 191, 73), 'busy_floor', (30, 9, 4), (64, 25, 50),
+        (252, 171, 105), 'fade', ('bow', 'wink'), ('posters',),
+        'bosses/freaky_nikki/grab.gif',
+    ),
+    'card_kiss_ring': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (117, 51, 35), (240, 199, 98), 'jester_dark', (0, 27, 0), (62, 31, 0),
+        (255, 131, 46), "macro", (), ('pearl_strand',),
+        'bosses/freaky_nikki/defeat.gif',
+    ),
+    'card_offer': CardRecipe(
+        "bust", 'masc', 'fade', (96, 65, 40), (158, 125, 114), (212, 73, 86), (42, 0, 52),
+        'sequin', (129, 34, 49), (201, 171, 79), 'neon_perch', (28, 0, 18), (98, 25, 16),
+        (255, 131, 91), 'regal', ('scale_crown', 'fin_ear'), ('embers',),
+        'bosses/freaky_nikki/slap.gif',
+    ),
+    'card_praise': CardRecipe(
+        "bust", 'andro', 'white_wisps', (0, 0, 83), (221, 133, 135), (129, 3, 29), (59, 29, 15),
+        'bomber', (146, 64, 0), (218, 201, 42), 'vault_glow', (9, 0, 25), (55, 0, 59),
+        (255, 161, 34), 'glance', ('tall_crown', 'ruby_collar'), ('adoring_lights',),
+        'brand/goonbot-icon-explicit.png',
+    ),
+    'card_tongue_service': CardRecipe(
+        "bust", 'femme', 'spark_crest', (48, 0, 0), (238, 163, 106), (146, 33, 72), (76, 59, 58),
+        'pale_silk', (163, 0, 25), (235, 151, 85), 'carpet_lamps', (26, 21, 0), (72, 25, 42),
+        (220, 191, 77), 'stoic', ('vest_buttons',), ('wallet',),
+        'brand/goonbot-banner-explicit.png',
+    ),
+    'card_footstool': CardRecipe(
+        "bust", 'masc', 'gold_coils', (7, 15, 29), (183, 193, 149), (163, 63, 15), (13, 9, 21),
+        'split_coat', (70, 14, 68), (252, 181, 48), 'rose_room', (7, 15, 3), (89, 0, 25),
+        (237, 121, 120), 'intense', ('bunny_ears', 'key_charm'), ('door',),
+        'brand/goonbot-banner.png',
+    ),
+    'card_altar_night': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (72, 35, 0), (225, 151, 52), 'grow_mood', (0, 21, 0), (74, 55, 6),
+        (255, 181, 74), "scene", (), (), 'districts/downtown.png', 'altar_kneel',
+    ),
+    'card_holy_ruin': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (139, 0, 53), (182, 139, 36), 'penthouse', (19, 0, 13), (84, 51, 6),
+        (255, 151, 64), "macro", (), ('wax_pool',),
+        'districts/financial.png',
+    ),
+    'card_high_priestess': CardRecipe(
+        "bust", 'masc', 'heat_fall', (58, 0, 18), (234, 139, 134), (214, 53, 44), (64, 19, 0),
+        'tux_guard', (121, 0, 87), (223, 191, 97), 'spotlight', (22, 0, 24), (80, 25, 34),
+        (255, 111, 49), 'hero', ('holo_clip',), ('bokeh_warm',),
+        'districts/industrial.png',
+    ),
+    'card_divine_taste': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (173, 51, 59), (216, 199, 42), 'velvet_rope', (53, 27, 19), (118, 31, 12),
+        (247, 131, 70), "macro", (), ('worship_chalice',),
+        'districts/beachfront.png',
+    ),
+    'card_last_call': CardRecipe(
+        "bust", 'femme', 'kiss_curl', (150, 21, 0), (150, 149, 98), (148, 13, 30), (18, 0, 0),
+        'spotlight_fit', (155, 54, 63), (177, 171, 103), 'alley', (20, 21, 2), (54, 25, 60),
+        (222, 171, 35), 'look_back', ('guest_list',), ('necklace',),
+        'districts/residential.png',
+    ),
+    'card_lights_down': CardRecipe(
+        "bust", 'masc', 'ready_mane', (0, 55, 7), (213, 157, 119), (165, 43, 73), (35, 29, 39),
+        'booth_satin', (62, 0, 0), (194, 201, 66), 'encore', (37, 15, 9), (71, 0, 43),
+        (239, 201, 78), 'close_up', ('shades',), ('gel_lights',),
+        'drugs/grow_lab.png',
+    ),
+    'card_midnight_toast': CardRecipe(
+        "bust", 'andro', 'cream_waves', (0, 85, 50), (230, 187, 162), (182, 73, 16), (52, 59, 2),
+        'champion', (79, 4, 39), (211, 151, 29), 'city_posters', (18, 9, 16), (88, 25, 26),
+        (255, 131, 121), 'front_smile', ('sparkle',), ('green_aura',),
+        'businesses/corporation.png',
+    ),
+    'card_encore_strip': CardRecipe(
+        "pixel", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (111, 5, 57), (255, 201, 113), 'moonlit', (39, 0, 35), (33, 25, 67),
+        (252, 151, 55), "scene", (), (), 'businesses/chain_restaurant.png', 'encore_spot',
+    ),
+    'card_final_ruin': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (178, 41, 34), (221, 189, 97), 'dual_fire', (58, 17, 0), (43, 21, 67),
+        (252, 121, 45), "macro", (), ('feather',),
+        'businesses/factory.png',
+    ),
+    'card_house_closer': CardRecipe(
+        "bust", 'andro', 'shaved_side', (37, 35, 39), (209, 133, 147), (133, 63, 45), (23, 0, 51),
+        'latex', (130, 0, 58), (182, 161, 78), 'cathedral', (33, 0, 1), (79, 0, 35),
+        (207, 121, 50), 'three_right', ('spark_crown',), ('gold_wisps',),
+        'businesses/coffee_shop.png',
+    ),
+    'card_velvets_mouth': CardRecipe(
+        "still", "none", "", (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        "", (132, 21, 40), (175, 169, 103), 'crowd_blur', (12, 0, 0), (77, 1, 0),
+        (255, 101, 51), "macro", (), ('lipstick_kiss',),
+        'businesses/restaurant.png',
+    ),
+    'card_ruin_crown': CardRecipe(
+        "bust", 'masc', 'wet_slick', (71, 0, 0), (243, 193, 161), (167, 23, 31), (57, 49, 57),
+        'mesh_top', (164, 44, 34), (216, 141, 84), 'club_door', (31, 15, 15), (53, 0, 61),
+        (241, 181, 36), 'pierce', ('cap', 'gloves'), ('god_rays',),
+        'businesses/food_cart.png',
+    ),
+    'card_aftercare_goddess': CardRecipe(
+        "bust", 'andro', 'wet_fall', (88, 0, 28), (142, 101, 82), (184, 53, 74), (74, 0, 20),
+        'open_robe', (71, 0, 77), (233, 171, 47), 'heat', (12, 9, 22), (70, 25, 44),
+        (255, 111, 79), 'tower', ('earpiece', 'lapel_pin'), ('champagne_tray',),
+        'businesses/lemon_stand.png',
+    ),
+    'card_still_ready': CardRecipe(
+        "bust", 'femme', 'cascade', (23, 11, 79), (205, 181, 175), (201, 0, 17), (11, 29, 63),
+        'velvet_scoop', (88, 0, 10), (250, 201, 90), 'spot', (29, 3, 29), (87, 0, 27),
+        (255, 141, 122), 'command', ('chair',), ('spark',),
+        'bosses/glam/velvet_vixen_normal.png',
+    ),
 }
 
 assert set(CARD_RECIPES) == set(CARD_DEFINITIONS), "CARD_RECIPES must cover the full catalog"
@@ -723,7 +1312,8 @@ def _paint_background(canvas: np.ndarray, recipe: CardRecipe, rng: np.random.Gen
                 0.13,
                 1.25,
             )
-    if name in ("lip_close", "sheets", "chaos", "obsidian", "treasure", "sparks", "shrine", "clinic"):
+    if name in ("lip_close", "sheets", "chaos", "obsidian", "treasure", "sparks", "shrine", "clinic",
+                "wax_glow", "rope_dark", "steam_bath", "booth_red", "altar_gold"):
         canvas[..., :3] *= 0.88 + 0.22 * n[..., None]
     if "god_rays" in recipe.extras or "god_rays" in recipe.props or name == "throne":
         for i in range(7):
@@ -774,6 +1364,18 @@ def _layout(recipe: CardRecipe, size: int) -> dict[str, float]:
     elif pose == "pierce":
         jaw = 0.2
         hy = 110 * s
+    elif pose == "kneel_up":
+        head_y, hx, hy = 220 * s, 82 * s, 108 * s
+        jaw = 0.28
+    elif pose == "look_back":
+        cx = size * 0.62
+        turn = 1.35
+        head_y = 170 * s
+    elif pose == "close_up":
+        head_y, hx, hy = 228 * s, 118 * s, 136 * s
+    elif pose == "warlord":
+        head_y, hx, hy = 152 * s, 88 * s, 112 * s
+        jaw = 0.16
     squash = 1.08 if turn == 0 else 1.18
     return {
         "cx": cx, "head_y": head_y, "hx": hx, "hy": hy, "s": s,
@@ -791,7 +1393,8 @@ def _paint_hair_back(canvas: np.ndarray, L: dict[str, float], recipe: CardRecipe
     style = recipe.hair
     long_styles = (
         "cascade", "crimson_crown", "void_fall", "heat_fall", "ready_mane",
-        "cream_waves", "teal_kelp", "stage_curl", "kiss_curl",
+        "cream_waves", "teal_kelp", "stage_curl", "kiss_curl", "long_straight",
+        "braids", "wet_fall",
     )
     if style in long_styles:
         _stamp_blob(canvas, cx, hy + 48 * s, hx * 1.55, hyy * 1.85, d, 0.96, 1.55)
@@ -824,8 +1427,14 @@ def _paint_hair_back(canvas: np.ndarray, L: dict[str, float], recipe: CardRecipe
                 _tint(c, 0.18),
                 0.55,
             )
-    elif style in ("slick", "side_part", "fade", "buzz", "slick_short", "undercut", "leaf_crop"):
+    elif style in ("slick", "side_part", "fade", "buzz", "slick_short", "undercut", "leaf_crop", "wet_slick"):
         _stamp_blob(canvas, cx, hy - 4 * s, hx * 1.12, hyy * 0.78, d, 0.96, 1.9)
+    elif style == "shaved_side":
+        _stamp_blob(canvas, cx + 18 * s, hy - 2 * s, hx * 0.95, hyy * 0.82, d, 0.96, 1.85)
+        _stamp_blob(canvas, cx - hx * 0.7, hy + 6 * s, 22 * s, 28 * s, _shade(recipe.skin, 0.08), 0.55, 1.8)
+    elif style == "afro_halo":
+        _stamp_blob(canvas, cx, hy + 6 * s, hx * 1.72, hyy * 1.35, c, 0.96, 1.35)
+        _stamp_blob(canvas, cx, hy - 10 * s, hx * 1.5, hyy * 0.85, _tint(c, 0.12), 0.55, 1.5)
     elif style in ("pixie", "dare_spike", "spark_crest"):
         _stamp_blob(canvas, cx, hy - 2 * s, hx * 1.18, hyy * 0.7, c, 0.92, 1.7)
         for _i in range(8):
@@ -845,7 +1454,7 @@ def _paint_hair_front(canvas: np.ndarray, L: dict[str, float], recipe: CardRecip
     cx, hy, hx, s = L["cx"], L["head_y"], L["hx"], L["s"]
     c, hi = recipe.hair_rgb, _tint(recipe.hair_rgb, 0.28)
     style = recipe.hair
-    if style in ("cascade", "crimson_crown", "heat_fall", "ready_mane", "cream_waves", "stage_curl"):
+    if style in ("cascade", "crimson_crown", "heat_fall", "ready_mane", "cream_waves", "stage_curl", "long_straight", "wet_fall"):
         _stamp_blob(canvas, cx - hx * 0.42, hy + 10 * s, 46 * s, 32 * s, c, 0.92, 1.6)
         _stamp_blob(canvas, cx + hx * 0.46, hy + 6 * s, 40 * s, 26 * s, c, 0.8, 1.6)
         _stamp_capsule(canvas, cx - hx * 0.78, hy + 4 * s, cx - hx * 0.15, hy + 62 * s, 11 * s, hi, 0.5)
@@ -908,6 +1517,24 @@ def _paint_hair_front(canvas: np.ndarray, L: dict[str, float], recipe: CardRecip
     elif style == "kiss_curl":
         _stamp_blob(canvas, cx + 34 * s, hy + 10 * s, 44 * s, 56 * s, c, 0.85, 1.55)
         _stamp_blob(canvas, cx - 40 * s, hy + 16 * s, 28 * s, 40 * s, c, 0.7, 1.6)
+    elif style == "braids":
+        for side in (-1.0, 1.0):
+            for i in range(6):
+                _stamp_blob(
+                    canvas, cx + side * (hx * 0.7 + i * 4 * s), hy + (18 + i * 22) * s,
+                    16 * s, 14 * s, c if i % 2 == 0 else hi, 0.9, 1.7,
+                )
+        _stamp_blob(canvas, cx, hy + 6 * s, hx * 0.92, 18 * s, c, 0.8, 1.8)
+    elif style == "shaved_side":
+        _stamp_capsule(canvas, cx + hx * 0.15, hy - 8 * s, cx + hx * 0.85, hy + 28 * s, 10 * s, hi, 0.7)
+        _stamp_blob(canvas, cx - hx * 0.35, hy + 8 * s, 28 * s, 16 * s, _mix(c, recipe.skin, 0.45), 0.7, 1.9)
+    elif style == "afro_halo":
+        _stamp_blob(canvas, cx, hy + 2 * s, hx * 1.15, 22 * s, c, 0.55, 1.6)
+        _stamp_blob(canvas, cx - hx * 0.9, hy + 8 * s, 22 * s, 28 * s, c, 0.7, 1.6)
+        _stamp_blob(canvas, cx + hx * 0.9, hy + 8 * s, 22 * s, 28 * s, c, 0.7, 1.6)
+    elif style == "wet_slick":
+        _stamp_blob(canvas, cx, hy - 4 * s, hx * 1.02, 22 * s, c, 0.96, 2.0)
+        _stamp_capsule(canvas, cx - hx * 0.5, hy, cx + hx * 0.55, hy + 18 * s, 6 * s, hi, 0.62)
 
 
 def _paint_torso(canvas: np.ndarray, L: dict[str, float], recipe: CardRecipe) -> None:
@@ -992,6 +1619,39 @@ def _paint_torso(canvas: np.ndarray, L: dict[str, float], recipe: CardRecipe) ->
                 canvas, cx + (i % 7 - 3) * 18 * s, shoulder_y + 20 * s + (i // 7) * 28 * s,
                 8 * s, 6 * s, acc if i % 2 == 0 else _tint(cloth, 0.2), 0.7, 2.0,
             )
+    elif body == "harness":
+        _stamp_blob(canvas, cx, neck_y + 28 * s, 46 * s, 36 * s, _tint(recipe.skin, 0.04), 0.9, 1.7)
+        _stamp_capsule(canvas, cx - 40 * s, neck_y + 8 * s, cx + 40 * s, neck_y + 8 * s, 5 * s, (18, 12, 14), 0.92)
+        _stamp_capsule(canvas, cx - 52 * s, neck_y + 6 * s, cx - 18 * s, shoulder_y + 90 * s, 6 * s, (18, 12, 14), 0.9)
+        _stamp_capsule(canvas, cx + 52 * s, neck_y + 6 * s, cx + 18 * s, shoulder_y + 90 * s, 6 * s, (18, 12, 14), 0.9)
+        _stamp_blob(canvas, cx, neck_y + 44 * s, 14 * s, 12 * s, acc, 0.92, 2.0)
+    elif body == "corset":
+        _stamp_blob(canvas, cx, neck_y + 36 * s, 38 * s, 28 * s, _shade(recipe.skin, 0.04), 0.88, 1.7)
+        for i in range(5):
+            _stamp_capsule(
+                canvas, cx - 36 * s, shoulder_y + i * 16 * s, cx + 36 * s, shoulder_y + i * 16 * s,
+                3.2 * s, acc, 0.7,
+            )
+        _stamp_capsule(canvas, cx, neck_y + 18 * s, cx, shoulder_y + 100 * s, 4 * s, (20, 12, 14), 0.55)
+    elif body == "latex":
+        _stamp_blob(canvas, cx, neck_y + 28 * s, 42 * s, 30 * s, _tint(cloth, 0.22), 0.55, 1.6)
+        _stamp_blob(canvas, cx + 20 * s, neck_y + 18 * s, 18 * s, 10 * s, (255, 230, 230), 0.35, 1.9)
+        _stamp_capsule(canvas, cx - 70 * s, shoulder_y + 8 * s, cx + 70 * s, shoulder_y + 8 * s, 8 * s, acc, 0.4)
+    elif body == "towel":
+        _stamp_blob(canvas, cx, neck_y + 40 * s, 70 * s, 50 * s, _tint(cloth, 0.12), 0.9, 1.55)
+        _stamp_capsule(canvas, cx - 8 * s, neck_y + 12 * s, cx + 54 * s, shoulder_y + 70 * s, 16 * s, cloth, 0.75)
+    elif body == "mesh_top":
+        _stamp_blob(canvas, cx, neck_y + 26 * s, 48 * s, 32 * s, _tint(recipe.skin, 0.05), 0.88, 1.7)
+        for i in range(8):
+            _stamp_blob(
+                canvas, cx + (i % 4 - 1.5) * 18 * s, neck_y + 30 * s + (i // 4) * 28 * s,
+                7 * s, 6 * s, cloth, 0.55, 2.0,
+            )
+    elif body == "open_robe":
+        _stamp_blob(canvas, cx, neck_y + 30 * s, 36 * s, 40 * s, _shade(recipe.skin, 0.02), 0.92, 1.65)
+        _stamp_capsule(canvas, cx - 20 * s, neck_y + 8 * s, cx - 88 * s, shoulder_y + 110 * s, 18 * s, cloth, 0.88)
+        _stamp_capsule(canvas, cx + 20 * s, neck_y + 8 * s, cx + 88 * s, shoulder_y + 110 * s, 18 * s, cloth, 0.88)
+        _stamp_capsule(canvas, cx - 12 * s, neck_y + 16 * s, cx + 40 * s, shoulder_y + 80 * s, 8 * s, acc, 0.45)
 
 
 def _paint_face(canvas: np.ndarray, L: dict[str, float], recipe: CardRecipe) -> None:
@@ -1179,6 +1839,34 @@ def _paint_extras(canvas: np.ndarray, L: dict[str, float], recipe: CardRecipe, r
         _stamp_capsule(canvas, cx + 104 * s, hy + 80 * s, cx + 104 * s, hy + 124 * s, 7 * s, (160, 80, 255), 0.5)
     if "translucent" in recipe.extras:
         canvas[..., 3] = np.clip(canvas[..., 3] * 0.9 + 0.08, 0, 1)
+    if "collar" in recipe.extras:
+        _stamp_capsule(canvas, cx - 34 * s, hy + hyy * 0.82, cx + 34 * s, hy + hyy * 0.82, 8 * s, (18, 12, 14), 0.96)
+        _stamp_blob(canvas, cx, hy + hyy * 0.92, 16 * s, 14 * s, gold, 0.92, 1.9)
+        _stamp_blob(canvas, cx, hy + hyy * 0.92, 7 * s, 6 * s, recipe.skin, 0.7, 2.0)
+    if "blindfold" in recipe.extras:
+        _stamp_capsule(canvas, cx - hx * 0.72, hy + 6 * s, cx + hx * 0.72, hy + 8 * s, 11 * s, (16, 10, 14), 0.96)
+        _stamp_capsule(canvas, cx + hx * 0.7, hy + 8 * s, cx + hx * 1.05, hy + 40 * s, 5 * s, (16, 10, 14), 0.8)
+    if "lace_mask" in recipe.extras:
+        _stamp_blob(canvas, cx, hy + 10 * s, 56 * s, 22 * s, (12, 8, 10), 0.82, 1.8)
+        _stamp_blob(canvas, cx - 18 * s, hy + 8 * s, 10 * s, 8 * s, recipe.skin, 0.5, 2.0)
+        _stamp_blob(canvas, cx + 18 * s, hy + 8 * s, 10 * s, 8 * s, recipe.skin, 0.5, 2.0)
+    if "pearls" in recipe.extras:
+        for i in range(7):
+            _stamp_blob(canvas, cx + (i - 3) * 10 * s, hy + hyy * 0.86 + abs(i - 3) * 3 * s, 7 * s, 7 * s, (240, 228, 210), 0.92, 2.0)
+    if "opera_gloves" in recipe.extras:
+        _stamp_capsule(canvas, cx + 70 * s, hy + 70 * s, cx + 118 * s, hy + 160 * s, 14 * s, (18, 12, 16), 0.94)
+        _stamp_blob(canvas, cx + 122 * s, hy + 168 * s, 18 * s, 16 * s, (18, 12, 16), 0.94, 1.7)
+    if "fan" in recipe.extras:
+        for i in range(6):
+            ang = -0.7 + i * 0.28
+            _stamp_capsule(
+                canvas, cx + 80 * s, hy + 40 * s,
+                cx + 80 * s + np.cos(ang) * 70 * s, hy + 40 * s + np.sin(ang) * 70 * s,
+                6 * s, gold if i % 2 == 0 else recipe.cloth_rgb, 0.8,
+            )
+    if "garter_clip" in recipe.extras:
+        _stamp_capsule(canvas, cx - 40 * s, hy + hyy * 1.55, cx - 40 * s, hy + hyy * 1.9, 4 * s, gold, 0.9)
+        _stamp_blob(canvas, cx - 40 * s, hy + hyy * 1.52, 12 * s, 8 * s, gold, 0.9, 2.0)
 
 
 def _paint_creature(canvas: np.ndarray, recipe: CardRecipe, rng: np.random.Generator) -> None:
@@ -1211,6 +1899,27 @@ def _paint_creature(canvas: np.ndarray, recipe: CardRecipe, rng: np.random.Gener
         _stamp_blob(canvas, cx + 16 * s, cy + 40 * s, 18 * s, 22 * s, (40, 120, 50), 0.85, 1.9)
         _stamp_blob(canvas, cx + 6 * s, cy - 42 * s, 20 * s, 24 * s, recipe.accent, 0.85, 1.65)
         _stamp_blob(canvas, cx - 40 * s, cy + 10 * s, 36 * s, 16 * s, _shade(recipe.hair_rgb, 0.2), 0.7, 1.8)
+    elif recipe.hair == "moth":
+        cx, cy = w * 0.5, h * 0.52
+        _stamp_blob(canvas, cx, cy + 8 * s, 46 * s, 58 * s, recipe.skin, 0.96, 1.55)
+        for side in (-1.0, 1.0):
+            _stamp_blob(canvas, cx + side * 90 * s, cy, 70 * s, 110 * s, recipe.cloth_rgb, 0.88, 1.35)
+            _stamp_blob(canvas, cx + side * 90 * s, cy, 28 * s, 40 * s, recipe.accent, 0.45, 1.7)
+        _stamp_blob(canvas, cx, cy - 8 * s, 22 * s, 18 * s, recipe.hair_rgb, 0.9, 1.8)
+        _stamp_blob(canvas, cx, cy + 16 * s, 16 * s, 10 * s, recipe.lip, 0.85, 1.9)
+        _stamp_capsule(canvas, cx - 8 * s, cy - 30 * s, cx - 28 * s, cy - 70 * s, 4 * s, recipe.accent, 0.8)
+        _stamp_capsule(canvas, cx + 8 * s, cy - 30 * s, cx + 28 * s, cy - 70 * s, 4 * s, recipe.accent, 0.8)
+    elif recipe.hair == "cat":
+        cx, cy = w * 0.5, h * 0.54
+        _stamp_head(canvas, cx, cy, 70 * s, 62 * s, recipe.hair_rgb, jaw=0.22, chin=0.18, squash=1.12,
+                    light=(-0.35, -0.5, 0.78), rim=recipe.glow)
+        for side in (-1.0, 1.0):
+            _stamp_blob(canvas, cx + side * 42 * s, cy - 48 * s, 22 * s, 32 * s, recipe.hair_rgb, 0.96, 1.55)
+            _stamp_blob(canvas, cx + side * 42 * s, cy - 44 * s, 10 * s, 16 * s, (232, 160, 170), 0.75, 1.8)
+            _stamp_blob(canvas, cx + side * 22 * s, cy - 8 * s, 12 * s, 10 * s, recipe.eye, 0.96, 1.9)
+        _stamp_blob(canvas, cx, cy + 18 * s, 22 * s, 12 * s, recipe.lip, 0.9, 1.8)
+        _stamp_blob(canvas, cx, cy + 70 * s, 80 * s, 50 * s, recipe.cloth_rgb, 0.9, 1.55)
+        _stamp_blob(canvas, cx, cy + 88 * s, 16 * s, 40 * s, recipe.hair_rgb, 0.85, 1.7)
     else:
         cx, cy = w * 0.48, h * 0.56
         _stamp_blob(canvas, cx, cy + 18 * s, 100 * s, 72 * s, recipe.hair_rgb, 0.96, 1.5)
@@ -1331,6 +2040,118 @@ def _paint_still(canvas: np.ndarray, recipe: CardRecipe, rng: np.random.Generato
         _stamp_blob(canvas, w * 0.8, h * 0.6, 14 * s, 24 * s, gold, 0.96, 1.9)
         _stamp_blob(canvas, w * 0.5, h * 0.74, 170 * s, 44 * s, (120, 20, 36), 0.38, 1.5)
         _stamp_blob(canvas, w * 0.34, h * 0.38, 16 * s, 10 * s, (255, 240, 180), 0.45, 2.0)
+    elif prop == "silk_rope":
+        for i in range(5):
+            _stamp_blob(canvas, w * (0.32 + (i % 3) * 0.14), h * (0.42 + (i // 3) * 0.16), 70 * s, 28 * s, recipe.cloth_rgb, 0.9, 1.5)
+        _stamp_blob(canvas, w * 0.5, h * 0.58, 90 * s, 40 * s, gold, 0.35, 1.6)
+        _stamp_capsule(canvas, w * 0.22, h * 0.7, w * 0.78, h * 0.62, 10 * s, _shade(recipe.cloth_rgb, 0.2), 0.85)
+    elif prop == "soft_cuffs":
+        for x in (0.34, 0.66):
+            _stamp_blob(canvas, w * x, h * 0.5, 70 * s, 54 * s, recipe.cloth_rgb, 0.96, 1.45)
+            _stamp_blob(canvas, w * x, h * 0.5, 38 * s, 28 * s, _shade(recipe.bg_bot, 0.1), 0.9, 1.8)
+            _stamp_blob(canvas, w * x, h * 0.42, 12 * s, 10 * s, gold, 0.9, 2.0)
+        _stamp_capsule(canvas, w * 0.42, h * 0.5, w * 0.58, h * 0.5, 5 * s, gold, 0.8)
+    elif prop == "velvet_collar":
+        _stamp_blob(canvas, w * 0.5, h * 0.56, 160 * s, 70 * s, recipe.cloth_rgb, 0.96, 1.4)
+        _stamp_blob(canvas, w * 0.5, h * 0.56, 90 * s, 36 * s, _shade(recipe.cloth_rgb, 0.25), 0.55, 1.7)
+        _stamp_blob(canvas, w * 0.5, h * 0.7, 28 * s, 32 * s, gold, 0.96, 1.6)
+        _stamp_blob(canvas, w * 0.5, h * 0.7, 12 * s, 12 * s, (20, 10, 12), 0.9, 2.0)
+    elif prop == "wax_pool":
+        for i, x in enumerate((0.28, 0.5, 0.72)):
+            _stamp_capsule(canvas, w * x, h * 0.22, w * x, h * 0.48, 10 * s, (240, 230, 200), 0.92)
+            _stamp_blob(canvas, w * x, h * 0.2, 16 * s, 12 * s, (255, 180, 80), 0.8, 1.8)
+            _stamp_blob(canvas, w * x, h * (0.62 + i * 0.04), 50 * s, 22 * s, recipe.lip, 0.7, 1.5)
+        _stamp_blob(canvas, w * 0.5, h * 0.78, 180 * s, 40 * s, recipe.lip, 0.45, 1.4)
+    elif prop == "riding_crop":
+        _stamp_capsule(canvas, w * 0.18, h * 0.72, w * 0.82, h * 0.28, 8 * s, (28, 16, 14), 0.96)
+        _stamp_blob(canvas, w * 0.82, h * 0.26, 36 * s, 22 * s, (18, 10, 10), 0.96, 1.8)
+        _stamp_blob(canvas, w * 0.2, h * 0.74, 22 * s, 28 * s, gold, 0.85, 1.7)
+        _stamp_blob(canvas, w * 0.5, h * 0.8, 140 * s, 30 * s, recipe.cloth_rgb, 0.4, 1.6)
+    elif prop == "lace_mask":
+        _stamp_blob(canvas, w * 0.5, h * 0.48, 150 * s, 90 * s, (16, 10, 14), 0.92, 1.45)
+        _stamp_blob(canvas, w * 0.36, h * 0.46, 28 * s, 22 * s, recipe.skin, 0.35, 1.8)
+        _stamp_blob(canvas, w * 0.64, h * 0.46, 28 * s, 22 * s, recipe.skin, 0.35, 1.8)
+        for i in range(8):
+            _stamp_blob(canvas, w * (0.28 + i * 0.06), h * 0.62, 10 * s, 16 * s, gold, 0.4, 1.8)
+    elif prop == "perfume":
+        _stamp_capsule(canvas, w * 0.5, h * 0.28, w * 0.5, h * 0.4, 8 * s, gold, 0.92)
+        _stamp_blob(canvas, w * 0.5, h * 0.58, 50 * s, 90 * s, recipe.cloth_rgb, 0.96, 1.45)
+        _stamp_blob(canvas, w * 0.5, h * 0.4, 28 * s, 18 * s, gold, 0.9, 1.8)
+        _stamp_blob(canvas, w * 0.42, h * 0.5, 14 * s, 30 * s, (255, 220, 230), 0.35, 1.7)
+        for _ in range(10):
+            _stamp_blob(canvas, float(rng.uniform(w * 0.3, w * 0.7)), float(rng.uniform(h * 0.12, h * 0.32)),
+                        6 * s, 10 * s, (255, 200, 210), 0.28, 1.8)
+    elif prop == "pearl_strand":
+        for i in range(12):
+            t = i / 11
+            _stamp_blob(canvas, w * (0.2 + t * 0.6), h * (0.38 + 0.18 * np.sin(i)), 16 * s, 16 * s, (240, 228, 210), 0.95, 1.8)
+        _stamp_blob(canvas, w * 0.5, h * 0.7, 40 * s, 28 * s, gold, 0.7, 1.7)
+    elif prop == "champagne_flute":
+        _stamp_capsule(canvas, w * 0.5, h * 0.22, w * 0.5, h * 0.7, 18 * s, (230, 230, 240), 0.55)
+        _stamp_blob(canvas, w * 0.5, h * 0.78, 22 * s, 16 * s, gold, 0.9, 1.8)
+        _stamp_blob(canvas, w * 0.5, h * 0.42, 28 * s, 40 * s, (255, 220, 140), 0.45, 1.6)
+        for _ in range(16):
+            _stamp_blob(canvas, float(rng.uniform(w * 0.42, w * 0.58)), float(rng.uniform(h * 0.26, h * 0.5)),
+                        3 * s, 3 * s, (255, 255, 255), 0.5, 2.0)
+    elif prop == "aftercare_mug":
+        _stamp_blob(canvas, w * 0.48, h * 0.52, 80 * s, 70 * s, recipe.cloth_rgb, 0.96, 1.45)
+        _stamp_blob(canvas, w * 0.48, h * 0.38, 70 * s, 22 * s, _tint(recipe.cloth_rgb, 0.15), 0.8, 1.8)
+        _stamp_blob(canvas, w * 0.7, h * 0.52, 28 * s, 18 * s, gold, 0.9, 1.7)
+        _stamp_blob(canvas, w * 0.48, h * 0.28, 40 * s, 24 * s, (255, 230, 210), 0.3, 1.6)
+    elif prop == "lipstick_kiss":
+        _stamp_blob(canvas, w * 0.5, h * 0.5, 160 * s, 120 * s, (236, 220, 200), 0.92, 1.5)
+        _stamp_blob(canvas, w * 0.46, h * 0.46, 50 * s, 28 * s, recipe.lip, 0.9, 1.5)
+        _stamp_blob(canvas, w * 0.56, h * 0.5, 54 * s, 32 * s, recipe.lip, 0.88, 1.45)
+        _stamp_blob(canvas, w * 0.5, h * 0.58, 70 * s, 22 * s, _shade(recipe.lip, 0.15), 0.8, 1.6)
+    elif prop == "edge_timer":
+        _stamp_blob(canvas, w * 0.5, h * 0.5, 120 * s, 120 * s, (24, 18, 20), 0.96, 1.4)
+        _stamp_blob(canvas, w * 0.5, h * 0.5, 88 * s, 88 * s, gold, 0.35, 1.7)
+        _stamp_capsule(canvas, w * 0.5, h * 0.5, w * 0.5, h * 0.28, 6 * s, (240, 230, 210), 0.92)
+        _stamp_capsule(canvas, w * 0.5, h * 0.5, w * 0.72, h * 0.58, 5 * s, recipe.lip, 0.9)
+        _stamp_blob(canvas, w * 0.5, h * 0.5, 12 * s, 12 * s, recipe.lip, 0.96, 2.0)
+    elif prop == "keyhole_view":
+        _stamp_blob(canvas, w * 0.5, h * 0.5, 200 * s, 200 * s, (12, 8, 10), 0.96, 1.2)
+        _stamp_blob(canvas, w * 0.5, h * 0.42, 50 * s, 50 * s, recipe.glow, 0.85, 1.5)
+        _stamp_blob(canvas, w * 0.5, h * 0.62, 28 * s, 48 * s, recipe.glow, 0.8, 1.5)
+        _stamp_blob(canvas, w * 0.5, h * 0.44, 22 * s, 28 * s, recipe.lip, 0.55, 1.7)
+    elif prop == "compact_mirror":
+        _stamp_blob(canvas, w * 0.38, h * 0.52, 90 * s, 90 * s, gold, 0.96, 1.4)
+        _stamp_blob(canvas, w * 0.38, h * 0.52, 62 * s, 62 * s, (180, 200, 210), 0.75, 1.6)
+        _stamp_blob(canvas, w * 0.7, h * 0.58, 70 * s, 40 * s, recipe.cloth_rgb, 0.9, 1.5)
+        _stamp_blob(canvas, w * 0.7, h * 0.52, 40 * s, 16 * s, recipe.lip, 0.7, 1.8)
+    elif prop == "feather":
+        _stamp_capsule(canvas, w * 0.28, h * 0.72, w * 0.72, h * 0.22, 7 * s, (40, 24, 20), 0.9)
+        for i in range(10):
+            _stamp_capsule(
+                canvas, w * (0.4 + i * 0.03), h * (0.55 - i * 0.03),
+                w * (0.55 + i * 0.03), h * (0.35 - i * 0.02), 8 * s, recipe.cloth_rgb, 0.55,
+            )
+        _stamp_blob(canvas, w * 0.26, h * 0.74, 18 * s, 16 * s, gold, 0.85, 1.8)
+    elif prop == "satin_pillow":
+        _stamp_blob(canvas, w * 0.5, h * 0.58, 200 * s, 90 * s, recipe.cloth_rgb, 0.92, 1.35)
+        _stamp_blob(canvas, w * 0.42, h * 0.5, 80 * s, 40 * s, _tint(recipe.cloth_rgb, 0.2), 0.45, 1.6)
+        _stamp_blob(canvas, w * 0.62, h * 0.64, 50 * s, 24 * s, gold, 0.28, 1.7)
+        _stamp_blob(canvas, w * 0.3, h * 0.62, 30 * s, 16 * s, recipe.lip, 0.25, 1.8)
+    elif prop == "toy_silhouette":
+        _stamp_blob(canvas, w * 0.5, h * 0.42, 40 * s, 36 * s, recipe.cloth_rgb, 0.96, 1.45)
+        _stamp_capsule(canvas, w * 0.5, h * 0.48, w * 0.5, h * 0.78, 22 * s, recipe.cloth_rgb, 0.96)
+        _stamp_blob(canvas, w * 0.5, h * 0.82, 36 * s, 20 * s, gold, 0.7, 1.7)
+        _stamp_blob(canvas, w * 0.42, h * 0.38, 12 * s, 10 * s, (255, 220, 220), 0.4, 1.9)
+    elif prop == "worship_chalice":
+        _stamp_blob(canvas, w * 0.5, h * 0.38, 80 * s, 36 * s, gold, 0.96, 1.45)
+        _stamp_capsule(canvas, w * 0.5, h * 0.42, w * 0.5, h * 0.7, 14 * s, gold, 0.92)
+        _stamp_blob(canvas, w * 0.5, h * 0.78, 50 * s, 16 * s, gold, 0.96, 1.8)
+        _stamp_blob(canvas, w * 0.5, h * 0.34, 50 * s, 18 * s, recipe.lip, 0.55, 1.6)
+    elif prop == "blindfold_silk":
+        _stamp_capsule(canvas, w * 0.16, h * 0.48, w * 0.84, h * 0.48, 22 * s, recipe.cloth_rgb, 0.96)
+        _stamp_blob(canvas, w * 0.78, h * 0.62, 40 * s, 70 * s, recipe.cloth_rgb, 0.88, 1.5)
+        _stamp_blob(canvas, w * 0.5, h * 0.48, 20 * s, 10 * s, gold, 0.4, 1.8)
+    elif prop == "glove_pair":
+        for x in (0.36, 0.64):
+            _stamp_capsule(canvas, w * x, h * 0.28, w * x, h * 0.7, 22 * s, (18, 12, 16), 0.96)
+            _stamp_blob(canvas, w * x, h * 0.76, 32 * s, 28 * s, (18, 12, 16), 0.96, 1.55)
+            _stamp_blob(canvas, w * (x + 0.06), h * 0.8, 12 * s, 22 * s, (18, 12, 16), 0.9, 1.7)
+        _stamp_blob(canvas, w * 0.5, h * 0.4, 16 * s, 16 * s, gold, 0.7, 2.0)
     else:
         _stamp_blob(canvas, w * 0.5, h * 0.5, 96 * s, 96 * s, gold, 0.95, 1.5)
 
@@ -1498,6 +2319,95 @@ def _paint_pixel(recipe: CardRecipe, size: int, rng: np.random.Generator) -> Ima
         _px_fill(a, 48, 102, 32, 8, gold)
         _px_fill(a, 8, 100, 12, 8, (80, 60, 30))
         _px_fill(a, 108, 96, 10, 12, (80, 60, 30))
+    elif scene == "private_booth":
+        _px_fill(a, 0, 0, 18, 128, cloth)
+        _px_fill(a, 110, 0, 18, 128, cloth)
+        _px_fill(a, 18, 90, 92, 38, (40, 16, 22))
+        _px_fill(a, 26, 82, 76, 16, (80, 24, 36))
+        _px_person(a, 40, 48, (210, 170, 140), (140, 30, 50), (80, 20, 28))
+        _px_person(a, 70, 52, (176, 132, 104), (20, 12, 16), (28, 18, 16))
+        _px_fill(a, 48, 16, 32, 10, gold)
+        _px_disc(a, 64, 22, 8, (255, 180, 80))
+    elif scene == "group_floor":
+        _px_fill(a, 0, 88, 128, 40, (50, 18, 24))
+        skins = ((200, 160, 130), (160, 110, 90), (210, 176, 150), (140, 96, 70), (186, 148, 118), (176, 120, 96))
+        for i, sk in enumerate(skins):
+            _px_person(a, 8 + i * 20, 50 + (i % 2) * 6, sk, (80, 20, 30) if i % 2 else (30, 16, 22), (24, 14, 14))
+        _px_disc(a, 64, 28, 16, gold)
+        _px_fill(a, 20, 108, 88, 10, (30, 12, 16))
+    elif scene == "altar_kneel":
+        _px_fill(a, 24, 86, 80, 22, gold)
+        _px_fill(a, 40, 54, 48, 34, (180, 140, 50))
+        _px_disc(a, 64, 44, 14, gold)
+        _px_person(a, 56, 70, (210, 170, 140), (90, 16, 28), (40, 12, 18))
+        _px_fill(a, 18, 20, 8, 70, (255, 160, 60))
+        _px_fill(a, 102, 20, 8, 70, (255, 160, 60))
+    elif scene == "aftercare_bed":
+        _px_fill(a, 8, 70, 112, 50, (210, 170, 160))
+        _px_fill(a, 16, 64, 96, 18, (230, 200, 190))
+        _px_disc(a, 48, 60, 10, (220, 176, 150))
+        _px_disc(a, 72, 58, 10, (186, 140, 112))
+        _px_fill(a, 20, 40, 28, 16, (240, 230, 220))
+        _px_fill(a, 88, 36, 16, 20, gold)
+    elif scene == "toy_drawer":
+        _px_fill(a, 10, 20, 108, 90, (60, 36, 28))
+        _px_fill(a, 16, 26, 96, 78, (90, 50, 40))
+        for i in range(3):
+            _px_fill(a, 24 + i * 30, 40, 18, 40, cloth if i != 1 else gold)
+            _px_disc(a, 33 + i * 30, 36, 7, (20, 12, 14))
+        _px_fill(a, 20, 88, 88, 8, (40, 24, 20))
+    elif scene == "voyeur_window":
+        _px_fill(a, 0, 0, 128, 128, (16, 12, 18))
+        _px_fill(a, 28, 18, 72, 88, (80, 28, 40))
+        _px_person(a, 48, 40, (210, 170, 140), (140, 24, 40), (90, 16, 24))
+        _px_fill(a, 28, 18, 6, 88, (40, 30, 36))
+        _px_fill(a, 94, 18, 6, 88, (40, 30, 36))
+        _px_fill(a, 28, 58, 72, 6, (40, 30, 36))
+        _px_disc(a, 20, 100, 8, gold)
+    elif scene == "cabaret_stage":
+        _px_fill(a, 0, 96, 128, 32, (40, 16, 20))
+        _px_fill(a, 16, 88, 96, 12, gold)
+        _px_person(a, 56, 48, (220, 176, 150), (160, 20, 40), (100, 16, 28))
+        _px_fill(a, 20, 8, 16, 24, (255, 80, 80))
+        _px_fill(a, 92, 8, 16, 24, (80, 180, 255))
+        _px_disc(a, 64, 20, 12, (255, 220, 100))
+        _px_fill(a, 8, 110, 8, 8, gold)
+        _px_fill(a, 112, 110, 8, 8, gold)
+    elif scene == "denial_clock":
+        _px_disc(a, 64, 56, 40, (30, 22, 24))
+        _px_disc(a, 64, 56, 32, gold)
+        _px_fill(a, 62, 30, 4, 26, (20, 12, 14))
+        _px_fill(a, 64, 56, 22, 4, (160, 20, 36))
+        _px_person(a, 16, 84, (186, 140, 112), (40, 16, 22), (28, 16, 16))
+        _px_fill(a, 96, 92, 18, 22, cloth)
+    elif scene == "encore_spot":
+        _px_fill(a, 40, 8, 48, 70, (255, 210, 120))
+        _px_person(a, 56, 48, (220, 176, 148), (140, 16, 32), (88, 14, 24))
+        _px_fill(a, 0, 100, 128, 28, (20, 10, 14))
+        for i in range(6):
+            _px_fill(a, 12 + i * 20, 108, 8, 8, gold)
+        _px_fill(a, 20, 16, 10, 10, (255, 80, 120))
+        _px_fill(a, 98, 16, 10, 10, (255, 80, 120))
+    elif scene == "rope_room":
+        _px_fill(a, 0, 0, 128, 128, (36, 16, 20))
+        for i in range(5):
+            _px_fill(a, 18 + i * 20, 8, 4, 110, cloth)
+        _px_person(a, 52, 54, (210, 168, 140), (20, 10, 14), (60, 16, 22))
+        _px_fill(a, 48, 48, 24, 4, gold)
+        _px_fill(a, 48, 72, 24, 4, gold)
+    elif scene == "lap_booth":
+        _px_fill(a, 8, 70, 112, 50, (90, 24, 36))
+        _px_person(a, 36, 48, (164, 120, 92), (24, 16, 18), (20, 14, 12))
+        _px_person(a, 64, 40, (220, 176, 150), (160, 30, 50), (90, 18, 28))
+        _px_fill(a, 20, 16, 88, 8, gold)
+        _px_disc(a, 64, 20, 6, (255, 200, 80))
+    elif scene == "bath_steam":
+        _px_fill(a, 16, 70, 96, 40, (80, 120, 140))
+        _px_disc(a, 48, 56, 12, (220, 176, 150))
+        _px_disc(a, 72, 54, 12, (186, 140, 112))
+        for i in range(8):
+            _px_disc(a, 30 + i * 10, 40 - (i % 3) * 6, 6, (200, 210, 220))
+        _px_fill(a, 20, 100, 20, 8, gold)
     else:
         _px_disc(a, 64, 64, 30, gold)
     img = Image.fromarray(a, "RGB").resize((size, size), Image.Resampling.NEAREST).convert("RGBA")
@@ -1519,6 +2429,17 @@ def _finish(canvas: np.ndarray, recipe: CardRecipe, rng: np.random.Generator) ->
     img = ImageEnhance.Contrast(img).enhance(1.1)
     img = ImageEnhance.Color(img).enhance(1.14 if recipe.kind == "bust" else 1.08)
     return img
+
+
+def recipe_fingerprint(recipe: CardRecipe) -> bytes:
+    """Stable hash of silhouette/palette/prop choices — not the RNG grain."""
+    blob = (
+        recipe.kind, recipe.body, recipe.hair, recipe.hair_rgb, recipe.skin,
+        recipe.lip, recipe.eye, recipe.clothing, recipe.cloth_rgb, recipe.accent,
+        recipe.bg, recipe.bg_top, recipe.bg_bot, recipe.glow, recipe.pose,
+        recipe.extras, recipe.props, recipe.mood_asset, recipe.scene,
+    )
+    return hashlib.sha256(repr(blob).encode()).digest()
 
 
 def render_card_art(card: CardDefinition, size: int = PORTRAIT_SIZE) -> Image.Image:

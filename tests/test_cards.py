@@ -1,6 +1,7 @@
 """Tests for GoonCards catalog, packs, market, and trade escrow."""
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import unittest
@@ -33,18 +34,25 @@ from utils.cards import (
 
 
 class CardCatalogTests(unittest.TestCase):
-    def test_launch_catalog_is_48(self) -> None:
-        self.assertEqual(len(CARD_DEFINITIONS), 48)
-        self.assertEqual(len({c.card_id for c in CARD_DEFINITIONS.values()}), 48)
+    def test_launch_catalog_is_148(self) -> None:
+        self.assertEqual(len(CARD_DEFINITIONS), 148)
+        self.assertEqual(len({c.card_id for c in CARD_DEFINITIONS.values()}), 148)
 
-    def test_sets_are_eight_each(self) -> None:
-        for set_id in SET_ORDER:
-            count = sum(1 for c in CARD_DEFINITIONS.values() if c.set_id == set_id)
-            self.assertEqual(count, 8, set_id)
+    def test_original_48_ids_untouched(self) -> None:
+        from utils.cards import ORIGINAL_CARD_IDS
 
-    def test_rarity_split(self) -> None:
+        self.assertEqual(len(ORIGINAL_CARD_IDS), 48)
+        self.assertTrue(ORIGINAL_CARD_IDS <= set(CARD_DEFINITIONS))
+        original = [CARD_DEFINITIONS[cid] for cid in ORIGINAL_CARD_IDS]
         self.assertEqual(
-            rarity_counts(),
+            {
+                "common": sum(1 for c in original if c.rarity == "common"),
+                "uncommon": sum(1 for c in original if c.rarity == "uncommon"),
+                "rare": sum(1 for c in original if c.rarity == "rare"),
+                "epic": sum(1 for c in original if c.rarity == "epic"),
+                "legendary": sum(1 for c in original if c.rarity == "legendary"),
+                "mythic": sum(1 for c in original if c.rarity == "mythic"),
+            },
             {
                 "common": 18,
                 "uncommon": 12,
@@ -52,6 +60,37 @@ class CardCatalogTests(unittest.TestCase):
                 "epic": 6,
                 "legendary": 4,
                 "mythic": 2,
+            },
+        )
+
+    def test_sets_match_catalog_structure(self) -> None:
+        from utils.cards import ORIGINAL_CARD_IDS
+
+        original_sets = ("velvet", "floor", "personas", "hustle", "lounge", "reliquary")
+        expansion_sets = (
+            "edge", "booth", "heat", "kink", "aftercare",
+            "cabaret", "peek", "denial", "worship", "encore",
+        )
+        self.assertEqual(SET_ORDER[:6], original_sets)
+        self.assertEqual(SET_ORDER[6:], expansion_sets)
+        for set_id in original_sets:
+            count = sum(1 for c in CARD_DEFINITIONS.values() if c.set_id == set_id)
+            self.assertEqual(count, 8, set_id)
+        for set_id in expansion_sets:
+            count = sum(1 for c in CARD_DEFINITIONS.values() if c.set_id == set_id)
+            self.assertEqual(count, 10, set_id)
+        self.assertEqual(len(CARD_DEFINITIONS) - len(ORIGINAL_CARD_IDS), 100)
+
+    def test_rarity_split(self) -> None:
+        self.assertEqual(
+            rarity_counts(),
+            {
+                "common": 56,
+                "uncommon": 37,
+                "rare": 20,
+                "epic": 18,
+                "legendary": 11,
+                "mythic": 6,
             },
         )
 
@@ -92,15 +131,17 @@ class CardCanvasTests(unittest.TestCase):
         self.assertTrue(pack.startswith(b"\x89PNG"))
 
     def test_portraits_are_unique_original_plates(self) -> None:
-        from utils.card_art import CARD_RECIPES
+        from utils.card_art import CARD_RECIPES, recipe_fingerprint
 
         self.assertEqual(set(CARD_RECIPES), set(CARD_DEFINITIONS))
+        fingerprints = {recipe_fingerprint(CARD_RECIPES[cid]) for cid in CARD_DEFINITIONS}
+        self.assertEqual(len(fingerprints), 148)
         hashes: set[bytes] = set()
         for card in CARD_DEFINITIONS.values():
             portrait = render_procedural_portrait(card)
             self.assertEqual(portrait.size, (512, 512), card.card_id)
-            hashes.add(portrait.tobytes())
-        self.assertEqual(len(hashes), 48)
+            hashes.add(hashlib.sha256(portrait.tobytes()).digest())
+        self.assertEqual(len(hashes), 148)
 
     def test_named_cards_are_distinct_from_each_other(self) -> None:
         ids = (
@@ -217,8 +258,16 @@ class CardCanvasTests(unittest.TestCase):
         for card_id in CARD_DEFINITIONS:
             path = portrait_path(card_id)
             self.assertGreater(path.stat().st_size, 40_000, card_id)
-            hashes.add(path.read_bytes())
-        self.assertEqual(len(hashes), 48)
+            hashes.add(hashlib.sha256(path.read_bytes()).digest())
+        self.assertEqual(len(hashes), 148)
+
+    def test_original_shipped_portraits_still_present(self) -> None:
+        from utils.cards import ORIGINAL_CARD_IDS
+
+        for card_id in ORIGINAL_CARD_IDS:
+            path = portrait_path(card_id)
+            self.assertTrue(path.is_file(), card_id)
+            self.assertGreater(path.stat().st_size, 40_000, card_id)
 
     def test_binder_page_size(self) -> None:
         self.assertEqual(BINDER_PER_PAGE, 6)
