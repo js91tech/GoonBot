@@ -89,17 +89,64 @@ class CardCanvasTests(unittest.TestCase):
         pack = render_pack_reveal([card], [1])
         self.assertTrue(pack.startswith(b"\x89PNG"))
 
+    def test_portraits_are_unique_original_plates(self) -> None:
+        from utils.card_art import CARD_RECIPES
+
+        self.assertEqual(set(CARD_RECIPES), set(CARD_DEFINITIONS))
+        hashes: set[bytes] = set()
+        for card in CARD_DEFINITIONS.values():
+            portrait = render_procedural_portrait(card)
+            self.assertEqual(portrait.size, (512, 512), card.card_id)
+            hashes.add(portrait.tobytes())
+        self.assertEqual(len(hashes), 48)
+
+    def test_named_cards_are_distinct_from_each_other(self) -> None:
+        ids = (
+            "card_velvet_vixen",
+            "card_tomass",
+            "card_freaky_nikki",
+            "card_zz_wrath",
+            "card_kisses_velvet",
+            "card_shadow_velvet",
+            "card_hostess",
+            "card_house_idol",
+        )
+        blobs = []
+        for card_id in ids:
+            img = render_procedural_portrait(CARD_DEFINITIONS[card_id])
+            blobs.append(img.tobytes())
+        self.assertEqual(len(set(blobs)), len(ids))
+
+    def test_portraits_are_not_copied_boss_files(self) -> None:
+        from utils.card_ai import portrait_path as shipped
+
+        boss_dir = Path(__file__).resolve().parent.parent / "assets"
+        sources = []
+        for rel in (
+            "bosses/tomass.png",
+            "bosses/zz_wrath.png",
+            "bosses/glam/velvet_vixen_mythic.png",
+            "bosses/glam/velvet_vixen_shadow.png",
+            "brand/goonbot-icon-explicit.png",
+            "brand/goonbot-banner-explicit.png",
+            "drugs/grow_lab.png",
+        ):
+            path = boss_dir / rel
+            if path.is_file():
+                sources.append(path.read_bytes())
+        for card_id in CARD_DEFINITIONS:
+            dest = shipped(card_id)
+            if not dest.is_file():
+                continue
+            data = dest.read_bytes()
+            for source in sources:
+                self.assertNotEqual(data, source, card_id)
+
     def test_load_portrait_fallback(self) -> None:
         card = card_by_id("card_hostess")
         assert card is not None
-        path = portrait_path(card.card_id)
-        existed = path.is_file()
-        if existed:
-            img = load_portrait(card)
-            self.assertGreater(img.size[0], 0)
-        else:
-            img = load_portrait(card)
-            self.assertGreater(img.size[0], 0)
+        img = load_portrait(card)
+        self.assertGreater(img.size[0], 0)
 
     def test_write_procedural_roundtrip(self) -> None:
         card = card_by_id("card_talent")
@@ -108,6 +155,18 @@ class CardCanvasTests(unittest.TestCase):
             dest = Path(tmp) / "card.png"
             write_procedural_portrait(card, dest)
             self.assertTrue(dest.is_file())
+            self.assertGreater(dest.stat().st_size, 40_000)
+
+    def test_shipped_portraits_not_tiny_placeholders(self) -> None:
+        missing = [cid for cid in CARD_DEFINITIONS if not portrait_path(cid).is_file()]
+        if missing:
+            self.skipTest(f"portraits not generated yet: {missing[:3]}")
+        hashes: set[bytes] = set()
+        for card_id in CARD_DEFINITIONS:
+            path = portrait_path(card_id)
+            self.assertGreater(path.stat().st_size, 40_000, card_id)
+            hashes.add(path.read_bytes())
+        self.assertEqual(len(hashes), 48)
 
     def test_binder_page_size(self) -> None:
         self.assertEqual(BINDER_PER_PAGE, 6)
@@ -117,14 +176,16 @@ class CardAiTests(unittest.IsolatedAsyncioTestCase):
     async def test_backfill_skips_unknown(self) -> None:
         self.assertFalse(await maybe_backfill_missing_portrait("not_a_card"))
 
-    async def test_backfill_noop_without_key(self) -> None:
+    async def test_backfill_writes_unique_plate_without_key(self) -> None:
         with patch("utils.card_ai.config.AI_API_KEY", ""):
             card = next(iter(CARD_DEFINITIONS))
-            path = portrait_path(card)
-            if path.is_file():
-                self.assertTrue(await maybe_backfill_missing_portrait(card))
-            else:
-                self.assertFalse(await maybe_backfill_missing_portrait(card))
+            self.assertTrue(await maybe_backfill_missing_portrait(card))
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "missing.png"
+                with patch("utils.card_ai.portrait_path", return_value=dest):
+                    self.assertTrue(await maybe_backfill_missing_portrait(card))
+                self.assertTrue(dest.is_file())
+                self.assertGreater(dest.stat().st_size, 40_000)
 
 
 class CardDatabaseTests(unittest.IsolatedAsyncioTestCase):
