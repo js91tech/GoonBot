@@ -341,6 +341,8 @@ class CardCanvasTests(unittest.TestCase):
             self.assertGreater(dest.stat().st_size, 40_000)
 
     def test_shipped_portraits_not_tiny_placeholders(self) -> None:
+        from PIL import Image
+
         missing = [cid for cid in CARD_DEFINITIONS if not portrait_path(cid).is_file()]
         if missing:
             self.skipTest(f"portraits not generated yet: {missing[:3]}")
@@ -348,16 +350,46 @@ class CardCanvasTests(unittest.TestCase):
         for card_id in CARD_DEFINITIONS:
             path = portrait_path(card_id)
             self.assertGreater(path.stat().st_size, 40_000, card_id)
+            with Image.open(path) as image:
+                self.assertEqual(image.size, (512, 512), card_id)
+                self.assertIn(image.format, {"PNG", None})
             hashes.add(hashlib.sha256(path.read_bytes()).digest())
         self.assertEqual(len(hashes), 148)
 
     def test_original_shipped_portraits_still_present(self) -> None:
         from utils.cards import ORIGINAL_CARD_IDS
 
+        hashes: set[bytes] = set()
         for card_id in ORIGINAL_CARD_IDS:
             path = portrait_path(card_id)
             self.assertTrue(path.is_file(), card_id)
             self.assertGreater(path.stat().st_size, 40_000, card_id)
+            hashes.add(hashlib.sha256(path.read_bytes()).digest())
+        self.assertEqual(len(hashes), 48)
+
+    def test_shipped_portraits_are_not_compositor_fallback(self) -> None:
+        """Original 48 illustrated plates must not be the ellipse-head compositor output."""
+        from PIL import Image
+        from utils.cards import ORIGINAL_CARD_IDS
+
+        def ahash(im: Image.Image, size: int = 16) -> np.ndarray:
+            gray = im.convert("L").resize((size, size), Image.Resampling.BOX)
+            arr = np.asarray(gray, dtype=np.float32)
+            return arr > arr.mean()
+
+        for card_id in ORIGINAL_CARD_IDS:
+            card = CARD_DEFINITIONS[card_id]
+            path = portrait_path(card_id)
+            self.assertTrue(path.is_file(), card_id)
+            with Image.open(path) as shipped:
+                shipped_rgb = shipped.convert("RGB")
+            fallback = render_procedural_portrait(card).convert("RGB")
+            dist = int(np.count_nonzero(ahash(shipped_rgb) != ahash(fallback)))
+            self.assertGreater(
+                dist,
+                24,
+                f"{card.card_id} looks like the compositor fallback (aHash dist {dist})",
+            )
 
     def test_binder_page_size(self) -> None:
         self.assertEqual(BINDER_PER_PAGE, 6)
