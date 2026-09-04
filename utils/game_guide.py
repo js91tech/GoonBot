@@ -575,10 +575,14 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "**Getting cards**\n"
                     "· **Buy pack** — spend goonbux for 3 random cards (rarity-weighted)\n"
                     "· **Free pull** — cooldown hunt, one card\n"
+                    "· **Group session** — first two people on the floor each get a card "
+                    "(new dex entries preferred)\n"
+                    "· **Trivia** — correct Lore Roulette answer drops a card\n"
                     "· `/daily` and boss raids have a small drop chance\n"
                     "· Player market — list a specific print, buy someone else's",
                     "**Selling & collecting**\n"
                     "· NPC buyback on a copy or all extras (keeps your lowest print)\n"
+                    "· Finish a set for a one-time goonbux bonus on the Collection tab\n"
                     "· Market tax feeds the house pot\n"
                     "· Favorite a copy to showcase it\n"
                     "· Museum tracks unique cards collected",

@@ -27,8 +27,11 @@ from utils.cards import (
     SET_ORDER,
     card_by_id,
     cards_for_rarity,
+    cards_for_set,
+    format_card_drop,
     npc_sell_value,
     rarity_counts,
+    roll_card_prefer_unowned,
     roll_pack,
 )
 
@@ -106,6 +109,27 @@ class CardCatalogTests(unittest.TestCase):
 
         pack = roll_pack(3, random.Random(0))
         self.assertEqual(len(pack), 3)
+
+    def test_prefer_unowned_fills_the_last_gap(self) -> None:
+        import random
+
+        missing = "card_velvet_vixen"
+        owned = {cid for cid in CARD_DEFINITIONS if cid != missing}
+        card = roll_card_prefer_unowned(owned, random.Random(1))
+        self.assertEqual(card.card_id, missing)
+
+    def test_format_card_drop(self) -> None:
+        line = format_card_drop(
+            {
+                "card_id": "card_hostess",
+                "print_number": 7,
+                "set_complete": "velvet",
+                "set_reward": 15000,
+            }
+        )
+        self.assertIn("Lounge Hostess", line)
+        self.assertIn("#0007", line)
+        self.assertIn("15,000", line)
 
     def test_npc_value_scales(self) -> None:
         card = next(c for c in CARD_DEFINITIONS.values() if c.rarity == "common")
@@ -442,3 +466,23 @@ class CardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(err)
         result = await self.db.buy_card_listing(self.user_a, self.guild_id, int(listing_id))
         self.assertEqual(result["error"], "own_listing")
+
+    async def test_set_complete_pays_once(self) -> None:
+        velvet = cards_for_set("velvet")
+        for card in velvet[:-1]:
+            granted = await self.db.grant_card(self.user_a, self.guild_id, card.card_id)
+            assert granted is not None
+            self.assertIsNone(granted.get("set_complete"))
+        before = await self.db.get_balance(self.user_a, self.guild_id)
+        last = await self.db.grant_card(self.user_a, self.guild_id, velvet[-1].card_id)
+        assert last is not None
+        self.assertEqual(last["set_complete"], "velvet")
+        self.assertGreater(float(last["set_reward"]), 0)
+        after = await self.db.get_balance(self.user_a, self.guild_id)
+        self.assertAlmostEqual(after - before, float(last["set_reward"]))
+        completed = await self.db.list_completed_card_sets(self.user_a, self.guild_id)
+        self.assertIn("velvet", completed)
+        dup = await self.db.grant_card(self.user_a, self.guild_id, velvet[-1].card_id)
+        assert dup is not None
+        self.assertIsNone(dup.get("set_complete"))
+        self.assertAlmostEqual(await self.db.get_balance(self.user_a, self.guild_id), after)

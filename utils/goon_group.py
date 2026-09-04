@@ -284,6 +284,7 @@ def call_body(state: GroupCallState, *, role: discord.Role | None = None) -> str
     return (
         f"{mention}**{state.prompt}**\n"
         f"First to answer (**I'm ready** or type **yes**) gets {prize}.\n"
+        f"The **first two** on the floor each get a **GoonCard**.\n"
         "_Then the floor stays open for a group round._"
     )
 
@@ -301,6 +302,7 @@ def round_body(state: GroupCallState) -> str:
     return (
         f"**{state.prompt}**\n"
         f"<@{state.host_id}> opened the floor — Velvet took care of them first. {pot}\n"
+        f"First **two** joiners each get a GoonCard.\n"
         f"In: {names or '_nobody_'}\n"
         f"{late} Round ends in **{left}s**. `/goon edge` now. Don't finish first."
     )

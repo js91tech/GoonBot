@@ -565,12 +565,24 @@ class CardsHubView(discord.ui.View):
 
     async def _build_collection(self, note: str | None) -> discord.Embed:
         owned = await self.cog.bot.db.collection_owned_ids(self.user_id, self.guild_id)
+        completed = await self.cog.bot.db.list_completed_card_sets(self.user_id, self.guild_id)
+        set_reward = float(await self.cog.bot.db.get_config_value(
+            self.guild_id, "card_set_complete_reward",
+        ))
         lines = []
+        finished = 0
         for set_id in SET_ORDER:
             cards = [c for c in CARD_DEFINITIONS.values() if c.set_id == set_id]
             have = sum(1 for c in cards if c.card_id in owned)
             bar = "█" * have + "░" * (len(cards) - have)
-            lines.append(f"{SET_EMOJI[set_id]} **{SET_LABELS[set_id]}** `{bar}` {have}/{len(cards)}")
+            mark = "✅" if have >= len(cards) else SET_EMOJI[set_id]
+            extra = ""
+            if have >= len(cards):
+                finished += 1
+                extra = " · complete"
+                if set_id in completed and set_reward > 0:
+                    extra += f" ({fmt_amount(set_reward)})"
+            lines.append(f"{mark} **{SET_LABELS[set_id]}** `{bar}` {have}/{len(cards)}{extra}")
         missing = [c for c in CARD_DEFINITIONS.values() if c.card_id not in owned][:12]
         embed = branded_embed(
             panel_title("GoonCards Collection"),
@@ -578,8 +590,16 @@ class CardsHubView(discord.ui.View):
         )
         embed.add_field(
             name="Dex",
-            value=f"**{len(owned)}** / **{len(CARD_DEFINITIONS)}** unique",
+            value=f"**{len(owned)}** / **{len(CARD_DEFINITIONS)}** unique · **{finished}** sets done",
             inline=True,
+        )
+        embed.add_field(
+            name="Earn more",
+            value=(
+                "First **two** on a group session get a card. Trivia winners get one. "
+                f"Finish a set for **{fmt_amount(set_reward)}** (once)."
+            ),
+            inline=False,
         )
         if missing:
             embed.add_field(
