@@ -19,6 +19,8 @@ from utils.bot_room import (
     resolve_lore_channel,
     send_channel_message,
 )
+from utils.card_announce import announce_granted_cards
+from utils.cards import format_card_drop
 from utils.drugs import DRUGS, drug_by_id
 from utils.helpers import fmt_amount, guild_only_message
 
@@ -391,6 +393,31 @@ class Trivia(commands.Cog):
             return float(event["multiplier"])
         return 1.0
 
+    async def _announce_trivia_win(
+        self,
+        channel: discord.abc.Messageable | None,
+        user: discord.abc.User,
+        text: str,
+        granted: dict | None,
+    ) -> None:
+        if granted:
+            posted = await announce_granted_cards(
+                self.bot,
+                channel,
+                user=user,
+                granted_rows=[granted],
+                title="Trivia GoonCard",
+                content=text,
+            )
+            if posted is not None:
+                return
+        await send_channel_message(
+            self.bot,
+            channel,
+            content=text,
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False),
+        )
+
     async def _reward_correct_answer(
         self,
         guild: discord.Guild,
@@ -398,8 +425,8 @@ class Trivia(commands.Cog):
         answer: str,
         expires_at: float,
         started_at: float,
-    ) -> str:
-        """Pay out a correct guess and return the public announcement text."""
+    ) -> tuple[str, dict | None]:
+        """Pay out a correct guess. Returns (public text, optional card grant)."""
         now = time.time()
         remaining = max(0.0, expires_at - now)
         speed_mult = trivia_speed_multiplier(remaining)
@@ -427,12 +454,21 @@ class Trivia(commands.Cog):
                 await self.bot.db.grant_drug_units(user.id, guild.id, defn.drug_id, 1)
                 drug_note = f" Bonus stash drop: {defn.emoji} **1× {defn.name}**!"
 
+        card_note = ""
+        granted = None
+        chance = float(await self.bot.db.get_config_value(guild.id, "card_trivia_drop"))
+        if chance >= 1.0 or (chance > 0 and random.random() < chance):
+            granted = await self.bot.db.grant_engagement_card(user.id, guild.id)
+            if granted:
+                card_note = " " + format_card_drop(granted, prefix="Trivia GoonCard")
+
         elapsed = max(0.0, now - started_at)
-        return (
+        text = (
             f"{user.mention} got it in **{elapsed:.1f}s**! "
             f"The answer was `{answer}`. "
-            f"Prize: {fmt_amount(paid)} ({speed_mult:.2f}× speed bonus).{drug_note}"
+            f"Prize: {fmt_amount(paid)} ({speed_mult:.2f}× speed bonus).{drug_note}{card_note}"
         )
+        return text, granted
 
     async def _claim_round(
         self,
@@ -486,7 +522,7 @@ class Trivia(commands.Cog):
             await interaction.followup.send("That round already ended.", ephemeral=True)
             return
 
-        text = await self._reward_correct_answer(
+        text, granted = await self._reward_correct_answer(
             interaction.guild,
             interaction.user,
             claimed.answer,
@@ -497,12 +533,7 @@ class Trivia(commands.Cog):
 
         channel = interaction.guild.get_channel(channel_id) or self.bot.get_channel(channel_id)
         if isinstance(channel, discord.abc.Messageable):
-            await send_channel_message(
-                self.bot,
-                channel,
-                content=text,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
+            await self._announce_trivia_win(channel, interaction.user, text, granted)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -525,15 +556,10 @@ class Trivia(commands.Cog):
         claimed = await self._claim_round(message.channel.id, active.round_id)
         if claimed is None:
             return
-        text = await self._reward_correct_answer(
+        text, granted = await self._reward_correct_answer(
             message.guild, message.author, claimed.answer, claimed.expires_at, claimed.started_at,
         )
-        await send_channel_message(
-            self.bot,
-            message.channel,
-            content=text,
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
+        await self._announce_trivia_win(message.channel, message.author, text, granted)
 
 
 async def setup(bot: commands.Bot) -> None:

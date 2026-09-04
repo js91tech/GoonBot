@@ -1191,5 +1191,33 @@ def roll_card(rng: random.Random | None = None) -> CardDefinition:
     return roller.choice(pool)
 
 
+def roll_card_prefer_unowned(
+    owned: set[str],
+    rng: random.Random | None = None,
+) -> CardDefinition:
+    """Roll a pack-weighted card, preferring ids the collector does not own yet."""
+    rarity = roll_rarity(rng)
+    roller = rng or random
+    fresh = [c for c in cards_for_rarity(rarity) if c.card_id not in owned]
+    if fresh:
+        return roller.choice(fresh)
+    missing = [c for c in CARD_DEFINITIONS.values() if c.card_id not in owned]
+    if missing:
+        return roller.choice(missing)
+    return roll_card(rng)
+
+
+def format_card_drop(granted: dict, *, prefix: str = "GoonCard") -> str:
+    defn = card_by_id(str(granted.get("card_id") or ""))
+    name = defn.name if defn else str(granted.get("card_id") or "card")
+    emoji = defn.emoji if defn else "🃏"
+    print_number = int(granted.get("print_number") or 0)
+    line = f"{emoji} {prefix}: **{name}** #{print_number:04d}"
+    reward = float(granted.get("set_reward") or 0)
+    if granted.get("set_complete") and reward > 0:
+        line += f" · set complete **{reward:,.0f}** goonbux"
+    return line
+
+
 def roll_pack(size: int, rng: random.Random | None = None) -> list[CardDefinition]:
     return [roll_card(rng) for _ in range(max(1, int(size)))]
