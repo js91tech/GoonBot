@@ -12,7 +12,6 @@ from utils.card_canvas import (
     BINDER_PER_PAGE,
     render_binder_page,
     render_card_png,
-    render_pack_reveal,
 )
 from utils.cards import (
     CARD_DEFINITIONS,
@@ -24,6 +23,8 @@ from utils.cards import (
     SET_LABELS,
     SET_ORDER,
     card_by_id,
+    format_card_line,
+    format_pack_odds,
 )
 from utils.goon_theme import branded_embed, panel_title
 from utils.helpers import fmt_amount, guild_only_message
@@ -72,6 +73,7 @@ class CardsTabSelect(discord.ui.Select):
         view.tab = self.values[0]
         view.page = 0
         view.selected_instance_id = None
+        view.pending_extras_confirm = False
         await view.refresh(interaction)
 
 
@@ -175,6 +177,24 @@ class MarketListingSelect(discord.ui.Select):
         await view.refresh(interaction)
 
 
+class CollectionHuntSelect(discord.ui.Select):
+    def __init__(self, current: str) -> None:
+        options = [
+            discord.SelectOption(
+                label=f"{SET_EMOJI[set_id]} {SET_LABELS[set_id]}"[:100],
+                value=set_id,
+                default=set_id == current,
+            )
+            for set_id in SET_ORDER
+        ]
+        super().__init__(placeholder="Holes in which set…", options=options, row=1)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: CardsHubView = self.view  # type: ignore[assignment]
+        view.hunt_set_id = self.values[0]
+        await view.refresh(interaction)
+
+
 class ListCardSelect(discord.ui.Select):
     def __init__(self, instances: list[dict[str, Any]]) -> None:
         options: list[discord.SelectOption] = []
@@ -258,6 +278,8 @@ class CardsHubView(discord.ui.View):
         self.selected_instance_id: int | None = None
         self.selected_listing_id: int | None = None
         self.note: str | None = None
+        self.hunt_set_id: str | None = None
+        self.pending_extras_confirm = False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
@@ -273,7 +295,11 @@ class CardsHubView(discord.ui.View):
         inspect_btn = discord.ui.Button(label="Inspect", style=discord.ButtonStyle.primary, row=3)
         fav_btn = discord.ui.Button(label="Favorite", style=discord.ButtonStyle.success, row=4)
         sell_btn = discord.ui.Button(label="Sell copy", style=discord.ButtonStyle.danger, row=4)
-        extras_btn = discord.ui.Button(label="Sell extras", style=discord.ButtonStyle.danger, row=4)
+        extras_btn = discord.ui.Button(
+            label="Confirm extras" if self.pending_extras_confirm else "Sell extras",
+            style=discord.ButtonStyle.danger,
+            row=4,
+        )
 
         async def prev_cb(interaction: discord.Interaction) -> None:
             self.page = max(0, self.page - 1)
@@ -300,6 +326,24 @@ class CardsHubView(discord.ui.View):
             if self.selected_instance_id is None:
                 await interaction.response.send_message("Select a card first.", ephemeral=True)
                 return
+            row = await self.cog.bot.db.get_card_instance(self.selected_instance_id, self.guild_id)
+            if row is None or int(row["user_id"]) != self.user_id:
+                await interaction.response.send_message("Card not found.", ephemeral=True)
+                return
+            card_id = str(row["card_id"])
+            copies = await self.cog.bot.db.count_owned_copies(
+                self.user_id, self.guild_id, card_id,
+            )
+            if copies <= 1:
+                defn = card_by_id(card_id)
+                name = defn.name if defn else card_id
+                await interaction.response.send_message(
+                    f"That's your last **{name}**. Selling it would drop it from your dex. "
+                    "Sell extras only dumps duplicates.",
+                    ephemeral=True,
+                )
+                return
+            self.pending_extras_confirm = False
             mult = await _sell_mult(self.cog, self.guild_id)
             result = await self.cog.bot.db.sell_instances_to_npc(
                 self.user_id, self.guild_id, [self.selected_instance_id], sell_mult=mult,
@@ -313,6 +357,23 @@ class CardsHubView(discord.ui.View):
 
         async def extras_cb(interaction: discord.Interaction) -> None:
             mult = await _sell_mult(self.cog, self.guild_id)
+            if not self.pending_extras_confirm:
+                preview = await self.cog.bot.db.preview_extra_copies_to_npc(
+                    self.user_id, self.guild_id, sell_mult=mult,
+                )
+                if int(preview["sold"]) <= 0:
+                    await interaction.response.send_message("No extra copies to sell.", ephemeral=True)
+                    return
+                self.pending_extras_confirm = True
+                self.note = (
+                    f"Sell **{preview['sold']}** extra"
+                    f"{'s' if int(preview['sold']) != 1 else ''} "
+                    f"for {fmt_amount(float(preview['payout']))}? "
+                    "Click **Confirm extras** to dump duplicates (lowest prints stay)."
+                )
+                await self.refresh(interaction)
+                return
+            self.pending_extras_confirm = False
             result = await self.cog.bot.db.sell_extra_copies_to_npc(
                 self.user_id, self.guild_id, sell_mult=mult,
             )
@@ -347,29 +408,11 @@ class CardsHubView(discord.ui.View):
                 )
                 return
             granted = result.get("granted") or []
-            cards = []
-            prints = []
-            for row in granted:
-                defn = card_by_id(str(row["card_id"]))
-                if defn is None:
-                    continue
-                cards.append(defn)
-                prints.append(int(row["print_number"]))
-            png = render_pack_reveal(cards, prints)
-            embed = branded_embed(
-                panel_title("Pack opened"),
-                description="\n".join(
-                    f"{c.emoji} **{c.name}** · {c.rarity_label} · #{prints[i]:04d}"
-                    for i, c in enumerate(cards)
-                ) or "Empty pack.",
-            )
-            embed.set_image(url="attachment://pack.png")
-            self.note = f"Spent {fmt_amount(float(result['price']))}."
-            file = discord.File(io.BytesIO(png), filename="pack.png")
-            self.clear_items()
-            self.add_item(CardsTabSelect(self.tab))
-            self._add_pack_buttons()
-            await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
+            self.note = (
+                "Opened a pack:\n"
+                + "\n".join(format_card_line(row) for row in granted)
+            ) if granted else "Empty pack."
+            await self.refresh(interaction)
             await announce_granted_cards(
                 self.cog.bot,
                 interaction_channel(interaction),
@@ -395,20 +438,8 @@ class CardsHubView(discord.ui.View):
             if defn is None:
                 await interaction.response.send_message("Pull failed.", ephemeral=True)
                 return
-            png = render_card_png(defn, print_number=int(granted["print_number"]))
-            embed = branded_embed(
-                panel_title("Free pull"),
-                description=(
-                    f"{defn.emoji} **{defn.name}** · {defn.rarity_label} · "
-                    f"#{int(granted['print_number']):04d}"
-                ),
-            )
-            embed.set_image(url="attachment://card.png")
-            file = discord.File(io.BytesIO(png), filename="card.png")
-            self.clear_items()
-            self.add_item(CardsTabSelect(self.tab))
-            self._add_pack_buttons()
-            await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
+            self.note = "Free pull:\n" + format_card_line(granted)
+            await self.refresh(interaction)
             await announce_granted_cards(
                 self.cog.bot,
                 interaction_channel(interaction),
@@ -555,16 +586,24 @@ class CardsHubView(discord.ui.View):
         size = int(await self.cog.bot.db.get_config_value(self.guild_id, "card_pack_size"))
         cooldown = int(await self.cog.bot.db.get_config_value(self.guild_id, "card_pull_cooldown_seconds"))
         wallet = await self.cog.bot.db.get_balance(self.user_id, self.guild_id)
+        remaining = await self.cog.bot.db.card_pull_remaining(self.user_id, self.guild_id)
+        if remaining > 0:
+            minutes = int(remaining) // 60
+            seconds = int(remaining) % 60
+            pull_line = f"Free pull ready in **{minutes}m {seconds}s**."
+        else:
+            pull_line = "Free pull is **ready**."
         embed = branded_embed(
             panel_title("GoonCards Packs"),
             description=(
-                f"Booster packs are **{size}** cards. Free pull on a cooldown.\n"
+                f"Booster packs are **{size}** cards. {pull_line}\n"
                 f"Pack price **{fmt_amount(price)}** · your pocket **{fmt_amount(wallet)}**\n"
-                f"Pull cooldown **{cooldown // 60}m**."
+                f"Pull cooldown **{cooldown // 60}m**.\n"
+                f"Odds: {format_pack_odds()}"
             ),
         )
         if note:
-            embed.add_field(name="Update", value=note, inline=False)
+            embed.add_field(name="Update", value=note[:1024], inline=False)
         return embed, None
 
     async def _build_market(self, note: str | None) -> tuple[discord.Embed, discord.File | None]:
@@ -612,7 +651,23 @@ class CardsHubView(discord.ui.View):
                 if set_id in completed and set_reward > 0:
                     extra += f" ({fmt_amount(set_reward)})"
             lines.append(f"{mark} **{SET_LABELS[set_id]}** `{bar}` {have}/{len(cards)}{extra}")
-        missing = [c for c in CARD_DEFINITIONS.values() if c.card_id not in owned][:12]
+        if self.hunt_set_id is None:
+            self.hunt_set_id = SET_ORDER[0]
+            for set_id in SET_ORDER:
+                set_cards = [c for c in CARD_DEFINITIONS.values() if c.set_id == set_id]
+                if any(c.card_id not in owned for c in set_cards):
+                    self.hunt_set_id = set_id
+                    break
+        self.add_item(CollectionHuntSelect(self.hunt_set_id))
+        holes = [
+            c for c in CARD_DEFINITIONS.values()
+            if c.set_id == self.hunt_set_id and c.card_id not in owned
+        ]
+        hunt_name = SET_LABELS[self.hunt_set_id] if self.hunt_set_id in SET_LABELS else self.hunt_set_id
+        if holes:
+            hunt_value = ", ".join(f"{c.emoji} {c.name}" for c in holes)
+        else:
+            hunt_value = "Complete — nothing missing."
         embed = branded_embed(
             panel_title("GoonCards Collection"),
             description="\n".join(lines),
@@ -630,12 +685,11 @@ class CardsHubView(discord.ui.View):
             ),
             inline=False,
         )
-        if missing:
-            embed.add_field(
-                name="Still hunting",
-                value=", ".join(f"{c.emoji} {c.name}" for c in missing),
-                inline=False,
-            )
+        embed.add_field(
+            name=f"Still hunting · {hunt_name}",
+            value=hunt_value[:1024],
+            inline=False,
+        )
         if note:
             embed.add_field(name="Update", value=note, inline=False)
         return embed

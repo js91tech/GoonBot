@@ -1,10 +1,13 @@
 """Profile hub — the /profile launcher menu into the other game panels."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import io
+from typing import TYPE_CHECKING, Any
 
 import discord
 
+from utils.card_canvas import render_card_png
+from utils.cards import card_by_id
 from utils.energy import energy_bar, energy_snapshot
 from utils.goon_session import format_session_block
 from utils.goon_theme import FOOTER_BRAND, branded_embed, panel_title
@@ -45,7 +48,9 @@ async def _gather_profile_summary(db: Database, user_id: int, guild_id: int) -> 
     }
 
 
-def build_profile_hub_embed(member: discord.Member, summary: dict) -> discord.Embed:
+def build_profile_hub_embed(
+    member: discord.Member, summary: dict, *, favorite: Any | None = None,
+) -> discord.Embed:
     from utils.classes import get_class
     from utils.heat import format_heat_line, gambling_max_bet, heat_tier_for_spend
     from utils.persona_floors import persona_floor_blurb
@@ -92,8 +97,36 @@ def build_profile_hub_embed(member: discord.Member, summary: dict) -> discord.Em
     session = summary.get("goon_session")
     if session is not None:
         embed.add_field(name="Goon session", value=format_session_block(session), inline=False)
+    if favorite is not None:
+        defn = card_by_id(str(favorite["card_id"]))
+        name = defn.name if defn else str(favorite["card_id"])
+        emoji = defn.emoji if defn else "🃏"
+        embed.add_field(
+            name="Favorite GoonCard",
+            value=f"{emoji} **{name}** #{int(favorite['print_number']):04d}",
+            inline=False,
+        )
     embed.set_footer(text=f"{FOOTER_BRAND} · /stats for full combat breakdown")
     return embed
+
+
+async def build_profile_hub_payload(
+    db: Database,
+    member: discord.Member,
+    guild_id: int,
+    user_id: int,
+) -> tuple[discord.Embed, discord.File | None]:
+    summary = await _gather_profile_summary(db, user_id, guild_id)
+    favorite = await db.get_favorite_card(user_id, guild_id)
+    embed = build_profile_hub_embed(member, summary, favorite=favorite)
+    file: discord.File | None = None
+    if favorite is not None:
+        defn = card_by_id(str(favorite["card_id"]))
+        if defn is not None:
+            png = render_card_png(defn, print_number=int(favorite["print_number"]))
+            file = discord.File(io.BytesIO(png), filename="favorite.png")
+            embed.set_image(url="attachment://favorite.png")
+    return embed, file
 
 
 class ProfileHubView(discord.ui.View):
@@ -266,9 +299,15 @@ class ProfileHubView(discord.ui.View):
         if not isinstance(member, discord.Member):
             await interaction.response.send_message("Refreshed.", ephemeral=True)
             return
-        summary = await _gather_profile_summary(self.cog.bot.db, self.user_id, self.guild_id)
-        embed = build_profile_hub_embed(member, summary)
-        await interaction.response.edit_message(content=None, embed=embed, view=self)
+        embed, file = await build_profile_hub_payload(
+            self.cog.bot.db, member, self.guild_id, self.user_id,
+        )
+        await interaction.response.edit_message(
+            content=None,
+            embed=embed,
+            view=self,
+            attachments=[file] if file is not None else [],
+        )
 
     @discord.ui.button(label="Session", style=discord.ButtonStyle.primary, row=2)
     async def session_btn(
@@ -315,29 +354,35 @@ class ProfileHubView(discord.ui.View):
         if not isinstance(member, discord.Member):
             await interaction.response.send_message("Guild only.", ephemeral=True)
             return
-        summary = await _gather_profile_summary(self.cog.bot.db, self.user_id, self.guild_id)
-        embed = build_profile_hub_embed(member, summary)
+        spent = await self.cog.bot.db.get_goonbux_spent(self.user_id, self.guild_id)
+        embed, file = await build_profile_hub_payload(
+            self.cog.bot.db, member, self.guild_id, self.user_id,
+        )
+        attachments = [file] if file is not None else []
         if err == "max_tier":
             await interaction.response.edit_message(
                 content="You're already **Booth** heat — top of the house.",
                 embed=embed,
                 view=self,
+                attachments=attachments,
             )
             return
         if err == "insufficient_funds":
-            nxt = next_heat_tier(float(summary.get("goonbux_spent", 0.0)))
-            need = nxt.spend_needed - float(summary.get("goonbux_spent", 0.0)) if nxt else 0
+            nxt = next_heat_tier(float(spent))
+            need = nxt.spend_needed - float(spent) if nxt else 0
             await interaction.response.edit_message(
                 content=f"Need **{fmt_amount(need)}** in pocket to buy the next heat tier.",
                 embed=embed,
                 view=self,
+                attachments=attachments,
             )
             return
-        tier = heat_tier_for_spend(float(summary.get("goonbux_spent", 0.0)))
+        tier = heat_tier_for_spend(float(spent))
         await interaction.response.edit_message(
             content=f"Paid **{fmt_amount(cost)}** — heat is now **{tier.name}**.",
             embed=embed,
             view=self,
+            attachments=attachments,
         )
 
 
@@ -350,8 +395,10 @@ async def send_profile_hub(
         await interaction.response.send_message(guild_only_message(), ephemeral=True)
         return
     guild_id = interaction.guild_id
-    summary = await _gather_profile_summary(cog.bot.db, target_member.id, guild_id)
-    embed = build_profile_hub_embed(target_member, summary)
+    embed, file = await build_profile_hub_payload(
+        cog.bot.db, target_member, guild_id, target_member.id,
+    )
+    files = [file] if file is not None else []
 
     view: ProfileHubView | None = None
     if target_member.id == interaction.user.id:
@@ -362,6 +409,6 @@ async def send_profile_hub(
         )
 
     if interaction.response.is_done():
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(embed=embed, view=view, files=files, ephemeral=True)
     else:
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=view, files=files, ephemeral=True)

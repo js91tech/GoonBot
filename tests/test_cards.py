@@ -35,6 +35,7 @@ from utils.cards import (
     cards_for_rarity,
     cards_for_set,
     format_card_drop,
+    format_pack_odds,
     npc_sell_value,
     rarity_counts,
     roll_card_prefer_unowned,
@@ -137,6 +138,23 @@ class CardCatalogTests(unittest.TestCase):
         self.assertIn("#0007", line)
         self.assertIn("15,000", line)
 
+    def test_format_card_drop_marks_new_and_duplicate(self) -> None:
+        fresh = format_card_drop(
+            {"card_id": "card_hostess", "print_number": 1, "new_unique": True},
+        )
+        self.assertIn("**NEW**", fresh)
+        self.assertNotIn("duplicate", fresh)
+        dupe = format_card_drop(
+            {"card_id": "card_hostess", "print_number": 2, "new_unique": False},
+        )
+        self.assertIn("duplicate", dupe)
+        self.assertNotIn("**NEW**", dupe)
+
+    def test_format_pack_odds_lists_rarities(self) -> None:
+        odds = format_pack_odds()
+        self.assertIn("Common 55%", odds)
+        self.assertIn("Mythic 0.2%", odds)
+
     def test_public_card_payload_attaches_portrait(self) -> None:
         card = card_by_id("card_hostess")
         assert card is not None
@@ -148,6 +166,18 @@ class CardCatalogTests(unittest.TestCase):
         self.assertEqual(embed.image.url, "attachment://card.png")
         self.assertIn("Lounge Hostess", embed.description or "")
         self.assertIn("#0007", embed.description or "")
+        file.close()
+
+    def test_public_card_payload_marks_new_unique(self) -> None:
+        card = card_by_id("card_hostess")
+        assert card is not None
+        embed, file, _name = build_card_event_payload(
+            title="Free pull",
+            cards=[card],
+            prints=[7],
+            granted_rows=[{"card_id": "card_hostess", "print_number": 7, "new_unique": True}],
+        )
+        self.assertIn("**NEW**", embed.description or "")
         file.close()
 
     def test_public_pack_payload_uses_pack_sheet(self) -> None:
@@ -485,21 +515,40 @@ class CardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(int(inst["user_id"]), self.user_b)
         pot = await self.db.get_house_pot(self.guild_id)
         self.assertGreater(pot, 0)
+        self.assertTrue(result["new_unique"])
 
     async def test_sell_extras_keeps_one(self) -> None:
         for _ in range(3):
             await self.db.grant_card(self.user_a, self.guild_id, "card_edge")
+        preview = await self.db.preview_extra_copies_to_npc(
+            self.user_a, self.guild_id, sell_mult=0.5,
+        )
+        self.assertEqual(preview["sold"], 2)
+        self.assertGreater(preview["payout"], 0)
         result = await self.db.sell_extra_copies_to_npc(
             self.user_a, self.guild_id, sell_mult=0.5,
         )
         self.assertEqual(result["sold"], 2)
+        self.assertEqual(result["payout"], preview["payout"])
         total, unique = await self.db.count_owned_cards(self.user_a, self.guild_id)
         self.assertEqual(total, 1)
         self.assertEqual(unique, 1)
+        self.assertEqual(
+            await self.db.count_owned_copies(self.user_a, self.guild_id, "card_edge"),
+            1,
+        )
 
     async def test_pull_cooldown(self) -> None:
+        self.assertEqual(
+            await self.db.card_pull_remaining(self.user_a, self.guild_id, now=1_000.0),
+            0.0,
+        )
         first = await self.db.try_card_pull(self.user_a, self.guild_id, now=1_000.0)
         self.assertIsNone(first["error"])
+        remaining = await self.db.card_pull_remaining(
+            self.user_a, self.guild_id, now=1_010.0,
+        )
+        self.assertGreater(remaining, 0)
         second = await self.db.try_card_pull(self.user_a, self.guild_id, now=1_010.0)
         self.assertEqual(second["error"], "cooldown")
 

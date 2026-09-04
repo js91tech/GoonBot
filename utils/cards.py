@@ -1207,16 +1207,48 @@ def roll_card_prefer_unowned(
     return roll_card(rng)
 
 
-def format_card_drop(granted: dict, *, prefix: str = "GoonCard") -> str:
+def card_copy_tag(granted: dict | None) -> str:
+    """NEW / duplicate when the grant row recorded dex status."""
+    if not granted or "new_unique" not in granted:
+        return ""
+    return "NEW" if granted.get("new_unique") else "duplicate"
+
+
+def format_card_line(granted: dict, *, prefix: str | None = None) -> str:
     defn = card_by_id(str(granted.get("card_id") or ""))
     name = defn.name if defn else str(granted.get("card_id") or "card")
     emoji = defn.emoji if defn else "🃏"
+    rarity = defn.rarity_label if defn else ""
     print_number = int(granted.get("print_number") or 0)
-    line = f"{emoji} {prefix}: **{name}** #{print_number:04d}"
+    parts = [f"{emoji} **{name}**"]
+    if prefix:
+        parts = [f"{emoji} {prefix}: **{name}**"]
+    elif rarity:
+        parts.append(rarity)
+    parts.append(f"#{print_number:04d}")
+    tag = card_copy_tag(granted)
+    if tag == "NEW":
+        parts.append("**NEW**")
+    elif tag:
+        parts.append("duplicate")
+    return " · ".join(parts)
+
+
+def format_card_drop(granted: dict, *, prefix: str = "GoonCard") -> str:
+    line = format_card_line(granted, prefix=prefix)
     reward = float(granted.get("set_reward") or 0)
     if granted.get("set_complete") and reward > 0:
         line += f" · set complete **{reward:,.0f}** goonbux"
     return line
+
+
+def format_pack_odds() -> str:
+    chunks: list[str] = []
+    for rarity in RARITY_ORDER:
+        pct = PACK_WEIGHTS[rarity] * 100.0
+        shown = f"{pct:.0f}%" if abs(pct - round(pct)) < 0.05 else f"{pct:.1f}%"
+        chunks.append(f"{RARITY_LABELS[rarity]} {shown}")
+    return " · ".join(chunks)
 
 
 def roll_pack(size: int, rng: random.Random | None = None) -> list[CardDefinition]:

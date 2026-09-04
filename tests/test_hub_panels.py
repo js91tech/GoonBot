@@ -196,6 +196,39 @@ class CardsHubTests(unittest.IsolatedAsyncioTestCase):
             await view.build_payload()
             _assert_respects_discord_row_limits(self, view)
 
+        from utils.cards_hub_ui import CollectionHuntSelect
+
+        hunt = CollectionHuntSelect("encore")
+        self.assertEqual(len(hunt.options), len(SET_ORDER))
+        view = CardsHubView(self.cog, self.guild_id, self.user_id, tab="collection")
+        embed, _att = await view.build_payload()
+        hunt_fields = [f for f in embed.fields if f.name and f.name.startswith("Still hunting")]
+        self.assertEqual(len(hunt_fields), 1)
+
+    def test_profile_embed_lists_favorite(self) -> None:
+        from types import SimpleNamespace
+
+        from utils.profile_hub_ui import build_profile_hub_embed
+
+        member = SimpleNamespace(
+            display_name="Pat",
+            display_avatar=SimpleNamespace(url="https://example.com/a.png"),
+        )
+        embed = build_profile_hub_embed(
+            member,  # type: ignore[arg-type]
+            {
+                "wallet": 0.0,
+                "bank": 0.0,
+                "energy_current": 0,
+                "energy_cap": 10,
+                "class_id": None,
+                "goonbux_spent": 0.0,
+                "goon_session": None,
+            },
+            favorite={"card_id": "card_vault_bunny", "print_number": 3},
+        )
+        self.assertIn("Favorite GoonCard", [field.name for field in embed.fields])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -403,6 +403,37 @@ class DatabaseCardsMixin:
             return 0, 0
         return int(row["n"]), int(row["unique_n"])
 
+    async def count_owned_copies(
+        self, user_id: int, guild_id: int, card_id: str,
+    ) -> int:
+        cursor = await self.conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM card_instances
+            WHERE guild_id = ? AND user_id = ? AND card_id = ?
+            """,
+            (guild_id, user_id, card_id),
+        )
+        row = await cursor.fetchone()
+        return int(row["n"]) if row is not None else 0
+
+    async def card_pull_remaining(
+        self, user_id: int, guild_id: int, *, now: float | None = None,
+    ) -> float:
+        cooldown = float(await self.get_config_value(guild_id, "card_pull_cooldown_seconds"))
+        stamp = now if now is not None else time.time()
+        cursor = await self.conn.execute(
+            """
+            SELECT last_pull_at FROM card_pull_cooldown
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        last = float(row["last_pull_at"]) if row is not None else 0.0
+        if last <= 0:
+            return 0.0
+        return max(0.0, (last + cooldown) - stamp)
+
     async def collection_owned_ids(self, user_id: int, guild_id: int) -> set[str]:
         cursor = await self.conn.execute(
             """
@@ -509,11 +540,10 @@ class DatabaseCardsMixin:
             await self.conn.commit()
         return {"error": None, "sold": len(sold_ids), "payout": payout, "instance_ids": sold_ids}
 
-    async def sell_extra_copies_to_npc(
-        self, user_id: int, guild_id: int, *, sell_mult: float,
-    ) -> dict[str, Any]:
-        grouped = await self.binder_grouped(user_id, guild_id)
-        extras: list[int] = []
+    def _extra_copies_from_grouped(
+        self, grouped: list[dict[str, Any]],
+    ) -> list[tuple[int, str]]:
+        extras: list[tuple[int, str]] = []
         for bucket in grouped:
             available_rows = [
                 inst for inst in bucket["instances"]
@@ -523,9 +553,30 @@ class DatabaseCardsMixin:
             if len(available_rows) <= 1:
                 continue
             keep = min(available_rows, key=lambda r: int(r["print_number"]))
+            keep_id = int(keep["instance_id"])
+            card_id = str(bucket["card_id"])
             for inst in available_rows:
-                if int(inst["instance_id"]) != int(keep["instance_id"]):
-                    extras.append(int(inst["instance_id"]))
+                if int(inst["instance_id"]) != keep_id:
+                    extras.append((int(inst["instance_id"]), card_id))
+        return extras
+
+    async def preview_extra_copies_to_npc(
+        self, user_id: int, guild_id: int, *, sell_mult: float,
+    ) -> dict[str, Any]:
+        grouped = await self.binder_grouped(user_id, guild_id)
+        extras = self._extra_copies_from_grouped(grouped)
+        payout = 0.0
+        for _instance_id, card_id in extras:
+            defn = card_by_id(card_id)
+            if defn is not None:
+                payout += npc_sell_value(defn, sell_mult)
+        return {"sold": len(extras), "payout": payout}
+
+    async def sell_extra_copies_to_npc(
+        self, user_id: int, guild_id: int, *, sell_mult: float,
+    ) -> dict[str, Any]:
+        grouped = await self.binder_grouped(user_id, guild_id)
+        extras = [iid for iid, _card_id in self._extra_copies_from_grouped(grouped)]
         return await self.sell_instances_to_npc(
             user_id, guild_id, extras, sell_mult=sell_mult,
         )
@@ -674,6 +725,8 @@ class DatabaseCardsMixin:
             tax = max(0.0, price * tax_rate)
             proceeds = price - tax
             unique_before = await self._unique_card_count_no_lock(user_id, guild_id)
+            buyer_owned = await self._owned_card_ids_no_lock(user_id, guild_id)
+            new_unique = str(listing["card_id"]) not in buyer_owned
             await self.conn.execute(
                 "UPDATE users SET wallet = wallet - ? WHERE user_id = ? AND guild_id = ?",
                 (price, user_id, guild_id),
@@ -729,6 +782,7 @@ class DatabaseCardsMixin:
             "instance_id": instance_id,
             "card_id": str(listing["card_id"]),
             "print_number": int(listing["print_number"]),
+            "new_unique": new_unique,
         }
 
     async def _debit_for_cards_no_lock(
