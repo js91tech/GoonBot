@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
+from utils.card_announce import announce_granted_cards, interaction_channel
 from utils.card_canvas import (
     BINDER_PER_PAGE,
     render_binder_page,
@@ -369,6 +370,14 @@ class CardsHubView(discord.ui.View):
             self.add_item(CardsTabSelect(self.tab))
             self._add_pack_buttons()
             await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
+            await announce_granted_cards(
+                self.cog.bot,
+                interaction_channel(interaction),
+                user=interaction.user,
+                granted_rows=granted,
+                title="Pack opened",
+                content=f"{interaction.user.mention} opened a GoonCards pack.",
+            )
 
         async def pull_cb(interaction: discord.Interaction) -> None:
             result = await self.cog.bot.db.try_card_pull(self.user_id, self.guild_id)
@@ -400,6 +409,14 @@ class CardsHubView(discord.ui.View):
             self.add_item(CardsTabSelect(self.tab))
             self._add_pack_buttons()
             await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
+            await announce_granted_cards(
+                self.cog.bot,
+                interaction_channel(interaction),
+                user=interaction.user,
+                granted_rows=[granted],
+                title="Free pull",
+                content=f"{interaction.user.mention} hit a free GoonCards pull.",
+            )
 
         buy_btn.callback = buy_cb
         pull_btn.callback = pull_cb
@@ -434,6 +451,18 @@ class CardsHubView(discord.ui.View):
                 f"for {fmt_amount(float(result['total']))}."
             )
             await self.refresh(interaction)
+            await announce_granted_cards(
+                self.cog.bot,
+                interaction_channel(interaction),
+                user=interaction.user,
+                granted_rows=[result],
+                title="Market buy",
+                content=(
+                    f"{interaction.user.mention} bought **{name}** "
+                    f"#{int(result['print_number']):04d} "
+                    f"for {fmt_amount(float(result['total']))}."
+                ),
+            )
 
         async def cancel_cb(interaction: discord.Interaction) -> None:
             if self.selected_listing_id is None:

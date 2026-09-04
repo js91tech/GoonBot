@@ -12,6 +12,7 @@ from discord.ext import commands, tasks
 import config
 from utils.bot_players import pvp_target_error, skip_passive_bot
 from utils.bot_room import send_bot_room_message
+from utils.card_announce import announce_granted_cards, interaction_channel
 from utils.helpers import fmt_amount, guild_only_message, resolve_main_channel, valid_amount
 from utils.quests import record_quest_event
 
@@ -316,6 +317,15 @@ class Economy(commands.Cog):
             f"You claimed {fmt_amount(remaining.reward)}.{bonus_note}{streak_note}{edge_note}{card_note}",
             ephemeral=True,
         )
+        if granted is not None:
+            await announce_granted_cards(
+                self.bot,
+                interaction_channel(interaction),
+                user=interaction.user,
+                granted_rows=[granted],
+                title="Daily GoonCard",
+                content=f"{interaction.user.mention} pulled a daily GoonCard.",
+            )
         await record_quest_event(
             self.bot.db,
             interaction.guild_id,
