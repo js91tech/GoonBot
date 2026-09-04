@@ -30,6 +30,7 @@ from utils.goon_group import (
     round_body,
     velvet_favor_claim_copy,
 )
+from utils.card_announce import build_card_event_payload, cards_from_granted
 from utils.cards import format_card_drop
 from utils.goon_session import (
     format_session_block,
@@ -473,12 +474,20 @@ class Goon(commands.Cog):
         line = format_card_drop(granted, prefix="Session GoonCard")
         content = f"{member.mention} {line} — first **{slots}** on the floor."
         channel = self._session_channel(member, state)
-        await send_channel_message(
-            self.bot,
-            channel,
-            content,
-            allowed_mentions=discord.AllowedMentions(users=True, roles=False),
-        )
+        cards, prints = cards_from_granted([granted])
+        send_kwargs: dict[str, object] = {
+            "allowed_mentions": discord.AllowedMentions(users=True, roles=False),
+        }
+        if cards:
+            embed, art, _name = build_card_event_payload(
+                title="Session GoonCard",
+                cards=cards,
+                prints=prints,
+                granted=granted,
+            )
+            send_kwargs["embed"] = embed
+            send_kwargs["file"] = art
+        await send_channel_message(self.bot, channel, content, **send_kwargs)
 
     async def _join_round(
         self, member: discord.Member, state: GroupCallState, *, late: bool,

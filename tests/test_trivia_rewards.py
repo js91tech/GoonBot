@@ -92,7 +92,7 @@ class TriviaPayoutTests(unittest.IsolatedAsyncioTestCase):
         await self.db.credit_house_pot(42, 10_000.0)
         before = await self.db.get_house_pot(42)
         with mock.patch("cogs.trivia.random.random", return_value=1.0):
-            text = await self.cog._reward_correct_answer(
+            text, granted = await self.cog._reward_correct_answer(
                 guild,  # type: ignore[arg-type]
                 user,  # type: ignore[arg-type]
                 "test",
@@ -110,7 +110,7 @@ class TriviaPayoutTests(unittest.IsolatedAsyncioTestCase):
         user = SimpleNamespace(id=7, mention="<@7>")
         await self.db.ensure_user(7, 42)
         with mock.patch("cogs.trivia.random.random", return_value=1.0):
-            text = await self.cog._reward_correct_answer(
+            text, granted = await self.cog._reward_correct_answer(
                 guild,  # type: ignore[arg-type]
                 user,  # type: ignore[arg-type]
                 "test",
@@ -121,6 +121,38 @@ class TriviaPayoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 1)
         self.assertEqual(unique, 1)
         self.assertIn("Trivia GoonCard", text)
+        self.assertIsNotNone(granted)
+        self.assertIn("card_id", granted)
+
+    async def test_announce_trivia_win_posts_card_art(self) -> None:
+        user = SimpleNamespace(id=7, mention="<@7>")
+        granted = {"card_id": "card_hostess", "print_number": 4}
+        channel = mock.MagicMock()
+        with mock.patch(
+            "cogs.trivia.announce_granted_cards",
+            new_callable=mock.AsyncMock,
+            return_value=mock.MagicMock(),
+        ) as announce:
+            await self.cog._announce_trivia_win(
+                channel, user, "<@7> got it. Trivia GoonCard", granted,  # type: ignore[arg-type]
+            )
+        announce.assert_awaited_once()
+        self.assertEqual(announce.await_args.kwargs["title"], "Trivia GoonCard")
+        self.assertIn("Trivia GoonCard", announce.await_args.kwargs["content"])
+        self.assertEqual(announce.await_args.kwargs["granted_rows"], [granted])
+
+    async def test_announce_trivia_win_without_card_is_still_public(self) -> None:
+        user = SimpleNamespace(id=7, mention="<@7>")
+        channel = mock.MagicMock()
+        with mock.patch(
+            "cogs.trivia.send_channel_message",
+            new_callable=mock.AsyncMock,
+        ) as send:
+            await self.cog._announce_trivia_win(channel, user, "<@7> got it.", None)  # type: ignore[arg-type]
+        send.assert_awaited_once()
+        self.assertEqual(send.await_args.kwargs["content"], "<@7> got it.")
+        mentions = send.await_args.kwargs["allowed_mentions"]
+        self.assertTrue(mentions.users)
 
     async def test_stale_round_id_rejected(self) -> None:
         self.cog.active_rounds[99] = TriviaRound(

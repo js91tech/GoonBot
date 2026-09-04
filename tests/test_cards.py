@@ -6,7 +6,8 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 
@@ -20,6 +21,11 @@ from utils.card_canvas import (
     render_pack_reveal,
     render_procedural_portrait,
     write_procedural_portrait,
+)
+from utils.card_announce import (
+    announce_granted_cards,
+    build_card_event_payload,
+    cards_from_granted,
 )
 from utils.cards import (
     CARD_DEFINITIONS,
@@ -131,6 +137,44 @@ class CardCatalogTests(unittest.TestCase):
         self.assertIn("#0007", line)
         self.assertIn("15,000", line)
 
+    def test_public_card_payload_attaches_portrait(self) -> None:
+        card = card_by_id("card_hostess")
+        assert card is not None
+        embed, file, name = build_card_event_payload(
+            title="Free pull", cards=[card], prints=[7],
+        )
+        self.assertEqual(name, "card.png")
+        self.assertEqual(file.filename, "card.png")
+        self.assertEqual(embed.image.url, "attachment://card.png")
+        self.assertIn("Lounge Hostess", embed.description or "")
+        self.assertIn("#0007", embed.description or "")
+        file.close()
+
+    def test_public_pack_payload_uses_pack_sheet(self) -> None:
+        hostess = card_by_id("card_hostess")
+        edge = card_by_id("card_edge")
+        assert hostess is not None and edge is not None
+        embed, file, name = build_card_event_payload(
+            title="Pack opened",
+            cards=[hostess, edge],
+            prints=[1, 2],
+        )
+        self.assertEqual(name, "pack.png")
+        self.assertEqual(embed.image.url, "attachment://pack.png")
+        self.assertIn("Lounge Hostess", embed.description or "")
+        self.assertIn("On the Edge", embed.description or "")
+        file.close()
+
+    def test_cards_from_granted_skips_unknown(self) -> None:
+        cards, prints = cards_from_granted(
+            [
+                {"card_id": "card_hostess", "print_number": 3},
+                {"card_id": "not_a_card", "print_number": 1},
+            ]
+        )
+        self.assertEqual([c.card_id for c in cards], ["card_hostess"])
+        self.assertEqual(prints, [3])
+
     def test_npc_value_scales(self) -> None:
         card = next(c for c in CARD_DEFINITIONS.values() if c.rarity == "common")
         self.assertGreater(npc_sell_value(card, 0.5), 0)
@@ -139,6 +183,28 @@ class CardCatalogTests(unittest.TestCase):
         for card in CARD_DEFINITIONS.values():
             self.assertIn("portrait bust", card.portrait_prompt)
             self.assertIn("no watermark", card.portrait_prompt)
+
+
+class CardAnnounceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_announce_posts_to_channel_not_ephemeral(self) -> None:
+        user = SimpleNamespace(id=1, mention="<@1>")
+        with patch("utils.card_announce.send_channel_message", new_callable=AsyncMock) as send:
+            send.return_value = object()
+            await announce_granted_cards(
+                SimpleNamespace(),
+                object(),
+                user=user,  # type: ignore[arg-type]
+                granted_rows=[{"card_id": "card_hostess", "print_number": 1}],
+                title="Pack opened",
+                content="<@1> opened a GoonCards pack.",
+            )
+        send.assert_awaited_once()
+        kwargs = send.await_args.kwargs
+        self.assertIn("embed", kwargs)
+        self.assertIn("file", kwargs)
+        self.assertNotIn("ephemeral", kwargs)
+        self.assertTrue(kwargs["allowed_mentions"].users)
+        kwargs["file"].close()
 
 
 class CardCanvasTests(unittest.TestCase):
