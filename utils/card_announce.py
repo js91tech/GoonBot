@@ -8,7 +8,7 @@ import discord
 
 from utils.bot_room import send_channel_message
 from utils.card_canvas import render_card_png, render_pack_reveal
-from utils.cards import CardDefinition, card_by_id, format_card_drop
+from utils.cards import CardDefinition, card_by_id, format_card_drop, format_card_line
 from utils.goon_theme import branded_embed, panel_title
 
 _USER_MENTIONS = discord.AllowedMentions(users=True, roles=False)
@@ -33,16 +33,30 @@ def build_card_event_payload(
     prints: Sequence[int],
     extra: str = "",
     granted: dict[str, Any] | None = None,
+    granted_rows: Sequence[dict[str, Any]] | None = None,
 ) -> tuple[discord.Embed, discord.File, str]:
     """Return embed + attachment for a public card drop. Testable without Discord I/O."""
     if not cards:
         raise ValueError("cards is empty")
-    lines = [
-        f"{card.emoji} **{card.name}** · {card.rarity_label} · #{int(prints[i] if i < len(prints) else 0):04d}"
-        for i, card in enumerate(cards)
-    ]
-    if granted and granted.get("set_complete"):
-        drop = format_card_drop(granted)
+    rows = list(granted_rows or ())
+    lines: list[str] = []
+    for i, card in enumerate(cards):
+        print_n = int(prints[i] if i < len(prints) else 0)
+        row = rows[i] if i < len(rows) else granted
+        if row:
+            payload = {
+                **row,
+                "card_id": row.get("card_id") or card.card_id,
+                "print_number": int(row.get("print_number") or print_n),
+            }
+            lines.append(format_card_line(payload))
+        else:
+            lines.append(
+                f"{card.emoji} **{card.name}** · {card.rarity_label} · #{print_n:04d}"
+            )
+    set_row = granted or next((row for row in rows if row.get("set_complete")), None)
+    if set_row and set_row.get("set_complete"):
+        drop = format_card_drop(set_row)
         if "set complete" in drop:
             lines.append(drop[drop.index("set complete"):])
     description = "\n".join(lines)
@@ -80,6 +94,7 @@ async def announce_card_event(
         prints=prints,
         extra=extra,
         granted=granted,
+        granted_rows=(granted,) if granted else None,
     )
     body = content if content is not None else f"{user.mention} pulled **{title}**."
     return await send_channel_message(
@@ -106,16 +121,22 @@ async def announce_granted_cards(
     if not cards:
         return None
     set_row = next((row for row in granted_rows if row.get("set_complete")), None)
-    return await announce_card_event(
-        bot,
-        channel,
-        user=user,
+    embed, file, _filename = build_card_event_payload(
         title=title,
         cards=cards,
         prints=prints,
-        content=content,
         extra=extra,
         granted=set_row,
+        granted_rows=granted_rows,
+    )
+    body = content if content is not None else f"{user.mention} pulled **{title}**."
+    return await send_channel_message(
+        bot,
+        channel,
+        body,
+        embed=embed,
+        file=file,
+        allowed_mentions=_USER_MENTIONS,
     )
 
 
