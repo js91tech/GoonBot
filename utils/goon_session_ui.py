@@ -29,7 +29,7 @@ async def build_goon_session_embed(db: Database, member: discord.Member, guild_i
             "`/goon edge` · `/goon finish` · `/goon ruin` · `/goon tease` · `/goon dare`\n"
             f"Tease costs **{fmt_amount(config.GOON_TEASE_COST)}** (Hosts cheaper). "
             "Chat, VC, jobs, and `/daily` also fill the meter. "
-            "Every 145 minutes the main chat asks if you're ready (Velvet art attached) — first yes gets kisses or head from Velvet, then a group round."
+            "Every 145 minutes the main chat asks if you're ready (Velvet art attached) — first yes gets kisses or head from Velvet, then a group round. First two joiners each get a GoonCard."
         ),
         inline=False,
     )

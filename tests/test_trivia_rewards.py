@@ -105,6 +105,23 @@ class TriviaPayoutTests(unittest.IsolatedAsyncioTestCase):
         wallet = await self.db.get_balance(7, 42)
         self.assertGreater(wallet, 0)
 
+    async def test_reward_drops_a_gooncard(self) -> None:
+        guild = SimpleNamespace(id=42)
+        user = SimpleNamespace(id=7, mention="<@7>")
+        await self.db.ensure_user(7, 42)
+        with mock.patch("cogs.trivia.random.random", return_value=1.0):
+            text = await self.cog._reward_correct_answer(
+                guild,  # type: ignore[arg-type]
+                user,  # type: ignore[arg-type]
+                "test",
+                expires_at=9999999999.0,
+                started_at=0.0,
+            )
+        count, unique = await self.db.count_owned_cards(7, 42)
+        self.assertEqual(count, 1)
+        self.assertEqual(unique, 1)
+        self.assertIn("Trivia GoonCard", text)
+
     async def test_stale_round_id_rejected(self) -> None:
         self.cog.active_rounds[99] = TriviaRound(
             round_id="abc",

@@ -30,6 +30,7 @@ from utils.goon_group import (
     round_body,
     velvet_favor_claim_copy,
 )
+from utils.cards import format_card_drop
 from utils.goon_session import (
     format_session_block,
     is_group_goon_chat_claim,
@@ -423,6 +424,7 @@ class Goon(commands.Cog):
         await self._persist(state)
         await edit_call_message(state, content=round_body(state), view=self.round_view)
         await self._send_velvet_favor(member, state)
+        await self._maybe_grant_session_card(member, state)
         return None
 
     async def _send_velvet_favor(self, member: discord.Member, state: GroupCallState) -> None:
@@ -449,6 +451,34 @@ class Goon(commands.Cog):
                 state.guild_id,
                 state.channel_id,
             )
+
+    def _session_channel(self, member: discord.Member, state: GroupCallState):
+        if state.message is not None:
+            return state.message.channel
+        guild = getattr(member, "guild", None)
+        getter = getattr(guild, "get_channel", None) if guild is not None else None
+        return getter(state.channel_id) if getter is not None else None
+
+    async def _maybe_grant_session_card(
+        self, member: discord.Member, state: GroupCallState,
+    ) -> None:
+        slots = int(await self.bot.db.get_config_value(
+            state.guild_id, "card_session_join_slots",
+        ))
+        if slots <= 0 or len(state.joiners) > slots:
+            return
+        granted = await self.bot.db.grant_engagement_card(member.id, state.guild_id)
+        if not granted:
+            return
+        line = format_card_drop(granted, prefix="Session GoonCard")
+        content = f"{member.mention} {line} — first **{slots}** on the floor."
+        channel = self._session_channel(member, state)
+        await send_channel_message(
+            self.bot,
+            channel,
+            content,
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False),
+        )
 
     async def _join_round(
         self, member: discord.Member, state: GroupCallState, *, late: bool,
@@ -497,6 +527,7 @@ class Goon(commands.Cog):
         )
         await self._persist(state)
         await edit_call_message(state, content=round_body(state), view=self.round_view)
+        await self._maybe_grant_session_card(member, state)
         return None
 
     async def _expire_call(self, state: GroupCallState) -> None:

@@ -93,6 +93,9 @@ CARD_MARKET_TAX = 0.05
 CARD_NPC_SELL_MULT = 0.50
 CARD_DAILY_DROP_CHANCE = 0.08
 CARD_BOSS_DROP_CHANCE = 0.12
+CARD_SESSION_JOIN_SLOTS = 2
+CARD_TRIVIA_DROP = 1.0
+CARD_SET_COMPLETE_REWARD = 15_000.0
 
 # DM reminders are off. GoonBot must not DM players unless this is explicitly re-enabled.
 DM_NOTIFICATIONS_ENABLED = os.getenv("DM_NOTIFICATIONS_ENABLED", "").strip().lower() in {
@@ -1299,6 +1302,23 @@ LIVE_SETTINGS: dict[str, LiveSetting] = {
         CARD_BOSS_DROP_CHANCE,
         "Chance each boss contributor gets a GoonCard",
         maximum=1.0,
+    ),
+    "card_session_join_slots": LiveSetting(
+        CARD_SESSION_JOIN_SLOTS,
+        "First N group-session joiners each get a GoonCard",
+        minimum=0,
+        maximum=10,
+        integer=True,
+    ),
+    "card_trivia_drop": LiveSetting(
+        CARD_TRIVIA_DROP,
+        "Chance a correct trivia answer drops a GoonCard (1 = always)",
+        maximum=1.0,
+    ),
+    "card_set_complete_reward": LiveSetting(
+        CARD_SET_COMPLETE_REWARD,
+        "Goonbux paid the first time a player finishes a GoonCards set",
+        minimum=0.0,
     ),
 }
 

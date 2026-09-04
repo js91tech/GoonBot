@@ -19,6 +19,7 @@ from utils.bot_room import (
     resolve_lore_channel,
     send_channel_message,
 )
+from utils.cards import format_card_drop
 from utils.drugs import DRUGS, drug_by_id
 from utils.helpers import fmt_amount, guild_only_message
 
@@ -427,11 +428,18 @@ class Trivia(commands.Cog):
                 await self.bot.db.grant_drug_units(user.id, guild.id, defn.drug_id, 1)
                 drug_note = f" Bonus stash drop: {defn.emoji} **1× {defn.name}**!"
 
+        card_note = ""
+        chance = float(await self.bot.db.get_config_value(guild.id, "card_trivia_drop"))
+        if chance >= 1.0 or (chance > 0 and random.random() < chance):
+            granted = await self.bot.db.grant_engagement_card(user.id, guild.id)
+            if granted:
+                card_note = " " + format_card_drop(granted, prefix="Trivia GoonCard")
+
         elapsed = max(0.0, now - started_at)
         return (
             f"{user.mention} got it in **{elapsed:.1f}s**! "
             f"The answer was `{answer}`. "
-            f"Prize: {fmt_amount(paid)} ({speed_mult:.2f}× speed bonus).{drug_note}"
+            f"Prize: {fmt_amount(paid)} ({speed_mult:.2f}× speed bonus).{drug_note}{card_note}"
         )
 
     async def _claim_round(

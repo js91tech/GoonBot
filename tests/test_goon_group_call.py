@@ -69,6 +69,8 @@ class GroupCallHelperTests(unittest.TestCase):
         self.assertIn("8,000", call_body(paid))
         self.assertIn("kisses from Velvet", call_body(paid))
         self.assertIn("go down on you", call_body(paid))
+        self.assertIn("first two", call_body(paid).lower())
+        self.assertIn("GoonCard", call_body(paid))
         self.assertNotIn("Condoms", call_body(paid))
         self.assertNotIn("Condoms", call_body(free))
         self.assertIn("kisses from Velvet", call_body(free))
@@ -80,6 +82,7 @@ class GroupCallHelperTests(unittest.TestCase):
         state.joiners.add(77)
         body = round_body(state)
         self.assertIn("Velvet took care", body)
+        self.assertIn("GoonCard", body)
         self.assertNotIn("Condoms", body.split("Join late")[0])
 
     def test_velvet_favor_copy_and_media(self) -> None:
@@ -277,16 +280,61 @@ class GroupCallPostTests(unittest.IsolatedAsyncioTestCase):
         qty = await self.db.get_inventory_quantity(7, self.guild_id, "condoms")
         self.assertEqual(qty, 0)
         self.assertGreaterEqual(send.await_count, 2)
-        favor_body = send.call_args.args[2]
+        favor_bodies = [call.args[2] for call in send.call_args_list if len(call.args) > 2]
         self.assertTrue(
-            "kissed" in favor_body or "head from Velvet" in favor_body,
-            favor_body,
+            any("kissed" in body or "head from Velvet" in body for body in favor_bodies),
+            favor_bodies,
         )
-        self.assertIn("file", send.call_args.kwargs)
+        self.assertTrue(
+            any("GoonCard" in body for body in favor_bodies),
+            favor_bodies,
+        )
+        self.assertTrue(
+            any(call.kwargs.get("file") is not None for call in send.call_args_list),
+        )
         for call in send.call_args_list:
             art = call.kwargs.get("file")
             if art is not None:
                 art.close()
+
+    async def test_first_two_joiners_get_cards_third_does_not(self) -> None:
+        now = 10_000.0
+        self.cog._call_due_at[self.guild_id] = now - 1
+        self.cog._note_chatter(self.guild_id, 7, now=now)
+        self.cog._note_chatter(self.guild_id, 8, now=now)
+        self.posted.channel = self.channel
+        host = MagicMock()
+        host.id = 7
+        host.bot = False
+        host.guild = self.guild
+        second = MagicMock()
+        second.id = 8
+        second.bot = False
+        second.guild = self.guild
+        third = MagicMock()
+        third.id = 9
+        third.bot = False
+        third.guild = self.guild
+        await self.db.ensure_user(7, self.guild_id)
+        await self.db.ensure_user(8, self.guild_id)
+        await self.db.ensure_user(9, self.guild_id)
+        with (
+            patch("cogs.goon.resolve_lore_channel", new_callable=AsyncMock, return_value=self.channel),
+            patch("cogs.goon.recent_channel_author_stamps", new_callable=AsyncMock, return_value={}),
+            patch("cogs.goon.send_channel_message", new_callable=AsyncMock, return_value=self.posted),
+            patch("cogs.goon.edit_call_message", new_callable=AsyncMock),
+        ):
+            await self.cog._maybe_post_group_goon_call(self.guild, now=now)
+            state = self.cog.active_calls[self.channel_id]
+            self.assertIsNone(await self.cog._claim_first(host, state))
+            self.assertIsNone(await self.cog._join_round(second, state, late=False))
+            self.assertIsNone(await self.cog._join_round(third, state, late=False))
+        host_n, _ = await self.db.count_owned_cards(7, self.guild_id)
+        second_n, _ = await self.db.count_owned_cards(8, self.guild_id)
+        third_n, _ = await self.db.count_owned_cards(9, self.guild_id)
+        self.assertEqual(host_n, 1)
+        self.assertEqual(second_n, 1)
+        self.assertEqual(third_n, 0)
 
     async def test_startup_delay_skips_immediate_boot_tick(self) -> None:
         now = 10_000.0

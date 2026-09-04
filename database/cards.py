@@ -6,7 +6,15 @@ from typing import Any
 
 import aiosqlite
 
-from utils.cards import CARD_DEFINITIONS, card_by_id, npc_sell_value, roll_card, roll_pack
+from utils.cards import (
+    CARD_DEFINITIONS,
+    card_by_id,
+    cards_for_set,
+    npc_sell_value,
+    roll_card,
+    roll_card_prefer_unowned,
+    roll_pack,
+)
 
 
 class DatabaseCardsMixin:
@@ -79,6 +87,18 @@ class DatabaseCardsMixin:
                 user_id BIGINT NOT NULL,
                 last_pull_at REAL NOT NULL,
                 PRIMARY KEY (guild_id, user_id)
+            )
+            """,
+        )
+        await self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS card_set_completions (
+                guild_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                set_id TEXT NOT NULL,
+                completed_at REAL NOT NULL,
+                reward REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, user_id, set_id)
             )
             """,
         )
@@ -165,6 +185,35 @@ class DatabaseCardsMixin:
             (guild_id, user_id, delta),
         )
 
+    async def _owned_card_ids_no_lock(self, user_id: int, guild_id: int) -> set[str]:
+        cursor = await self.conn.execute(
+            """
+            SELECT DISTINCT card_id FROM card_instances
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        return {str(r["card_id"]) for r in await cursor.fetchall()}
+
+    async def _mark_set_complete_no_lock(
+        self,
+        user_id: int,
+        guild_id: int,
+        set_id: str,
+        reward: float,
+        now: float,
+    ) -> bool:
+        cursor = await self.conn.execute(
+            """
+            INSERT INTO card_set_completions (
+                guild_id, user_id, set_id, completed_at, reward
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (guild_id, user_id, set_id) DO NOTHING
+            """,
+            (guild_id, user_id, set_id, now, reward),
+        )
+        return int(getattr(cursor, "rowcount", 0) or 0) > 0
+
     async def _grant_card_no_lock(
         self,
         user_id: int,
@@ -177,6 +226,7 @@ class DatabaseCardsMixin:
             return None
         await self._ensure_user_no_lock(user_id, guild_id)
         unique_before = await self._unique_card_count_no_lock(user_id, guild_id)
+        owned = await self._owned_card_ids_no_lock(user_id, guild_id)
         print_number = await self._next_card_print_no_lock(guild_id, card_id)
         now = created_at if created_at is not None else time.time()
         cursor = await self.conn.execute(
@@ -195,10 +245,36 @@ class DatabaseCardsMixin:
         else:
             instance_id = int(row["instance_id"])
         await self._bump_cards_museum_no_lock(guild_id, user_id, unique_before)
+        set_complete = None
+        set_reward = 0.0
+        defn = CARD_DEFINITIONS[card_id]
+        if card_id not in owned:
+            set_cards = cards_for_set(defn.set_id)
+            have = sum(1 for c in set_cards if c.card_id in owned) + 1
+            if have >= len(set_cards):
+                reward = float(await self.get_config_value(guild_id, "card_set_complete_reward"))
+                if await self._mark_set_complete_no_lock(
+                    user_id, guild_id, defn.set_id, reward, now,
+                ):
+                    set_complete = defn.set_id
+                    set_reward = reward
+                    if reward > 0:
+                        await self.conn.execute(
+                            """
+                            UPDATE users
+                            SET wallet = wallet + ?,
+                                total_earned = total_earned + ?
+                            WHERE user_id = ? AND guild_id = ?
+                            """,
+                            (reward, reward, user_id, guild_id),
+                        )
         return {
             "instance_id": instance_id,
             "card_id": card_id,
             "print_number": print_number,
+            "new_unique": card_id not in owned,
+            "set_complete": set_complete,
+            "set_reward": set_reward,
         }
 
     async def grant_card(
@@ -208,6 +284,26 @@ class DatabaseCardsMixin:
             granted = await self._grant_card_no_lock(user_id, guild_id, card_id)
             await self.conn.commit()
         return granted
+
+    async def grant_engagement_card(
+        self, user_id: int, guild_id: int,
+    ) -> dict[str, Any] | None:
+        """Grant one rarity-weighted card, preferring a missing dex entry."""
+        owned = await self.collection_owned_ids(user_id, guild_id)
+        card = roll_card_prefer_unowned(owned)
+        return await self.grant_card(user_id, guild_id, card.card_id)
+
+    async def list_completed_card_sets(
+        self, user_id: int, guild_id: int,
+    ) -> set[str]:
+        cursor = await self.conn.execute(
+            """
+            SELECT set_id FROM card_set_completions
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (guild_id, user_id),
+        )
+        return {str(r["set_id"]) for r in await cursor.fetchall()}
 
     async def get_card_instance(
         self, instance_id: int, guild_id: int,
