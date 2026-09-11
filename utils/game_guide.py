@@ -184,7 +184,7 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "6. `/boss` or `/attack` — join the raid\n"
                     "7. `/balance` — pocket vs bank vault",
                     "**Core loops**\n"
-                    "· **Session** — `/goon edge` / finish / ruin / tease; chat, VC, and jobs fill the meter; ~2h group round in #yappinmain\n"
+                    "· **Session** — `/goon edge` / finish / ruin / tease; chat, VC, and jobs fill the meter; 4.5h group round in #yappinmain\n"
                     "· **Economy** — chat, VC, jobs, daily, pay friends\n"
                     "· **Raid** — boss panels, heals, loot, dungeons\n"
                     "· **PvP** — duels, heists, territories, crews, ruin streaks\n"
@@ -448,9 +448,9 @@ def _build_sections() -> tuple[GuideSection, ...]:
                     "**Bounty** — `/bounty @user amount word` · `/bounties` — claim when target says the trigger word",
                     "**Hot potato** — `/hack @user` starts the virus; `/transfer` passes it; "
                     "scaling wallet penalties",
-                    "**Trivia** — hourly Lore Roulette in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
+                    "**Trivia** — Lore Roulette every **3 hours** in **#yappinmain** (**3 min**, faster answers pay more + free drug chance; "
                     "`/trivia` to start early)\n"
-                    "**Group goon call** — every **145 minutes** in **#yappinmain** when chat is live "
+                    "**Group goon call** — every **4.5 hours** in **#yappinmain** when chat is live "
                     "(retries until two people have typed recently — quiet ticks do not "
                     "reset the timer); posts Velvet art with the prompt; first **yes** / **I'm ready** "
                     "gets **kisses** or **head from Velvet** (follow-up GIF/image) plus house-pot goonbux when the pot can cover it, "

@@ -231,7 +231,7 @@ GOON_WATCH_PER_PERSON = 0.15
 GOON_WATCH_MULT_CAP = 2.0
 # Random main-chat call: "ready for a group goon session?"
 # Poll often; only POST when due AND chat is live. Quiet ticks do not reset the timer.
-GOON_CALL_INTERVAL_MINUTES = 145
+GOON_CALL_INTERVAL_MINUTES = 270  # 4.5 hours
 GOON_CALL_INTERVAL_JITTER_MINUTES = 0
 GOON_CALL_POLL_SECONDS = 45
 GOON_CALL_STARTUP_DELAY_MINUTES = 2
@@ -647,7 +647,7 @@ TRIVIA_SECONDS = 3 * 60
 TRIVIA_MAX_CHANNELS = 10
 TRIVIA_HISTORY_DAYS = 45
 TRIVIA_MESSAGES_PER_CHANNEL = 50
-TRIVIA_EVENT_INTERVAL_HOURS = 1
+TRIVIA_EVENT_INTERVAL_HOURS = 3
 # Instant answers pay the max mult; answers near timeout pay the min mult.
 TRIVIA_SPEED_MAX_MULT = 2.0
 TRIVIA_SPEED_MIN_MULT = 0.4

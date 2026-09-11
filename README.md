@@ -14,7 +14,7 @@ A chaos-driven Discord economy RPG built with **discord.py** and PostgreSQL or S
 | 3 | **The Steal** | Heist & crew system: rob users, form crews, arrest failed thieves |
 | 4 | **The Virus** | Contagious goon: infect users, pass the timer, pop ruins their session |
 | 5 | **The Boss** | Boss raids: fight Velvet Vixen variants, scale HP with economy, down/heal mechanics |
-| 6 | **The Session** | `/goon` edging meter, streaks, finish payouts, ruin others, floor dares, ~2h group-session call |
+| 6 | **The Session** | `/goon` edging meter, streaks, finish payouts, ruin others, floor dares, 4.5h group-session call |
 | 7 | **The AI** | Imposter webhook word sabotage + Lore Roulette trivia |
 | 8 | **Hubs** | Discord Views for profile, gear, jobs, character, casino, crime, and more |
 
@@ -126,7 +126,7 @@ Unstable gear gives **no stat bonuses** until repaired for **80%** of the item's
 
 Chat, VC, jobs, and `/daily` also fill the meter. Edging in VC with others hits harder. Daily pays extra while you're still edged.
 
-Every **145 minutes** (if the chat is awake) GoonBot asks in **#yappinmain** and attaches a Velvet image. First yes / **I'm ready** gets **kisses from Velvet** or **head from Velvet** (plus a follow-up GIF/image), and **house-pot** goonbux when the pot can cover it. Then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
+Every **4.5 hours** (if the chat is awake) GoonBot asks in **#yappinmain** and attaches a Velvet image. First yes / **I'm ready** gets **kisses from Velvet** or **head from Velvet** (plus a follow-up GIF/image), and **house-pot** goonbux when the pot can cover it. Then a **group round** (free join ~90s, late join spends a condom). Hitting **100** leaks unless a condom holds it. `/use` condoms for a wrap charge (ruin shield / leak hold / safe finish).
 
 ### Boss
 
