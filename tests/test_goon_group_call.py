@@ -104,7 +104,7 @@ class GroupCallHelperTests(unittest.TestCase):
 
     def test_poll_is_far_shorter_than_interval(self) -> None:
         self.assertLess(config.GOON_CALL_POLL_SECONDS, 120)
-        self.assertEqual(config.GOON_CALL_INTERVAL_MINUTES, 145)
+        self.assertEqual(config.GOON_CALL_INTERVAL_MINUTES, 270)
         self.assertEqual(config.GOON_CALL_INTERVAL_JITTER_MINUTES, 0)
 
     def test_call_media_attaches_velvet_image(self) -> None:
